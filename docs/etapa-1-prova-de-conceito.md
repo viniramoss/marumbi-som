@@ -26,13 +26,12 @@ nada das etapas seguintes deve começar antes de todos os critérios abaixo esta
 
 ```powershell
 dotnet publish src\MarumbiSom.Agent -c Release -r win-x64 --self-contained -o publish\agent
-# Preencha a URL do build do mpv em scripts\tools.lock.json e rode:
-.\scripts\download-tools.ps1                 # mostra o SHA-256 e para
-.\scripts\download-tools.ps1 -AcceptNewHash  # depois de conferir; faça commit do tools.lock.json
+# Baixa o mpv conferindo o SHA-256 gravado em scripts\tools.lock.json:
+.\scripts\download-tools.ps1
 ```
 
-Alternativa: o GitHub Actions gera o artefato **MarumbiSom.Agent-win-x64** a cada push (sem o mpv).
-Nesse caso copie o `mpv.exe` para `publish\agent\tools\` manualmente.
+Alternativa sem compilar: baixe o artefato **MarumbiSom.Agent-win-x64** da última execução do CI em
+*Actions*. Ele já vem com `tools\mpv.exe` (hash conferido) e a pasta `scripts\`.
 
 ## Instalar no PC piloto (PowerShell como administrador)
 

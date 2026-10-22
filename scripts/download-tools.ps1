@@ -52,8 +52,12 @@ foreach ($tool in $lock.tools) {
     Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
     # tar.exe (libarchive) do Windows 10/11 abre .zip e, nas versões recentes, .7z; senão usa o 7-Zip instalado.
+    # No Windows PowerShell 5.1, stderr de comando nativo com ErrorActionPreference=Stop vira erro fatal.
+    $ErrorActionPreference = 'Continue'
     tar -xf $archive -C $extractDir 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    $tarExit = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    if ($tarExit -ne 0 -or -not (Get-ChildItem -Path $extractDir -Recurse -File | Select-Object -First 1)) {
         $sevenZip = @("$env:ProgramFiles\7-Zip\7z.exe", "${env:ProgramFiles(x86)}\7-Zip\7z.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
         if (-not $sevenZip) { throw "Não foi possível extrair $archive. Instale o 7-Zip (gratuito) e rode de novo." }
         & $sevenZip x $archive "-o$extractDir" -y | Out-Null

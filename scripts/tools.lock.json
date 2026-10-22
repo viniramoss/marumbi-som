@@ -1,11 +1,14 @@
 {
-  "comment": "URLs e SHA-256 dos binários de terceiros. Preencha a url do build do mpv para Windows x86_64 (ex.: releases de shinchiro/mpv-winbuild-cmake no GitHub). O hash é gravado pelo download-tools.ps1 -AcceptNewHash após conferência humana.",
+  "comment": "URLs e SHA-256 dos binários de terceiros, verificados pelo download-tools.ps1. Ao trocar de versão, use o hash publicado na página de releases (ícone ao lado de sha256:) ou rode o script com -AcceptNewHash após conferir o arquivo.",
   "tools": [
     {
       "name": "mpv",
-      "url": "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/PREENCHER/mpv-x86_64-PREENCHER.7z",
-      "sha256": "",
-      "files": [ "mpv.exe" ]
+      "version": "20261021-git-e471496c56",
+      "url": "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20261021/mpv-x86_64-20261021-git-e471496c56.7z",
+      "sha256": "4a355f3e89c83fabc730d33fb4e759dfec747806ed2287b61a90d1681b83e8d3",
+      "files": [
+        "mpv.exe"
+      ]
     }
   ]
 }

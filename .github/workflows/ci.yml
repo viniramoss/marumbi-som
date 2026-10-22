@@ -30,6 +30,9 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet publish src/MarumbiSom.Agent -c Release -r win-x64 --self-contained -o publish/agent
+      - name: Baixar mpv (SHA-256 conferido pelo tools.lock.json)
+        run: ./scripts/download-tools.ps1 -Destination publish/agent/tools
+        shell: pwsh
       - run: Copy-Item -Recurse scripts publish/agent/scripts
         shell: pwsh
       - uses: actions/upload-artifact@v4
