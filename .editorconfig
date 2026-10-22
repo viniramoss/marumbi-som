@@ -1,0 +1,49 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+
+[*.{json,jsonc,hujson,yml,yaml,props,targets,csproj,slnx,xml}]
+indent_size = 2
+
+[*.{ts,tsx,js,jsx,css,html}]
+indent_size = 2
+end_of_line = lf
+
+[*.sh]
+end_of_line = lf
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_sort_system_directives_first = true
+# Campos privados em _camelCase
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel
+dotnet_naming_rule.private_fields_underscore.severity = suggestion
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_style.underscore_camel.capitalization = camel_case
+# Interop COM/Win32 usa nomes do SDK do Windows
+dotnet_diagnostic.CA1707.severity = none
+# Mensagens de log em português; não exigir LoggerMessage na v1
+dotnet_diagnostic.CA1848.severity = none
+dotnet_diagnostic.CA1873.severity = none
+# Bibliotecas de aplicação, sem necessidade de ConfigureAwait
+dotnet_diagnostic.CA2007.severity = none
+# Textos de log/console não são recursos localizáveis
+dotnet_diagnostic.CA1303.severity = none
+
+[*.{ps1,psm1,iss,cmd,bat}]
+end_of_line = crlf

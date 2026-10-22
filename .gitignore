@@ -1,0 +1,40 @@
+# Build
+bin/
+obj/
+artifacts/
+publish/
+*.user
+*.suo
+.vs/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+TestResults/
+
+# Frontend
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Segredos (regra 9) — NUNCA versionar
+appsettings.Production.json
+appsettings.Local.json
+*.pfx
+*.key
+*.pem
+signing/
+secrets/
+*.env
+.env*
+
+# Binários de terceiros baixados por scripts/download-tools.ps1 (nunca commitados)
+tools/
+**/tools/*.exe
+**/tools/*.dll
+
+# Dados locais de execução
+data/
+logs/
+*.db
+*.db-shm
+*.db-wal
