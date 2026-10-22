@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore
+      - run: dotnet build --no-restore
+      - run: dotnet test --no-build --verbosity normal
+
+  publish-agent:
+    runs-on: windows-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet publish src/MarumbiSom.Agent -c Release -r win-x64 --self-contained -o publish/agent
+      - run: Copy-Item -Recurse scripts publish/agent/scripts
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarumbiSom.Agent-win-x64
+          path: publish/agent
+          retention-days: 30

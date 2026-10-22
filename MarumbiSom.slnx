@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MarumbiSom.Agent.Windows/MarumbiSom.Agent.Windows.csproj" />
+    <Project Path="src/MarumbiSom.Agent/MarumbiSom.Agent.csproj" />
+    <Project Path="src/MarumbiSom.Contracts/MarumbiSom.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MarumbiSom.Agent.Tests/MarumbiSom.Agent.Tests.csproj" />
+    <Project Path="tests/MarumbiSom.Contracts.Tests/MarumbiSom.Contracts.Tests.csproj" />
+  </Folder>
+</Solution>

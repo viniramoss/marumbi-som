@@ -1095,6 +1095,9 @@ Aceite:
 | D10 | Ofertas em um segundo processo mpv, misturado pelo Windows | Ducking sem processamento de áudio próprio; o player de música não é interrompido |
 | D11 | Âncoras presas ao item da playlist e só em playlist sequencial | Reordenar mantém a oferta junto da música; no aleatório não existe posição fixa |
 | D12 | Ducking padrão de 30% com rampas de 800 ms / 1.500 ms e locução a −14 LUFS | Voz inteligível sem corte seco da música |
+| D13 | O `contentHash` do manifesto exclui `version`, `contentHash` e `generatedAt` (JSON canônico: chaves em ordem ordinal, sem espaços) | Com `generatedAt` no hash, a regeneração diária das 00:05 incrementaria a versão de todas as lojas sem mudança real |
+| D14 | Guardião Bluetooth com estado "Verificando" (4 s após cada método antes de contar falha), checagem do endpoint a cada 2 s durante o backoff, e nova tentativa do nível 1 após os níveis 2 e 3 | Detalha a seção 9.1: caixa que volta sozinha é detectada sem esperar o backoff de 60 s (meta de 30 s); reiniciar `bthserv` ou o adaptador devolve o rádio no último estado salvo |
+| D15 | Hash SHA-256 de binários de terceiros (mpv, ffmpeg) gravado em `scripts/tools.lock.json` após conferência humana (`download-tools.ps1 -AcceptNewHash`) e versionado | Os builds do mpv para Windows não publicam hash oficial; o primeiro download é conferido por uma pessoa e os seguintes são verificados contra o lock |
 
 Novas decisões DEVEM ser adicionadas aqui com número sequencial.
 
