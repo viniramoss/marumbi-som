@@ -1,0 +1,7 @@
+dist
+node_modules
+openapi.json
+package-lock.json
+playwright-report
+test-results
+e2e/.stack.json

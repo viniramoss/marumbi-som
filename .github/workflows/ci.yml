@@ -23,9 +23,49 @@ jobs:
       - run: dotnet build --no-restore
       - run: dotnet test --no-build --verbosity normal
 
+  panel:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/panel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/panel/package-lock.json
+      - name: ffmpeg para a ingestão do Hub no teste ponta a ponta
+        run: command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+      - run: npm ci
+      - name: Tipos do painel em dia com o openapi.json do Hub (seção 7.3)
+        run: npm run api && git diff --exit-code -- src/types/api.ts
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Ponta a ponta (Hub real, agente simulado, navegador)
+        run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            web/panel/playwright-report
+            web/panel/test-results
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: panel-dist
+          path: web/panel/dist
+          retention-days: 7
+
   publish:
     runs-on: windows-latest
-    needs: test
+    needs: [test, panel]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -53,6 +93,11 @@ jobs:
           path: publish/agent
           retention-days: 30
       - run: dotnet publish src/MarumbiSom.Hub -c Release -r win-x64 --self-contained -o publish/hub
+      - name: Painel (build do job panel) em wwwroot
+        uses: actions/download-artifact@v4
+        with:
+          name: panel-dist
+          path: publish/hub/wwwroot
       - name: Baixar ffmpeg e ffprobe (SHA-256 conferido pelo tools.lock.json)
         run: ./scripts/download-tools.ps1 -For hub -Destination publish/hub/tools
         shell: pwsh

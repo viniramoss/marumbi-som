@@ -28,12 +28,17 @@ public static class OpenApiSetup
                 schema.Pattern = "^([01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$";
                 schema.Examples = [JsonValue.Create("07:30")];
             }
+            else if (type == typeof(JsonObject))
+            {
+                // Argumentos de comando e dados de evento: objeto livre (ex.: { "volume": 40 }).
+                schema.AdditionalProperties = new OpenApiSchema();
+            }
             else if (schema.Properties is { Count: > 0 } properties && context.JsonPropertyInfo is null)
             {
                 // Respostas trazem todos os campos (nulos como null, ver HubJson); entradas exigem só os não nulos.
                 var input = InputSuffixes.Any(suffix => type.Name.EndsWith(suffix, StringComparison.Ordinal));
                 schema.Required = new HashSet<string>(
-                    properties.Where(p => !input || p.Value.Type is not { } t || !t.HasFlag(JsonSchemaType.Null)).Select(p => p.Key),
+                    properties.Where(p => !input || !IsNullable(p.Value)).Select(p => p.Key),
                     StringComparer.Ordinal);
             }
 
@@ -51,11 +56,24 @@ public static class OpenApiSetup
             message.Discriminator = null;
             message.Required?.Clear();
             message.Properties?.Clear();
+            // O resumo da loja vem embutido e perderia os nulos dos objetos internos (nowPlaying); usa o mesmo esquema das rotas.
+            foreach (var option in (message.AnyOf ?? []).OfType<OpenApiSchema>())
+            {
+                if (option.Properties is { } properties && properties.ContainsKey("store"))
+                {
+                    properties["store"] = new OpenApiSchemaReference(nameof(StoreSummary), document);
+                }
+            }
+
             document.Components ??= new OpenApiComponents();
             document.Components.Schemas ??= new Dictionary<string, IOpenApiSchema>(StringComparer.Ordinal);
             document.Components.Schemas["PanelMessage"] = message;
         });
     });
+
+    private static bool IsNullable(IOpenApiSchema schema) =>
+        schema.Type is { } type && type.HasFlag(JsonSchemaType.Null)
+        || (schema.OneOf ?? []).Concat(schema.AnyOf ?? []).Any(s => s.Type is { } t && t.HasFlag(JsonSchemaType.Null));
 
     public static void MapPanelOpenApi(this WebApplication app)
     {
