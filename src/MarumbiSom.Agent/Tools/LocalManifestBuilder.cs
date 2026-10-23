@@ -32,6 +32,9 @@ public static partial class LocalManifestBuilder
           --min-gap 300              intervalo mínimo entre ofertas, em segundos
           --duck 30                  nível da música durante a oferta, em %
           --store <id>               identificação da loja (padrão: local)
+          --timezone <fuso>          fuso horário da agenda (padrão: America/Sao_Paulo)
+          --add                      mantém as outras playlists, horários, ofertas e ajustes da configuração atual
+                                     e só acrescenta (ou substitui) esta playlist e o horário dela
         """;
 
     public static async Task<int> RunAsync(string[] args, AgentDataPaths paths, ILoggerFactory loggerFactory)
@@ -51,7 +54,7 @@ public static partial class LocalManifestBuilder
             var store = new ManifestStore(paths, loggerFactory.CreateLogger<ManifestStore>());
             store.Load();
             var cache = new CacheManager(paths, TimeProvider.System, loggerFactory.CreateLogger<CacheManager>());
-            var manifest = await BuildAsync(options, cache, store.Active?.Version ?? 0, TimeProvider.System.GetLocalNow(), CancellationToken.None);
+            var manifest = await BuildAsync(options, cache, store.Active, TimeProvider.System.GetLocalNow(), CancellationToken.None);
             store.SaveActive(manifest);
             Console.WriteLine($"Manifesto versão {manifest.Version} gravado em {paths.ActiveManifest}");
             Console.WriteLine($"  {manifest.Playlists.Values.Sum(p => p.Items.Count)} músicas, {manifest.Spots.Offers.Count} ofertas, mixagem {manifest.CrossfadeS} s, volume {manifest.Volume}");
@@ -75,11 +78,13 @@ public static partial class LocalManifestBuilder
         }
     }
 
+    /// <param name="previous">Manifesto atual: dá o número da versão e, com <c>--add</c>, o que deve ser mantido.</param>
     public static async Task<Manifest> BuildAsync(
-        IReadOnlyDictionary<string, string> options, CacheManager cache, long previousVersion, DateTimeOffset now, CancellationToken cancellationToken)
+        IReadOnlyDictionary<string, string> options, CacheManager cache, Manifest? previous, DateTimeOffset now, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(cache);
+        var keep = options.ContainsKey("add") ? previous : null;
         var playlistId = options.GetValueOrDefault("playlist", "principal");
         var tracks = new Dictionary<string, TrackInfo>(StringComparer.Ordinal);
         var items = new List<PlaylistItemRef>();
@@ -96,10 +101,13 @@ public static partial class LocalManifestBuilder
             throw new FormatException($"Nenhum arquivo de áudio em {options["music"]}.");
         }
 
-        var offers = new Dictionary<string, OfferDefinition>(StringComparer.Ordinal);
-        var placements = new List<Placement>();
+        // Com --add as ofertas atuais ficam, a menos que uma nova pasta de ofertas seja informada.
+        var offers = new Dictionary<string, OfferDefinition>(keep?.Spots.Offers ?? new Dictionary<string, OfferDefinition>(), StringComparer.Ordinal);
+        var placements = new List<Placement>(keep?.Spots.Placements ?? []);
         if (options.TryGetValue("offers", out var offersFolder))
         {
+            offers.Clear();
+            placements.Clear();
             var duck = Int(options, "duck", 30, 0, 100);
             foreach (var file in AudioFiles(offersFolder))
             {
@@ -139,18 +147,35 @@ public static partial class LocalManifestBuilder
                 .Select(d => int.TryParse(d, NumberStyles.None, CultureInfo.InvariantCulture, out var day) && day is >= 0 and <= 6 ? day : throw new FormatException($"Dia inválido: {d}"))
                 .Distinct().Order().ToList()
             : [0, 1, 2, 3, 4, 5, 6];
+        var schedules = keep?.Schedules.Where(e => e.PlaylistId != playlistId).ToList() ?? [];
+        schedules.Add(new ScheduleEntry(days, Time(options, "start", "00:00"), Time(options, "end", "24:00"), playlistId));
+        var playlists = keep?.Playlists.Where(p => p.Key != playlistId).ToDictionary(StringComparer.Ordinal)
+            ?? new Dictionary<string, PlaylistDefinition>(StringComparer.Ordinal);
+        playlists[playlistId] = new PlaylistDefinition(options.ContainsKey("shuffle"), items);
+        if (keep is not null)
+        {
+            var referenced = playlists.Values.SelectMany(p => p.Items).Select(i => i.Hash).Concat(offers.Values.Select(o => o.Hash)).ToHashSet(StringComparer.Ordinal);
+            foreach (var (hash, info) in keep.Tracks)
+            {
+                if (referenced.Contains(hash))
+                {
+                    tracks.TryAdd(hash, info);
+                }
+            }
+        }
+
         var manifest = new Manifest
         {
-            StoreId = options.GetValueOrDefault("store", "local"),
-            Version = previousVersion + 1,
+            StoreId = options.GetValueOrDefault("store", keep?.StoreId ?? "local"),
+            Version = (previous?.Version ?? 0) + 1,
             GeneratedAt = now,
-            Timezone = options.GetValueOrDefault("timezone", "America/Sao_Paulo"),
-            Volume = Int(options, "volume", 70, 0, 100),
-            CrossfadeS = Int(options, "crossfade", 5, 0, 30),
-            Schedules = [new ScheduleEntry(days, Time(options, "start", "00:00"), Time(options, "end", "24:00"), playlistId)],
-            Playlists = new Dictionary<string, PlaylistDefinition> { [playlistId] = new(options.ContainsKey("shuffle"), items) },
+            Timezone = options.GetValueOrDefault("timezone", keep?.Timezone ?? "America/Sao_Paulo"),
+            Volume = Int(options, "volume", keep?.Volume ?? 70, 0, 100),
+            CrossfadeS = Int(options, "crossfade", keep?.CrossfadeS ?? 5, 0, 30),
+            Schedules = schedules,
+            Playlists = playlists,
             Tracks = tracks,
-            Spots = new SpotsSection { MinOfferGapS = Int(options, "min-gap", 300, 0, 86400), Offers = offers, Placements = placements },
+            Spots = new SpotsSection { MinOfferGapS = Int(options, "min-gap", keep?.Spots.MinOfferGapS ?? 300, 0, 86400), Offers = offers, Placements = placements },
         };
         return ManifestHasher.WithContentHash(manifest);
     }

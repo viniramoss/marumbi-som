@@ -1,3 +1,4 @@
+using System.Text;
 using MarumbiSom.Agent.Configuration;
 using MarumbiSom.Agent.LocalConfig;
 using MarumbiSom.Agent.Storage;
@@ -33,7 +34,9 @@ internal static class AgentCli
         string? password;
         if (Console.IsInputRedirected)
         {
-            password = Console.In.ReadLine();
+            // UTF-8 explícito: Console.In usaria a página de código OEM e estragaria senhas com acento vindas do instalador.
+            using var input = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
+            password = input.ReadLine();
         }
         else
         {
