@@ -1,6 +1,6 @@
 # Sistema de Som Remoto — Casa de Carnes Marumbi
 
-> Documento de arquitetura e execução. Versão 1.4 — outubro/2026 (inclui ofertas com ducking, mixagem entre músicas e as decisões D17 a D20 da implementação).
+> Documento de arquitetura e execução. Versão 1.5 — outubro/2026 (inclui ofertas com ducking, mixagem entre músicas e as decisões D17 a D21 da implementação).
 > Este documento é a fonte da verdade do projeto. Toda implementação DEVE segui-lo. Qualquer desvio DEVE ser registrado na seção 18 (Registro de Decisões) antes de ser implementado.
 
 ---
@@ -311,6 +311,8 @@ Os binários `ffmpeg.exe` e `ffprobe.exe` ficam em `app\tools\` e são baixados 
 
 ### 6.6 Alertas (Telegram)
 
+> **Adiado pela D21:** a v1 inicial não envia alertas pelo Telegram. As condições abaixo aparecem no dashboard do painel.
+
 O Hub DEVE enviar alerta quando, **dentro do horário de funcionamento da loja** (janela de alguma agenda ativa):
 
 | Condição | Tempo |
@@ -334,7 +336,7 @@ Cada alerta é enviado uma única vez por ocorrência e gera uma mensagem de "re
 
 ### 7.1 Regras de UX
 
-- **Mobile first.** Toda tela DEVE funcionar em 360 px de largura. O celular é o controle remoto principal.
+- ~~**Mobile first.** Toda tela DEVE funcionar em 360 px de largura. O celular é o controle remoto principal.~~ **Desktop first (D21):** as telas são pensadas para o computador, onde o administrador edita; no celular (360 px), o dashboard e o controle ao vivo das lojas continuam utilizáveis.
 - **Salvar = publicar.** Não existe rascunho na v1. Ao salvar uma playlist, ela vai para as lojas.
 - Toda ação destrutiva (remover música da biblioteca, remover loja) pede confirmação.
 - Toda tela mostra, de forma visível, se cada loja afetada já aplicou a alteração.
@@ -385,7 +387,7 @@ Cada alerta é enviado uma única vez por ocorrência e gera uma mensagem de "re
 - Manutenção: gerar código de vinculação, reiniciar agente, atualizar agente.
 
 **Configurações**
-- Trocar senha, bot do Telegram (token e chat ID, com botão "enviar teste"), versão atual do agente para distribuição, status de backup.
+- Trocar senha, ~~bot do Telegram (token e chat ID, com botão "enviar teste")~~ (adiado pela D21), versão atual do agente para distribuição, status de backup.
 
 ### 7.3 Estrutura do frontend
 
@@ -885,7 +887,7 @@ marumbi-som/
 - [ ] Colar a política de ACL (escrita pelo agente de IA em `infra/tailscale-acl.hujson`) no console do Tailscale.
 - [ ] Desativar a expiração de chave do Hub e confirmar nas lojas.
 - [ ] Criar o repositório privado no GitHub.
-- [ ] Criar o bot do Telegram (BotFather), obter o token e o chat ID, e cadastrar no painel.
+- [ ] ~~Criar o bot do Telegram (BotFather), obter o token e o chat ID, e cadastrar no painel.~~ (adiado pela D21)
 - [ ] Gerar a chave de assinatura (`scripts/new-signing-key.ps1`) e guardar a chave privada em local seguro, com cópia offline.
 
 **PC do escritório (Hub)**
@@ -1004,7 +1006,7 @@ Aceite:
 Entrega: todas as telas da seção 7.
 
 Aceite:
-- [ ] Todas as operações funcionam pelo celular (via Tailscale).
+- [ ] Todas as operações funcionam no navegador do computador (via Tailscale); dashboard e controle ao vivo também no celular (D21).
 - [ ] Comando ao vivo (pular, volume) responde em ≤ 2 s.
 - [ ] Dashboard mostra status, música atual e Bluetooth em tempo real.
 
@@ -1022,13 +1024,13 @@ Aceite:
 - [ ] Painel mostra a contagem de execuções por loja.
 
 ### Etapa 6 — Segurança, instalador e atualização
-Entrega: instalador, scripts, ACL, atualização assinada, alertas no Telegram.
+Entrega: instalador, scripts, ACL, atualização assinada. ~~Alertas no Telegram~~ (adiado pela D21).
 
 Aceite:
 - [ ] Instalação limpa em PC de teste seguindo só o `checklist-instalacao-loja.md`.
 - [ ] Pacote com assinatura inválida é rejeitado.
 - [ ] Atualização com versão quebrada é revertida automaticamente.
-- [ ] Alerta de Bluetooth desconectado chega no Telegram e a mensagem de "resolvido" também.
+- [ ] ~~Alerta de Bluetooth desconectado chega no Telegram e a mensagem de "resolvido" também.~~ (adiado pela D21)
 - [ ] Loja não consegue acessar outra loja pela rede Tailscale.
 - [ ] Varredura de portas na loja (a partir de outra máquina) não encontra o agente.
 
@@ -1081,7 +1083,7 @@ Aceite:
 - [ ] Conta do funcionário não é administradora e não consegue parar o serviço.
 - [ ] Sons do PC do caixa não saem na caixa da loja.
 - [ ] Passagem de uma música para outra sem silêncio nem corte seco.
-- [ ] Alerta de teste do Telegram recebido.
+- [ ] ~~Alerta de teste do Telegram recebido.~~ (adiado pela D21)
 
 ---
 
@@ -1125,6 +1127,7 @@ Aceite:
 | D18 | Etapas 2 e 3 desenvolvidas (código e testes automatizados) em paralelo ao aceite da Etapa 1 no PC piloto, em vez de esperar o aceite completo. O aceite de cada etapa continua exigindo todos os critérios da seção 15 | Decisão do proprietário (23/10/2026): o teste no PC piloto já mostrou música e oferta tocando como serviço LocalSystem. Se o plano B da Etapa 1 for acionado, o player e o guardião mudam de processo, mas a lógica continua a mesma |
 | D19 | Detalhes do agente offline (Etapa 2): (a) agenda, transições e ofertas avaliadas num laço único a cada 20 ms durante rampas e 250 ms no resto, em vez do `Scheduler` a cada 15 s, para o fim de expediente e a mixagem caírem no instante certo; (b) janela com fim `24:00` vai até a meia-noite e fim menor que o início atravessa a meia-noite; (c) `next` e `playNow` sempre usam o outro mpv de música com rampa de 1 s, mesmo com mixagem em 0; (d) a senha local é definida na instalação (`install-agent.ps1` ou `--set-local-password`), não na primeira abertura da página; sem senha a página não permite login; (e) `--build-manifest` gera um manifesto local a partir de pastas de músicas e ofertas, com `durationMs` 0 (a duração vem do mpv ao tocar); (f) a página local só aceita conexões de 127.0.0.1 com Host `127.0.0.1`/`localhost` e exige o cabeçalho `X-MarumbiSom` e Origin local em toda ação; (g) `SpotScheduler` e ofertas do manifesto local adiantados para a Etapa 2 | (a) a seção 10.2 pede fade de 3 s no fim do horário e crossfade de 5 s, impossíveis de acertar com resolução de 15 s; (b) horários de madrugada e expediente até meia-noite; (c) pular deve ser imediato sem silêncio; (d) uma página sem senha na primeira abertura poderia ser tomada pelo funcionário, que usa o mesmo PC; (e) a Etapa 2 não tem Hub para processar as músicas; (f) evita que um site aberto no navegador da loja comande o agente (CSRF e DNS rebinding); (g) as ofertas já vinham da Etapa 1 (D10, D16, D17) e as regras da seção 10.3 dependem do player |
 | D20 | Detalhes do Hub e da sincronização (Etapa 3): (a) rotas além da seção 11.2: `GET /api/auth/me` (sessão do painel), `GET /api/uploads` (andamento da fila de ingestão, consultado pelo painel enquanto não há WebSocket do painel), `DELETE /api/stores/{id}/token` (revoga o token e derruba a conexão da loja) e `GET /healthz`; (b) chaves do manifesto: playlist `p{id}`, item com UUID estável, oferta `of-{id}`, posicionamento `pl-{id}`; a playlist ganha o campo opcional `name`, mostrado na página Configurar Som; (c) qualquer alteração regenera o manifesto de todas as lojas (a versão só sobe onde a `contentHash` mudou), e uma agenda com horários sobrepostos no mesmo dia é recusada; (d) o primeiro usuário do painel é criado pelo `install-hub.ps1` (`MarumbiSom.Hub.exe --create-admin`, senha de no mínimo 10 caracteres), não no primeiro acesso ao painel; (e) o painel exige o cabeçalho `X-MarumbiSom: 1` em toda escrita, além do cookie `SameSite=Strict`; (f) `GET /agent/files/{hash}` só entrega arquivos do manifesto mais recente da própria loja; (g) na ingestão, o número da faixa no início do nome do arquivo (`01 - `) é descartado antes de separar `Artista - Título`, e a codificação é bit a bit determinística (`-fflags +bitexact`, sem metadados) para o mesmo áudio gerar o mesmo hash; os uploads esperam em `incoming\` e voltam para a fila se o Hub reiniciar; (h) no agente, a versão do manifesto é comparada por loja: um manifesto de outra loja (vinculação nova ou o manifesto local do `--build-manifest`) substitui o ativo mesmo com número menor, sempre depois de 100% dos arquivos baixados e conferidos; (i) arquivos que faltam no manifesto ativo também são baixados a qualquer momento (não só na inicialização); arquivo que o Hub responde 404 é tentado de novo em 10 min; (j) o endereço do Hub precisa ser `https` (Tailscale Serve), exceto `http` para o próprio computador em testes; o token fica em `config.json` (seção `Hub`) protegido por DPAPI de escopo da máquina, e a página Configurar Som também permite desvincular; (k) o Hub roda com a conta virtual `NT SERVICE\MarumbiSom.Hub`, e `C:\MarumbiSom\Hub` perde a herança de permissões da raiz do disco; (l) `ffmpeg.exe` e `ffprobe.exe` (build 8.0.1 essentials de gyan.dev, com SHA-256 no `tools.lock.json`) vêm no pacote do Hub montado pelo CI com `download-tools.ps1 -For hub`; o `install-hub.ps1` só confere que estão lá | (a) o painel visual é da Etapa 4, e o andamento da ingestão precisa aparecer antes disso; revogar o token é a resposta a um PC de loja perdido; `/healthz` serve ao instalador; (b) nomes de playlist mudam, o id não; o UUID do item é o que as âncoras de ofertas precisam (seção 6.3); (c) com 3 lojas, regenerar todas custa milissegundos e elimina o risco de esquecer uma dependência; agenda sobreposta deixaria a escolha da playlist ambígua; (d) uma tela de primeiro acesso poderia ser tomada por quem abrisse o painel primeiro na rede Tailscale; (e) proteção extra contra CSRF caso o cookie vaze para outro site; (f) um token vazado não baixa a biblioteca inteira; (g) arquivos de CD vêm como `01 - Artista - Título`; sem codificação determinística a detecção de duplicatas do passo 7 da seção 6.5 nunca acertaria; (h) sem isso a loja que testou com o manifesto local nunca aceitaria o primeiro manifesto do Hub; (i) cumpre a regra 1 também quando um arquivo some com o agente ligado; (j) a seção 5 exige HTTPS pelo Tailscale; o serviço roda como LocalSystem, então a DPAPI de usuário não serviria; (k) a raiz do C:\ dá permissão de escrita a usuários autenticados, o que permitiria trocar os binários do serviço; o Hub não precisa de administrador; (l) mesmo modelo do mpv no agente (D15): download verificado e repetível, sem depender da internet na hora de instalar |
+| D21 | (a) O painel (Etapa 4) é **desktop first**: as telas de edição (biblioteca, playlists, ofertas, agenda, configurações) são pensadas para o navegador do computador; no celular, o dashboard e o controle ao vivo das lojas continuam utilizáveis em 360 px. (b) Os alertas pelo Telegram (seção 6.6, tela de Configurações, Etapa 6 e checklists) ficam fora da v1 inicial; as mesmas condições aparecem no dashboard | Decisão do proprietário (23/10/2026): "vou querer ter como editar via desktop principalmente e não preciso de notificação via telegram, pelo menos nada disso inicialmente". O Telegram pode voltar numa versão futura sem mudar o agente: as condições já chegam ao Hub pelo status |
 
 Novas decisões DEVEM ser adicionadas aqui com número sequencial.
 
