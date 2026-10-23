@@ -1,6 +1,7 @@
 using MarumbiSom.Agent.Audio;
 using MarumbiSom.Agent.Bluetooth;
 using MarumbiSom.Agent.Configuration;
+using MarumbiSom.Agent.LocalConfig;
 using MarumbiSom.Agent.Playback;
 using MarumbiSom.Agent.Player;
 using MarumbiSom.Agent.Simulation;
@@ -14,12 +15,13 @@ namespace MarumbiSom.Agent;
 
 public static class AgentServiceCollectionExtensions
 {
-    public static IServiceCollection AddMarumbiAgent(this IServiceCollection services, IConfiguration configuration, bool simulate)
+    public static IServiceCollection AddMarumbiAgent(this IServiceCollection services, IConfiguration configuration, AgentDataPaths paths, bool simulate)
     {
         services.Configure<BluetoothOptions>(configuration.GetSection(BluetoothOptions.Section));
         services.Configure<PlayerOptions>(configuration.GetSection(PlayerOptions.Section));
-        services.Configure<AgentOptions>(configuration.GetSection(AgentOptions.Section));
+        services.Configure<LocalConfigOptions>(configuration.GetSection(LocalConfigOptions.Section));
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton(paths);
 
         if (simulate)
         {
@@ -30,9 +32,6 @@ public static class AgentServiceCollectionExtensions
             AddRealWindows(services);
         }
 
-        services.AddSingleton(sp => sp.GetRequiredService<IOptions<AgentOptions>>().Value.DataDirectory is { Length: > 0 } directory
-            ? new AgentDataPaths(directory)
-            : AgentDataPaths.Default);
         services.AddSingleton<ManifestStore>();
         services.AddSingleton<CacheManager>();
         services.AddSingleton<StateStore>();
@@ -56,12 +55,27 @@ public static class AgentServiceCollectionExtensions
 
         services.AddSingleton<BluetoothGuardian>();
         services.AddSingleton<IBluetoothConnection>(sp => sp.GetRequiredService<BluetoothGuardian>());
+        services.AddSingleton<ISpeakerSelection>(sp => sp.GetRequiredService<BluetoothGuardian>());
+
+        services.AddSingleton<LocalConfigFile>();
+        services.AddSingleton<LocalAuth>();
+        services.AddSingleton(sp => new LocalConfigContext(
+            sp.GetRequiredService<LocalAuth>(),
+            sp.GetRequiredService<LocalConfigFile>(),
+            sp.GetRequiredService<PlayerEngine>(),
+            sp.GetRequiredService<IBluetoothConnection>(),
+            sp.GetRequiredService<ISpeakerSelection>(),
+            sp.GetRequiredService<IBluetoothSpeakerControl>(),
+            sp.GetRequiredService<ManifestStore>(),
+            paths.LogsDirectory,
+            sp.GetRequiredService<TimeProvider>()));
 
         // A ordem importa: o armazenamento carrega estado e manifestos antes do player começar.
         services.AddHostedService<StorageService>();
         services.AddHostedService<BluetoothGuardianService>();
         services.AddHostedService<AudioEndpointManager>();
         services.AddHostedService<PlayerService>();
+        services.AddHostedService<LocalConfigServer>();
         return services;
     }
 
@@ -109,6 +123,11 @@ public static class AgentServiceCollectionExtensions
     /// <summary>No modo simulado a duração vem do manifesto ativo (ou 20 s quando desconhecida).</summary>
     private static TimeSpan SimulatedDuration(IServiceProvider sp, string path)
     {
+        if (path.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+        {
+            return TimeSpan.FromSeconds(1.5); // som de teste
+        }
+
         var hash = Path.GetFileNameWithoutExtension(path);
         var manifest = sp.GetRequiredService<ManifestStore>().Active;
         return manifest?.Tracks.TryGetValue(hash, out var info) == true && info.DurationMs > 0

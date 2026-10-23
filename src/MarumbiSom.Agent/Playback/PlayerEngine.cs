@@ -514,7 +514,10 @@ public sealed class PlayerEngine
         if (_bluetoothPaused)
         {
             _bluetoothPaused = false;
-            _logger.LogInformation("Caixa conectada; retomando a música");
+            if (MusicDecks.Any(d => d.Track is not null) || _resume is not null)
+            {
+                _logger.LogInformation("Caixa conectada; retomando a música");
+            }
             if (!PausedByAdmin)
             {
                 await UnpauseMusicAsync(now, cancellationToken);

@@ -42,14 +42,6 @@ public sealed class PlayerOptions
     public string ResolveMpvPath() => Path.IsPathRooted(MpvPath) ? MpvPath : Path.Combine(AppContext.BaseDirectory, MpvPath);
 }
 
-public sealed class AgentOptions
-{
-    public const string Section = "Agent";
-
-    /// <summary>Pasta de dados. Vazio = C:\ProgramData\MarumbiSom (seção 8.1). Útil no modo simulado.</summary>
-    public string? DataDirectory { get; set; }
-}
-
 public static class AgentPaths
 {
     public static string DataDirectory { get; } =

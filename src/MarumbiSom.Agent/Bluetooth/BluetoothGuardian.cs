@@ -1,4 +1,5 @@
 using MarumbiSom.Agent.Configuration;
+using MarumbiSom.Agent.LocalConfig;
 using MarumbiSom.Agent.Windows.Abstractions;
 using MarumbiSom.Contracts.Messages;
 using Microsoft.Extensions.Options;
@@ -33,7 +34,7 @@ public enum ReconnectMethod
 /// A lógica é uma máquina de estados avançada por <see cref="StepAsync"/>, que devolve quanto esperar
 /// até o próximo passo; isso permite testá-la sem relógio real.
 /// </summary>
-public sealed class BluetoothGuardian : IBluetoothConnection
+public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
 {
     private readonly IBluetoothRadio _radio;
     private readonly ISystemServices _services;
@@ -43,8 +44,9 @@ public sealed class BluetoothGuardian : IBluetoothConnection
     private readonly BluetoothOptions _options;
     private readonly TimeProvider _time;
     private readonly ILogger<BluetoothGuardian> _logger;
-    private readonly BluetoothAddress? _speakerAddress;
     private readonly IReadOnlyList<TimeSpan> _backoff;
+    private BluetoothAddress? _speakerAddress;
+    private volatile SpeakerChange? _pendingSpeaker;
 
     private Guid? _containerId;
     private int _radioLevel;
@@ -107,13 +109,33 @@ public sealed class BluetoothGuardian : IBluetoothConnection
 
     private TimeSpan Poll => TimeSpan.FromSeconds(_options.PollSeconds);
 
+    public BluetoothAddress? SpeakerAddress => _pendingSpeaker is { } pending ? pending.Address : _speakerAddress;
+
     public void RequestReconnect() => _reconnectRequested = true;
+
+    /// <summary>Troca a caixa (configuração local, seção 8.4). Vale a partir do próximo passo, sem reiniciar o serviço.</summary>
+    public void SetSpeaker(BluetoothAddress? address) => _pendingSpeaker = new SpeakerChange(address);
 
     /// <summary>Executa um passo da máquina de estados e devolve a espera até o próximo.</summary>
     public async Task<TimeSpan> StepAsync(CancellationToken cancellationToken)
     {
         try
         {
+            if (_pendingSpeaker is { } change)
+            {
+                _pendingSpeaker = null;
+                _logger.LogInformation("Caixa trocada para {Address}", change.Address?.ToString() ?? "(nenhuma)");
+                _speakerAddress = change.Address;
+                _containerId = null;
+                _failedAttempts = 0;
+                SetDisconnected();
+                SpeakerEndpointId = null;
+                if (State != GuardianState.Initializing)
+                {
+                    State = GuardianState.CheckingRadio;
+                }
+            }
+
             if (_reconnectRequested)
             {
                 _reconnectRequested = false;
@@ -343,7 +365,8 @@ public sealed class BluetoothGuardian : IBluetoothConnection
         var delay = _backoff[Math.Clamp(_failedAttempts - 1, 0, _backoff.Count - 1)];
         _waitUntil = _time.GetUtcNow() + delay;
         State = GuardianState.Waiting;
-        _logger.LogInformation("Aguardando {Delay} antes da próxima tentativa", delay);
+        // Sem caixa escolhida não há tentativa a registrar a cada 5 s; o erro já foi registrado na inicialização.
+        _logger.Log(_speakerAddress is null ? LogLevel.Debug : LogLevel.Information, "Aguardando {Delay} antes da próxima tentativa", delay);
         return delay < Poll ? delay : Poll;
     }
 
@@ -403,4 +426,6 @@ public sealed class BluetoothGuardian : IBluetoothConnection
     }
 
     private void Report(string action) => RecoveryAction?.Invoke(this, action);
+
+    private sealed record SpeakerChange(BluetoothAddress? Address);
 }
