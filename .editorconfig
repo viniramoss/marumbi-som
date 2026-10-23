@@ -48,3 +48,8 @@ dotnet_diagnostic.CA1303.severity = none
 [*.{ps1,psm1,iss,cmd,bat}]
 charset = utf-8-bom
 end_of_line = crlf
+
+# Migrações geradas pelo EF Core
+[src/MarumbiSom.Hub/Data/Migrations/*.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none
