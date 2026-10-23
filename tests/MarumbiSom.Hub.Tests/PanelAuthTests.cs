@@ -29,6 +29,11 @@ public sealed class PanelAuthTests
         Assert.Contains("httponly", cookie);
         Assert.Contains("secure", cookie);
         Assert.Contains("samesite=strict", cookie);
+        // Seção 7.2: sessão de 30 dias por dispositivo (cookie persistente, sobrevive a fechar o navegador).
+        var expires = DateTimeOffset.Parse(
+            cookie.Split(';').Select(p => p.Trim()).Single(p => p.StartsWith("expires=", StringComparison.Ordinal))["expires=".Length..],
+            System.Globalization.CultureInfo.InvariantCulture);
+        Assert.InRange((expires - hub.Time.GetUtcNow()).TotalDays, 29.5, 31);
         var admin = await hub.AdminClientAsync();
         Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/stores")).StatusCode);
         Assert.Equal(HubHarness.AdminUser, (await HubHarness.JsonAsync(await admin.GetAsync("/api/auth/me"))).GetProperty("username").GetString());

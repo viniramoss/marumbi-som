@@ -6,6 +6,7 @@ using MarumbiSom.Hub.Data;
 using MarumbiSom.Hub.Library;
 using MarumbiSom.Hub.Manifests;
 using MarumbiSom.Hub.Panel;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,12 @@ public static class HubApp
         services.AddDbContext<HubDb>(options => options.UseSqlite(ConnectionString(paths)));
         services.ConfigureHttpJsonOptions(options => HubJson.Configure(options.SerializerOptions));
         services.Configure<FormOptions>(options => options.MultipartBodyLengthLimit = TracksEndpoints.MaxRequestBytes);
+        var keys = services.AddDataProtection().SetApplicationName("MarumbiSom.Hub").PersistKeysToFileSystem(new DirectoryInfo(paths.Keys));
+        if (OperatingSystem.IsWindows())
+        {
+            keys.ProtectKeysWithDpapi();
+        }
+
         services.AddPanelAuth();
         services.AddRateLimiter(options =>
         {

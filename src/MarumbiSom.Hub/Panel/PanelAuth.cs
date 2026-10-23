@@ -30,7 +30,8 @@ public static class PanelAuth
             options.Cookie.HttpOnly = true;
             options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
             options.Cookie.SameSite = SameSiteMode.Strict;
-            options.ExpireTimeSpan = TimeSpan.FromDays(14);
+            // Seção 7.2: sessão de 30 dias por dispositivo, renovada enquanto o painel é usado.
+            options.ExpireTimeSpan = TimeSpan.FromDays(30);
             options.SlidingExpiration = true;
             // API: responde 401/403 em vez de redirecionar para uma página de login.
             options.Events.OnRedirectToLogin = context =>
@@ -121,7 +122,8 @@ public static class PanelAuth
         var identity = new ClaimsIdentity(
             [new Claim(ClaimTypes.NameIdentifier, user.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)), new Claim(ClaimTypes.Name, user.Username)],
             Scheme);
-        await context.SignInAsync(Scheme, new ClaimsPrincipal(identity));
+        // Persistente: o cookie sobrevive a fechar o navegador do celular.
+        await context.SignInAsync(Scheme, new ClaimsPrincipal(identity), new AuthenticationProperties { IsPersistent = true });
         db.Audit(new ClaimsPrincipal(identity), time, "login", user.Username);
         await db.SaveChangesAsync(context.RequestAborted);
         logger.LogInformation("Login no painel: {Username}", user.Username);

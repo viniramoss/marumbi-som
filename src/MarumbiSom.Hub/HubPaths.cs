@@ -31,6 +31,9 @@ public sealed class HubPaths
 
     public string Backups => Path.Combine(Data, "backups");
 
+    /// <summary>Chaves que cifram o cookie do painel; sem elas guardadas, todo reinício derrubaria as sessões.</summary>
+    public string Keys => Path.Combine(Data, "keys");
+
     /// <summary>Logs ficam ao lado de data\ (C:\MarumbiSom\Hub\logs).</summary>
     public string Logs => Path.Combine(Path.GetDirectoryName(Data) ?? Data, "logs");
 
