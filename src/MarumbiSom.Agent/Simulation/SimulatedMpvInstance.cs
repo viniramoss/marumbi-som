@@ -1,32 +1,62 @@
+using System.Globalization;
 using System.Text.Json;
 using MarumbiSom.Agent.Player;
 
 namespace MarumbiSom.Agent.Simulation;
 
-/// <summary>mpv falso: mantém lista de reprodução, volume, pausa e posição usando o <see cref="TimeProvider"/>.</summary>
-public sealed class SimulatedMpvInstance(string name, TimeProvider time, TimeSpan trackDuration, ILogger<SimulatedMpvInstance> logger) : IMpvInstance
+/// <summary>
+/// mpv falso: mantém lista de reprodução, volume, pausa e posição usando o <see cref="TimeProvider"/>, e emite os
+/// mesmos eventos do IPC real (<c>start-file</c>, <c>file-loaded</c>, <c>end-file</c>). Usado no modo
+/// <c>--simulate</c> e nos testes do player.
+/// </summary>
+public sealed class SimulatedMpvInstance : IMpvInstance
 {
     private readonly Lock _lock = new();
     private readonly List<string> _playlist = [];
-    private readonly List<(TimeSpan At, double Volume)> _volumeHistory = [];
+    private readonly List<(DateTimeOffset At, double Volume)> _volumeHistory = [];
+    private readonly List<(DateTimeOffset At, string Path)> _starts = [];
+    private readonly TimeProvider _time;
+    private readonly Func<string, TimeSpan> _durationOf;
+    private readonly ILogger<SimulatedMpvInstance> _logger;
     private ITimer? _endTimer;
     private long _startedAt;
     private TimeSpan _positionWhenPaused;
     private int _current = -1;
 
+    public SimulatedMpvInstance(string name, TimeProvider time, TimeSpan trackDuration, ILogger<SimulatedMpvInstance> logger)
+        : this(name, time, _ => trackDuration, logger)
+    {
+    }
+
+    public SimulatedMpvInstance(string name, TimeProvider time, Func<string, TimeSpan> durationOf, ILogger<SimulatedMpvInstance> logger)
+    {
+        Name = name;
+        _time = time;
+        _durationOf = durationOf;
+        _logger = logger;
+    }
+
     public event EventHandler<MpvEventArgs>? EventReceived;
 
     public event EventHandler? Exited;
 
-    public string Name { get; } = name;
+    public string Name { get; }
 
     public bool IsRunning { get; private set; }
+
+    public int StartCount { get; private set; }
 
     public string? AudioDevice { get; private set; }
 
     public double Volume { get; private set; }
 
     public bool Paused { get; private set; }
+
+    /// <summary>Arquivos que o mpv falso "não consegue abrir" (end-file com reason=error).</summary>
+    public ISet<string> BrokenFiles { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>A posição parou de avançar (simula o mpv travado).</summary>
+    public bool Frozen { get; private set; }
 
     public IReadOnlyList<string> Playlist
     {
@@ -50,7 +80,18 @@ public sealed class SimulatedMpvInstance(string name, TimeProvider time, TimeSpa
         }
     }
 
-    public IReadOnlyList<(TimeSpan At, double Volume)> VolumeHistory
+    public TimeSpan Position
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return CurrentPosition();
+            }
+        }
+    }
+
+    public IReadOnlyList<(DateTimeOffset At, double Volume)> VolumeHistory
     {
         get
         {
@@ -61,12 +102,33 @@ public sealed class SimulatedMpvInstance(string name, TimeProvider time, TimeSpa
         }
     }
 
+    /// <summary>Instante em que cada arquivo começou a tocar.</summary>
+    public IReadOnlyList<(DateTimeOffset At, string Path)> FileStarts
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _starts.ToList();
+            }
+        }
+    }
+
     public Task StartAsync(string audioEndpointId, double volume, CancellationToken cancellationToken)
     {
-        IsRunning = true;
-        AudioDevice = "wasapi/" + audioEndpointId;
-        Volume = volume;
-        logger.LogInformation("[simulado] mpv '{Name}' iniciado em {Device}", Name, AudioDevice);
+        lock (_lock)
+        {
+            IsRunning = true;
+            StartCount++;
+            Paused = false;
+            Frozen = false;
+            AudioDevice = "wasapi/" + audioEndpointId;
+            Volume = volume;
+            _playlist.Clear();
+            _current = -1;
+        }
+
+        _logger.LogInformation("[simulado] mpv '{Name}' iniciado em {Device}", Name, AudioDevice);
         return Task.CompletedTask;
     }
 
@@ -76,11 +138,24 @@ public sealed class SimulatedMpvInstance(string name, TimeProvider time, TimeSpa
         {
             IsRunning = false;
             _endTimer?.Dispose();
+            _endTimer = null;
             _playlist.Clear();
             _current = -1;
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>Simula o mpv travado: processo vivo, mas a posição não avança e a faixa nunca termina.</summary>
+    public void Freeze()
+    {
+        lock (_lock)
+        {
+            _positionWhenPaused = CurrentPosition();
+            Frozen = true;
+            _endTimer?.Dispose();
+            _endTimer = null;
+        }
     }
 
     /// <summary>Simula o processo morrendo (ex.: encerrado pelo Gerenciador de Tarefas).</summary>
@@ -108,25 +183,35 @@ public sealed class SimulatedMpvInstance(string name, TimeProvider time, TimeSpa
         switch (verb)
         {
             case "loadfile":
-                LoadFile((string)command[1], (string)command[2] == "append");
+                LoadFile((string)command[1], command.Count > 2 && (string)command[2] == "append");
                 break;
             case "playlist-remove":
+                RemoveEntry(Convert.ToInt32(command[1], CultureInfo.InvariantCulture));
+                break;
+            case "playlist-clear":
                 lock (_lock)
                 {
-                    var index = Convert.ToInt32(command[1], System.Globalization.CultureInfo.InvariantCulture);
-                    _playlist.RemoveAt(index);
-                    if (index <= _current)
+                    var current = CurrentFileUnlocked();
+                    _playlist.Clear();
+                    if (current is not null)
                     {
-                        _current--;
+                        _playlist.Add(current);
+                        _current = 0;
                     }
                 }
 
                 break;
             case "stop":
                 EndCurrent("stop", advance: false);
+                lock (_lock)
+                {
+                    _playlist.Clear();
+                    _current = -1;
+                }
+
                 break;
             case "seek":
-                _startedAt = time.GetTimestamp() - (long)(Convert.ToDouble(command[1], System.Globalization.CultureInfo.InvariantCulture) * time.TimestampFrequency);
+                Seek(Convert.ToDouble(command[1], CultureInfo.InvariantCulture));
                 break;
             case "ao-reload":
                 break;
@@ -148,33 +233,82 @@ public sealed class SimulatedMpvInstance(string name, TimeProvider time, TimeSpa
         bool start;
         lock (_lock)
         {
-            if (!append)
+            start = !append || _current == -1;
+        }
+
+        if (!append)
+        {
+            EndCurrent("stop", advance: false);
+            lock (_lock)
             {
                 _playlist.Clear();
                 _current = -1;
             }
+        }
 
+        int index;
+        lock (_lock)
+        {
             _playlist.Add(path);
-            start = _current == -1;
+            index = _playlist.Count - 1;
         }
 
         if (start)
         {
-            StartEntry(_playlist.Count - 1);
+            StartEntry(index);
+        }
+    }
+
+    private void RemoveEntry(int index)
+    {
+        lock (_lock)
+        {
+            if (index < 0 || index >= _playlist.Count)
+            {
+                throw new MpvCommandException("invalid parameter");
+            }
+
+            _playlist.RemoveAt(index);
+            if (index < _current)
+            {
+                _current--;
+            }
         }
     }
 
     private void StartEntry(int index)
     {
+        string path;
         lock (_lock)
         {
             _current = index;
-            _startedAt = time.GetTimestamp();
+            path = _playlist[index];
+            _starts.Add((_time.GetUtcNow(), path));
+            _startedAt = _time.GetTimestamp();
+            _positionWhenPaused = TimeSpan.Zero;
             _endTimer?.Dispose();
-            _endTimer = time.CreateTimer(_ => EndCurrent("eof", advance: true), null, trackDuration, Timeout.InfiniteTimeSpan);
+            _endTimer = null;
         }
 
         Raise("start-file");
+        if (BrokenFiles.Contains(path) || !File.Exists(path) && !path.StartsWith("sim:", StringComparison.Ordinal))
+        {
+            EndCurrent("error", advance: true);
+            return;
+        }
+
+        lock (_lock)
+        {
+            ScheduleEnd(_durationOf(path));
+        }
+
+        Raise("file-loaded");
+    }
+
+    private void ScheduleEnd(TimeSpan remaining)
+    {
+        _endTimer?.Dispose();
+        _endTimer = Paused || Frozen ? null : _time.CreateTimer(_ => EndCurrent("eof", advance: true), null, remaining < TimeSpan.Zero ? TimeSpan.Zero : remaining, Timeout.InfiniteTimeSpan);
     }
 
     private void EndCurrent(string reason, bool advance)
@@ -188,6 +322,7 @@ public sealed class SimulatedMpvInstance(string name, TimeProvider time, TimeSpa
             }
 
             _endTimer?.Dispose();
+            _endTimer = null;
             next = advance && _current + 1 < _playlist.Count ? _current + 1 : -1;
             if (next < 0)
             {
@@ -202,49 +337,97 @@ public sealed class SimulatedMpvInstance(string name, TimeProvider time, TimeSpa
         }
     }
 
-    private void SetProperty(string property, object value)
+    private void Seek(double seconds)
     {
-        switch (property)
+        lock (_lock)
         {
-            case "volume":
-                Volume = Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture);
-                lock (_lock)
-                {
-                    _volumeHistory.Add((time.GetUtcNow().TimeOfDay, Volume));
-                }
+            if (_current < 0)
+            {
+                throw new MpvCommandException("property unavailable");
+            }
 
-                break;
-            case "pause":
-                var pause = (bool)value;
-                if (pause && !Paused)
-                {
-                    _positionWhenPaused = time.GetElapsedTime(_startedAt);
-                    _endTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-                }
-                else if (!pause && Paused)
-                {
-                    _startedAt = time.GetTimestamp() - (long)(_positionWhenPaused.TotalSeconds * time.TimestampFrequency);
-                    _endTimer?.Change(trackDuration - _positionWhenPaused, Timeout.InfiniteTimeSpan);
-                }
-
-                Paused = pause;
-                break;
-            case "audio-device":
-                AudioDevice = (string)value;
-                break;
-            default:
-                break;
+            var target = TimeSpan.FromSeconds(seconds);
+            _positionWhenPaused = target;
+            _startedAt = _time.GetTimestamp() - (long)(seconds * _time.TimestampFrequency);
+            ScheduleEnd(_durationOf(_playlist[_current]) - target);
         }
     }
 
-    private object? GetProperty(string property) => property switch
+    private void SetProperty(string property, object value)
     {
-        "time-pos" when _current < 0 => throw new MpvCommandException("property unavailable"),
-        "time-pos" => (Paused ? _positionWhenPaused : time.GetElapsedTime(_startedAt)).TotalSeconds,
-        "volume" => Volume,
-        "pause" => Paused,
-        _ => null,
-    };
+        lock (_lock)
+        {
+            switch (property)
+            {
+                case "volume":
+                    Volume = Convert.ToDouble(value, CultureInfo.InvariantCulture);
+                    _volumeHistory.Add((_time.GetUtcNow(), Volume));
+                    break;
+                case "pause":
+                    var pause = (bool)value;
+                    if (pause && !Paused)
+                    {
+                        _positionWhenPaused = CurrentPosition();
+                        Paused = true;
+                        _endTimer?.Dispose();
+                        _endTimer = null;
+                    }
+                    else if (!pause && Paused)
+                    {
+                        Paused = false;
+                        _startedAt = _time.GetTimestamp() - (long)(_positionWhenPaused.TotalSeconds * _time.TimestampFrequency);
+                        if (_current >= 0)
+                        {
+                            ScheduleEnd(_durationOf(_playlist[_current]) - _positionWhenPaused);
+                        }
+                    }
+
+                    break;
+                case "audio-device":
+                    AudioDevice = (string)value;
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    private object? GetProperty(string property)
+    {
+        lock (_lock)
+        {
+            return property switch
+            {
+                "time-pos" when _current < 0 => throw new MpvCommandException("property unavailable"),
+                "time-pos" => CurrentPosition().TotalSeconds,
+                "duration" when _current < 0 => throw new MpvCommandException("property unavailable"),
+                "duration" => _durationOf(_playlist[_current]).TotalSeconds,
+                "volume" => Volume,
+                "pause" => Paused,
+                "path" => CurrentFileUnlocked(),
+                _ => null,
+            };
+        }
+    }
+
+    private TimeSpan CurrentPosition()
+    {
+        if (_current < 0)
+        {
+            return TimeSpan.Zero;
+        }
+
+        if (Paused || Frozen)
+        {
+            return _positionWhenPaused;
+        }
+
+        var position = _time.GetElapsedTime(_startedAt);
+        _positionWhenPaused = position;
+        return position;
+    }
+
+    private string? CurrentFileUnlocked() => _current >= 0 && _current < _playlist.Count ? _playlist[_current] : null;
 
     private void Raise(string eventName, string? reason = null)
     {
