@@ -68,9 +68,16 @@ Write-Step "Preparando $DataDir (somente SYSTEM e Administradores)"
 foreach ($dir in @($DataDir, (Join-Path $DataDir 'logs'), (Join-Path $DataDir 'manifests'), (Join-Path $DataDir 'cache'))) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 }
+# Arquivos gravados pelo serviço têm o SYSTEM como dono; os Administradores assumem para poder acertar as permissões.
+takeown /F $DataDir /A /R | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "takeown falhou com código $LASTEXITCODE" }
+# Só a pasta recebe a lista protegida; tudo dentro dela volta a herdar dela. Repetir /inheritance:r em cada arquivo
+# (com /T) deixava os arquivos que já existiam numa atualização (ex.: config.json) sem permissão nenhuma.
 # SIDs em vez de nomes, para funcionar no Windows em português: S-1-5-18 = SYSTEM, S-1-5-32-544 = Administradores.
-icacls $DataDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' /T /C /Q | Out-Null
+icacls $DataDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' /C /Q | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "icacls falhou com código $LASTEXITCODE" }
+icacls (Join-Path $DataDir '*') /reset /T /C /Q | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "icacls /reset falhou com código $LASTEXITCODE" }
 
 $configPath = Join-Path $DataDir 'config.json'
 if (Test-Path $configPath) {
