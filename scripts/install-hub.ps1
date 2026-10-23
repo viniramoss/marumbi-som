@@ -98,10 +98,18 @@ Write-Step "Protegendo $Root"
 # Pastas na raiz do C:\ herdam "Usuários autenticados: Modificar"; a herança é cortada para nenhum usuário comum
 # trocar os binários (que rodam como serviço) nem ler o banco. SIDs em vez de nomes para o Windows em português:
 # S-1-5-18 = SYSTEM, S-1-5-32-544 = Administradores. A conta virtual do serviço só existe depois do sc.exe create.
-icacls $Root /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' "${ServiceAccount}:(OI)(CI)RX" /T /C /Q | Out-Null
+# Arquivos gravados pelo serviço têm a conta dele como dona; os Administradores assumem para acertar as permissões.
+takeown /F $Root /A /R | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "takeown falhou com código $LASTEXITCODE" }
+# Só as pastas recebem permissões; os arquivos herdam. Repetir /inheritance:r em cada arquivo (com /T) deixava os
+# arquivos que já existiam numa atualização (ex.: o banco) sem permissão nenhuma, nem para o serviço.
+icacls $Root /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' "${ServiceAccount}:(OI)(CI)RX" /C /Q | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "icacls falhou com código $LASTEXITCODE" }
+icacls (Join-Path $Root '*') /reset /T /C /Q | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "icacls /reset falhou com código $LASTEXITCODE" }
 foreach ($dir in @($DataDir, $LogsDir)) {
-    icacls $dir /grant "${ServiceAccount}:(OI)(CI)M" /T /C /Q | Out-Null
+    # Sem /T: o Windows repassa a permissão herdável para o que já está dentro da pasta.
+    icacls $dir /grant "${ServiceAccount}:(OI)(CI)M" /C /Q | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "icacls falhou em $dir com código $LASTEXITCODE" }
 }
 
