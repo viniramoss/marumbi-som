@@ -140,9 +140,24 @@ public sealed class StoreState
 
     public long? PositionMs { get; set; }
 
+    /// <summary>Instante em que <see cref="PositionMs"/> valia (o painel anda a barra a partir dele).</summary>
+    public DateTimeOffset? PositionAt { get; set; }
+
     public string? PlayerState { get; set; }
 
     public string? BtState { get; set; }
+
+    /// <summary>Desde quando <see cref="BtState"/> está como está (alerta da seção 6.6).</summary>
+    public DateTimeOffset? BtChangedAt { get; set; }
+
+    /// <summary>Último avanço da sincronização (alerta "sincronização sem progresso").</summary>
+    public DateTimeOffset? SyncChangedAt { get; set; }
+
+    /// <summary>Playlist da agenda em vigor, como no manifesto (<c>p3</c>).</summary>
+    public string? PlaylistKey { get; set; }
+
+    /// <summary>Lista JSON com os hashes das próximas faixas.</summary>
+    public string? QueueJson { get; set; }
 
     public int? Volume { get; set; }
 

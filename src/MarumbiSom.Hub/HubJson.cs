@@ -13,7 +13,10 @@ public static class HubJson
     {
         ArgumentNullException.ThrowIfNull(options);
         options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-        options.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        // Campos nulos vão como null (não somem): o OpenAPI declara todos os campos das respostas como presentes (D23 g).
+        options.DefaultIgnoreCondition = JsonIgnoreCondition.Never;
+        // Números só como número, sem aceitar "12" em texto; assim o OpenAPI descreve inteiros como inteiros.
+        options.NumberHandling = JsonNumberHandling.Strict;
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false));
         options.Converters.Add(new HhMmTimeOnlyConverter());
     }

@@ -552,6 +552,10 @@ namespace MarumbiSom.Hub.Data.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("applied_version");
 
+                    b.Property<long?>("BtChangedAt")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("bt_changed_at");
+
                     b.Property<string>("BtState")
                         .HasColumnType("TEXT")
                         .HasColumnName("bt_state");
@@ -576,9 +580,25 @@ namespace MarumbiSom.Hub.Data.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("player_state");
 
+                    b.Property<string>("PlaylistKey")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("playlist_key");
+
+                    b.Property<long?>("PositionAt")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("position_at");
+
                     b.Property<long?>("PositionMs")
                         .HasColumnType("INTEGER")
                         .HasColumnName("position_ms");
+
+                    b.Property<string>("QueueJson")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("queue_json");
+
+                    b.Property<long?>("SyncChangedAt")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("sync_changed_at");
 
                     b.Property<int?>("SyncDone")
                         .HasColumnType("INTEGER")

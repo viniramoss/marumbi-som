@@ -61,6 +61,10 @@ public static class HubApp
         services.AddSingleton<ManifestPublisher>();
         services.AddSingleton<IngestionWorker>();
         services.AddHostedService(sp => sp.GetRequiredService<IngestionWorker>());
+        services.AddSingleton<StoreStatusReader>();
+        services.AddSingleton<PanelHub>();
+        services.AddHostedService(sp => sp.GetRequiredService<PanelHub>());
+        services.AddPanelOpenApi();
         services.AddSingleton<DailyMaintenance>();
         services.AddHostedService(sp => sp.GetRequiredService<DailyMaintenance>());
         return services;
@@ -92,6 +96,7 @@ public static class HubApp
             headers.XContentTypeOptions = "nosniff";
             headers.XFrameOptions = "DENY";
             headers["Referrer-Policy"] = "no-referrer";
+            headers.ContentSecurityPolicy = PanelStatic.ContentSecurityPolicy;
             await next();
         });
         app.UseWebSockets();
@@ -102,11 +107,15 @@ public static class HubApp
 
         app.MapPanelAuth();
         var api = app.MapGroup("/api").RequireAuthorization(PanelAuth.Policy);
+        api.MapPasswordChange();
         api.MapTracks();
         api.MapPlaylists();
         api.MapStores();
+        api.MapSettings();
+        app.MapPanelOpenApi();
         app.MapAgentApi();
-        app.MapGet("/healthz", () => Results.Ok(new { ok = true }));
+        app.MapGet("/healthz", () => Results.Ok(new { ok = true })).ExcludeFromDescription();
+        app.MapPanel();
         return app;
     }
 

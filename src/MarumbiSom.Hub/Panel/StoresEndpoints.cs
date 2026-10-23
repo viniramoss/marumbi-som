@@ -19,53 +19,49 @@ public static class StoresEndpoints
 
     public static void MapStores(this RouteGroupBuilder api)
     {
-        api.MapGet("/stores", ListAsync);
-        api.MapPost("/stores", CreateAsync);
-        api.MapGet("/stores/{id:int}", GetAsync);
-        api.MapPatch("/stores/{id:int}", UpdateAsync);
-        api.MapPut("/stores/{id:int}/schedules", ReplaceSchedulesAsync);
-        api.MapPost("/stores/{id:int}/enroll-code", EnrollCodeAsync);
-        api.MapDelete("/stores/{id:int}/token", RevokeTokenAsync);
-        api.MapPost("/stores/{id:int}/commands", CommandAsync);
-        api.MapGet("/stores/{id:int}/history", HistoryAsync);
-        api.MapGet("/stores/{id:int}/events", EventsAsync);
+        api.MapGet("/stores", ListAsync).Returns<IReadOnlyList<StoreSummary>>();
+        api.MapPost("/stores", CreateAsync).Returns<StoreDetail>(StatusCodes.Status201Created, StatusCodes.Status400BadRequest, StatusCodes.Status409Conflict);
+        api.MapGet("/stores/{id:int}", GetAsync).Returns<StoreDetail>(StatusCodes.Status200OK, StatusCodes.Status404NotFound);
+        api.MapPatch("/stores/{id:int}", UpdateAsync).Returns<StoreDetail>(StatusCodes.Status200OK, StatusCodes.Status400BadRequest, StatusCodes.Status404NotFound);
+        api.MapDelete("/stores/{id:int}", DeleteAsync).ReturnsNothing(StatusCodes.Status204NoContent, StatusCodes.Status404NotFound);
+        api.MapPut("/stores/{id:int}/schedules", ReplaceSchedulesAsync)
+            .Returns<StoreDetail>(StatusCodes.Status200OK, StatusCodes.Status400BadRequest, StatusCodes.Status404NotFound);
+        api.MapPost("/stores/{id:int}/enroll-code", EnrollCodeAsync).Returns<EnrollCodeResult>(StatusCodes.Status200OK, StatusCodes.Status404NotFound);
+        api.MapDelete("/stores/{id:int}/token", RevokeTokenAsync).ReturnsNothing(StatusCodes.Status204NoContent, StatusCodes.Status404NotFound);
+        api.MapPost("/stores/{id:int}/commands", CommandAsync)
+            .Returns<CommandOutcome>(StatusCodes.Status200OK, StatusCodes.Status400BadRequest, StatusCodes.Status404NotFound);
+        api.MapGet("/stores/{id:int}/tracks", TracksAsync).Returns<IReadOnlyList<StoreTrack>>(StatusCodes.Status200OK, StatusCodes.Status404NotFound);
+        api.MapGet("/stores/{id:int}/history", HistoryAsync).Returns<IReadOnlyList<HistoryEntry>>();
+        api.MapGet("/stores/{id:int}/events", EventsAsync).Returns<IReadOnlyList<EventEntry>>();
     }
 
-    private static async Task<IResult> ListAsync(HubDb db, AgentConnections agents, CancellationToken cancellationToken)
-    {
-        var stores = await db.Stores.AsNoTracking().OrderBy(s => s.Name).ToListAsync(cancellationToken);
-        var result = new List<StoreSummary>();
-        foreach (var store in stores)
-        {
-            result.Add(await SummaryAsync(db, agents, store, cancellationToken));
-        }
-
-        return Results.Ok(result);
-    }
+    private static async Task<IResult> ListAsync(HubDb db, StoreStatusReader status, CancellationToken cancellationToken) =>
+        Results.Ok(await status.ListAsync(db, cancellationToken));
 
     private static async Task<IResult> CreateAsync(
-        StoreInput input, HubDb db, ManifestPublisher publisher, AgentConnections agents, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
+        StoreInput input, HubDb db, ManifestPublisher publisher, StoreStatusReader status, PanelHub panel, ClaimsPrincipal user, TimeProvider time,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(input.Name) || input.Name.Trim().Length > 80)
         {
-            return Results.BadRequest(new { error = "Nome obrigatório, até 80 caracteres." });
+            return ApiResults.BadRequest("Nome obrigatório, até 80 caracteres.");
         }
 
         var slug = string.IsNullOrWhiteSpace(input.Slug) ? Slugify(input.Name) : input.Slug.Trim();
         if (slug.Length is < 2 or > 40 || !slug.All(c => c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-'))
         {
-            return Results.BadRequest(new { error = "Identificador inválido: use letras minúsculas sem acento, números e hífen (2 a 40)." });
+            return ApiResults.BadRequest("Identificador inválido: use letras minúsculas sem acento, números e hífen (2 a 40).");
         }
 
         if (await db.Stores.AnyAsync(s => s.Slug == slug, cancellationToken))
         {
-            return Results.Conflict(new { error = $"Já existe uma loja com o identificador {slug}." });
+            return ApiResults.Conflict($"Já existe uma loja com o identificador {slug}.");
         }
 
         var store = new Store { Slug = slug, Name = input.Name.Trim(), CreatedAt = time.GetUtcNow() };
         if (Apply(store, input) is { } error)
         {
-            return Results.BadRequest(new { error });
+            return ApiResults.BadRequest(error);
         }
 
         db.Stores.Add(store);
@@ -74,14 +70,16 @@ public static class StoresEndpoints
         db.Audit(user, time, "stores.create", slug, input);
         await db.SaveChangesAsync(cancellationToken);
         await publisher.RegenerateAllAsync(cancellationToken);
-        return Results.Created($"/api/stores/{store.Id}", await DetailAsync(db, agents, store.Id, cancellationToken));
+        panel.Changed("stores");
+        return Results.Created($"/api/stores/{store.Id}", await DetailAsync(db, status, store.Id, cancellationToken));
     }
 
-    private static async Task<IResult> GetAsync(int id, HubDb db, AgentConnections agents, CancellationToken cancellationToken) =>
-        await DetailAsync(db, agents, id, cancellationToken) is { } detail ? Results.Ok(detail) : Results.NotFound();
+    private static async Task<IResult> GetAsync(int id, HubDb db, StoreStatusReader status, CancellationToken cancellationToken) =>
+        await DetailAsync(db, status, id, cancellationToken) is { } detail ? Results.Ok(detail) : Results.NotFound();
 
     private static async Task<IResult> UpdateAsync(
-        int id, StoreInput input, HubDb db, ManifestPublisher publisher, AgentConnections agents, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
+        int id, StoreInput input, HubDb db, ManifestPublisher publisher, StoreStatusReader status, PanelHub panel, ClaimsPrincipal user, TimeProvider time,
+        CancellationToken cancellationToken)
     {
         var store = await db.Stores.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (store is null)
@@ -93,7 +91,7 @@ public static class StoresEndpoints
         {
             if (string.IsNullOrWhiteSpace(input.Name) || input.Name.Trim().Length > 80)
             {
-                return Results.BadRequest(new { error = "Nome obrigatório, até 80 caracteres." });
+                return ApiResults.BadRequest("Nome obrigatório, até 80 caracteres.");
             }
 
             store.Name = input.Name.Trim();
@@ -101,18 +99,39 @@ public static class StoresEndpoints
 
         if (Apply(store, input) is { } error)
         {
-            return Results.BadRequest(new { error });
+            return ApiResults.BadRequest(error);
         }
 
         db.Audit(user, time, "stores.update", store.Slug, input);
         await db.SaveChangesAsync(cancellationToken);
         await publisher.RegenerateAllAsync(cancellationToken);
-        return Results.Ok(await DetailAsync(db, agents, id, cancellationToken));
+        panel.Changed("stores", $"store:{id}");
+        panel.StoreChanged(id);
+        return Results.Ok(await DetailAsync(db, status, id, cancellationToken));
+    }
+
+    /// <summary>Remove a loja e tudo dela (agenda, manifestos, histórico); o PC da loja segue tocando o que tem.</summary>
+    private static async Task<IResult> DeleteAsync(
+        int id, HubDb db, AgentConnections agents, PanelHub panel, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
+    {
+        var store = await db.Stores.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (store is null)
+        {
+            return Results.NotFound();
+        }
+
+        await db.OfferPlays.Where(p => p.StoreId == id).ExecuteDeleteAsync(cancellationToken);
+        db.Stores.Remove(store);
+        db.Audit(user, time, "stores.delete", store.Slug, new { store.Name });
+        await db.SaveChangesAsync(cancellationToken);
+        await agents.DisconnectAsync(id, "loja removida");
+        panel.Changed("stores");
+        return Results.NoContent();
     }
 
     private static async Task<IResult> ReplaceSchedulesAsync(
-        int id, List<ScheduleInput> schedules, HubDb db, ManifestPublisher publisher, AgentConnections agents, ClaimsPrincipal user, TimeProvider time,
-        CancellationToken cancellationToken)
+        int id, List<ScheduleInput> schedules, HubDb db, ManifestPublisher publisher, StoreStatusReader status, PanelHub panel, ClaimsPrincipal user,
+        TimeProvider time, CancellationToken cancellationToken)
     {
         var store = await db.Stores.Include(s => s.Schedules).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (store is null)
@@ -125,18 +144,18 @@ public static class StoresEndpoints
         {
             if (!playlistIds.Contains(schedule.PlaylistId))
             {
-                return Results.BadRequest(new { error = $"Playlist {schedule.PlaylistId} não existe." });
+                return ApiResults.BadRequest($"Playlist {schedule.PlaylistId} não existe.");
             }
 
             if (schedule.Days is not { Count: > 0 } || schedule.Days.Any(d => d is < 0 or > 6))
             {
-                return Results.BadRequest(new { error = "Informe os dias da semana (0 = domingo … 6 = sábado)." });
+                return ApiResults.BadRequest("Informe os dias da semana (0 = domingo … 6 = sábado).");
             }
         }
 
         if (Overlap(schedules) is { } overlap)
         {
-            return Results.BadRequest(new { error = overlap });
+            return ApiResults.BadRequest(overlap);
         }
 
         db.Schedules.RemoveRange(store.Schedules);
@@ -155,7 +174,9 @@ public static class StoresEndpoints
         db.Audit(user, time, "stores.schedules", store.Slug, schedules);
         await db.SaveChangesAsync(cancellationToken);
         await publisher.RegenerateAllAsync(cancellationToken);
-        return Results.Ok(await DetailAsync(db, agents, id, cancellationToken));
+        panel.Changed("playlists", $"store:{id}");
+        panel.StoreChanged(id);
+        return Results.Ok(await DetailAsync(db, status, id, cancellationToken));
     }
 
     private static async Task<IResult> EnrollCodeAsync(int id, HubDb db, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
@@ -177,10 +198,11 @@ public static class StoresEndpoints
         });
         db.Audit(user, time, "stores.enroll-code", store.Slug);
         await db.SaveChangesAsync(cancellationToken);
-        return Results.Ok(new { code, expiresAt = now + AgentEndpoints.EnrollCodeLifetime });
+        return Results.Ok(new EnrollCodeResult(code, now + AgentEndpoints.EnrollCodeLifetime));
     }
 
-    private static async Task<IResult> RevokeTokenAsync(int id, HubDb db, AgentConnections agents, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
+    private static async Task<IResult> RevokeTokenAsync(
+        int id, HubDb db, AgentConnections agents, PanelHub panel, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
     {
         var store = await db.Stores.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (store is null)
@@ -192,6 +214,7 @@ public static class StoresEndpoints
         db.Audit(user, time, "stores.revoke-token", store.Slug);
         await db.SaveChangesAsync(cancellationToken);
         await agents.DisconnectAsync(id, "token revogado");
+        panel.StoreChanged(id);
         return Results.NoContent();
     }
 
@@ -206,7 +229,7 @@ public static class StoresEndpoints
 
         if (!CommandTypes.All.Contains(input.Command))
         {
-            return Results.BadRequest(new { error = $"Comando desconhecido: {input.Command}." });
+            return ApiResults.BadRequest($"Comando desconhecido: {input.Command}.");
         }
 
         var now = time.GetUtcNow();
@@ -231,12 +254,44 @@ public static class StoresEndpoints
             : Results.Ok(new CommandOutcome(command.Id, result.Ok ? "ok" : "error", result.Error));
     }
 
-    private static async Task<IResult> HistoryAsync(int id, HubDb db, int? limit, CancellationToken cancellationToken)
+    /// <summary>Músicas do manifesto que a loja aplicou (para "tocar agora"); sem manifesto aplicado, as do mais recente.</summary>
+    private static async Task<IResult> TracksAsync(int id, HubDb db, CancellationToken cancellationToken)
     {
-        var take = Math.Clamp(limit ?? 100, 1, 1000);
-        var history = await db.PlayHistory.AsNoTracking().Where(h => h.StoreId == id).OrderByDescending(h => h.StartedAt).Take(take)
+        if (!await db.Stores.AnyAsync(s => s.Id == id, cancellationToken))
+        {
+            return Results.NotFound();
+        }
+
+        var applied = await db.StoreStates.Where(s => s.StoreId == id).Select(s => s.AppliedVersion).SingleOrDefaultAsync(cancellationToken);
+        var stored = await db.StoreManifests.AsNoTracking().Where(m => m.StoreId == id && m.Version == applied).SingleOrDefaultAsync(cancellationToken)
+            ?? await ManifestPublisher.LatestAsync(db, id, cancellationToken);
+        if (stored is null)
+        {
+            return Results.Ok(Array.Empty<StoreTrack>());
+        }
+
+        var manifest = ManifestPublisher.Deserialize(stored);
+        var tracks = manifest.Tracks.Where(t => t.Value.Kind == Contracts.Manifests.TrackKind.Music)
+            .Select(t => new StoreTrack(t.Key, t.Value.Title, t.Value.Artist, t.Value.DurationMs))
+            .OrderBy(t => t.Artist ?? t.Title, StringComparer.CurrentCultureIgnoreCase).ThenBy(t => t.Title, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        return Results.Ok(tracks);
+    }
+
+    private static async Task<IResult> HistoryAsync(int id, HubDb db, int? limit, DateTimeOffset? since, CancellationToken cancellationToken)
+    {
+        var take = Math.Clamp(limit ?? 100, 1, 2000);
+        var query = db.PlayHistory.AsNoTracking().Where(h => h.StoreId == id);
+        if (since is { } from)
+        {
+            query = query.Where(h => h.StartedAt >= from);
+        }
+
+        var history = await query.OrderByDescending(h => h.StartedAt).Take(take)
             .GroupJoin(db.Tracks, h => h.TrackHash, t => t.Hash, (h, tracks) => new { h, tracks })
-            .SelectMany(x => x.tracks.DefaultIfEmpty(), (x, t) => new { x.h.TrackHash, x.h.StartedAt, Title = t != null ? t.Title : null, Artist = t != null ? t.Artist : null })
+            .SelectMany(
+                x => x.tracks.DefaultIfEmpty(),
+                (x, t) => new HistoryEntry(x.h.TrackHash, x.h.StartedAt, t != null ? t.Title : null, t != null ? t.Artist : null))
             .ToListAsync(cancellationToken);
         return Results.Ok(history.OrderByDescending(h => h.StartedAt));
     }
@@ -246,7 +301,7 @@ public static class StoresEndpoints
         var take = Math.Clamp(limit ?? 100, 1, 1000);
         var events = await db.Events.AsNoTracking().Where(e => e.StoreId == id).OrderByDescending(e => e.CreatedAt).Take(take)
             .Select(e => new { e.Type, e.DataJson, e.CreatedAt }).ToListAsync(cancellationToken);
-        return Results.Ok(events.Select(e => new { e.Type, data = e.DataJson is null ? null : JsonNode.Parse(e.DataJson), e.CreatedAt }));
+        return Results.Ok(events.Select(e => new EventEntry(e.Type, e.DataJson is null ? null : JsonNode.Parse(e.DataJson) as JsonObject, e.CreatedAt)));
     }
 
     private static string? Apply(Store store, StoreInput input)
@@ -355,28 +410,23 @@ public static class StoresEndpoints
         return string.Join('-', builder.ToString().Split('-', StringSplitOptions.RemoveEmptyEntries));
     }
 
-    private static async Task<StoreSummary> SummaryAsync(HubDb db, AgentConnections agents, Store store, CancellationToken cancellationToken)
-    {
-        var state = await db.StoreStates.AsNoTracking().SingleOrDefaultAsync(s => s.StoreId == store.Id, cancellationToken);
-        var latest = await db.StoreManifests.Where(m => m.StoreId == store.Id).MaxAsync(m => (long?)m.Version, cancellationToken);
-        return new StoreSummary(
-            store.Id, store.Slug, store.Name, agents.IsOnline(store.Id), store.TokenHash is not null, latest, state?.AppliedVersion, state?.PendingVersion,
-            state?.SyncDone, state?.SyncTotal, state?.PlayerState, state?.NowPlayingHash, state?.BtState, state?.Volume, state?.DiskFreeMb, state?.AgentVersion,
-            state?.LastSeenAt);
-    }
-
-    private static async Task<StoreDetail?> DetailAsync(HubDb db, AgentConnections agents, int id, CancellationToken cancellationToken)
+    private static async Task<StoreDetail?> DetailAsync(HubDb db, StoreStatusReader status, int id, CancellationToken cancellationToken)
     {
         var store = await db.Stores.Include(s => s.Schedules).AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
-        if (store is null)
+        var summary = await status.GetAsync(db, id, cancellationToken);
+        if (store is null || summary is null)
         {
             return null;
         }
 
         var schedules = store.Schedules.OrderBy(s => s.StartTime)
             .Select(s => new ScheduleInput(ManifestGenerator.DaysFromMask(s.DaysMask), s.StartTime, s.EndTime, s.PlaylistId)).ToList();
-        return new StoreDetail(
-            await SummaryAsync(db, agents, store, cancellationToken), store.Volume, store.CrossfadeS, store.MinOfferGapS, store.Timezone, store.BtDeviceName, schedules);
+        var state = await db.StoreStates.AsNoTracking().SingleOrDefaultAsync(s => s.StoreId == id, cancellationToken);
+        var queue = StoreStatusReader.Queue(state);
+        var tracks = await db.Tracks.AsNoTracking().Where(t => queue.Contains(t.Hash)).ToDictionaryAsync(t => t.Hash, StringComparer.Ordinal, cancellationToken);
+        var upcoming = queue.Select(h => new StoreTrack(h, tracks.GetValueOrDefault(h)?.Title ?? "(música removida)", tracks.GetValueOrDefault(h)?.Artist,
+            tracks.GetValueOrDefault(h)?.DurationMs ?? 0)).ToList();
+        return new StoreDetail(summary, store.Volume, store.CrossfadeS, store.MinOfferGapS, store.Timezone, store.BtDeviceName, schedules, upcoming);
     }
 
     public sealed record StoreInput(string? Name, string? Slug, int? Volume, int? CrossfadeS, int? MinOfferGapS, string? Timezone, string? BtDeviceName);
@@ -385,12 +435,24 @@ public static class StoresEndpoints
 
     public sealed record CommandInput(string Command, JsonObject? Args);
 
+    /// <summary><see cref="Result"/>: <c>ok</c>, <c>error</c>, <c>offline</c> ou <c>pending</c> (sem resposta em 5 s).</summary>
     public sealed record CommandOutcome(int Id, string Result, string? Error);
 
-    public sealed record StoreSummary(
-        int Id, string Slug, string Name, bool Online, bool Enrolled, long? LatestVersion, long? AppliedVersion, long? PendingVersion, int? SyncDone, int? SyncTotal,
-        string? Player, string? NowPlaying, string? Bluetooth, int? Volume, long? DiskFreeMb, string? AgentVersion, DateTimeOffset? LastSeenAt);
+    public sealed record EnrollCodeResult(string Code, DateTimeOffset ExpiresAt);
+
+    public sealed record StoreTrack(string Hash, string Title, string? Artist, long DurationMs);
+
+    public sealed record HistoryEntry(string TrackHash, DateTimeOffset StartedAt, string? Title, string? Artist);
+
+    public sealed record EventEntry(string Type, JsonObject? Data, DateTimeOffset CreatedAt);
 
     public sealed record StoreDetail(
-        StoreSummary Status, int Volume, int CrossfadeS, int MinOfferGapS, string Timezone, string? BtDeviceName, IReadOnlyList<ScheduleInput> Schedules);
+        StoreSummary Status,
+        int Volume,
+        int CrossfadeS,
+        int MinOfferGapS,
+        string Timezone,
+        string? BtDeviceName,
+        IReadOnlyList<ScheduleInput> Schedules,
+        IReadOnlyList<StoreTrack> Queue);
 }

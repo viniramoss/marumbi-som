@@ -38,11 +38,12 @@ public sealed class HubHarness : IAsyncDisposable
 
     public HubPaths Paths => App.Services.GetRequiredService<HubPaths>();
 
-    public static async Task<HubHarness> StartAsync(DateTimeOffset? now = null)
+    /// <param name="webRoot">Pasta com o build do painel (padrão: nenhuma).</param>
+    public static async Task<HubHarness> StartAsync(DateTimeOffset? now = null, string? webRoot = null)
     {
         var root = Path.Combine(Path.GetTempPath(), "marumbi-hub-tests", Guid.NewGuid().ToString("N"));
         var time = new FakeTimeProvider(now ?? new DateTimeOffset(2026, 10, 23, 13, 0, 0, TimeSpan.FromHours(-3)));
-        var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
+        var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { EnvironmentName = "Testing", WebRootPath = webRoot });
         builder.WebHost.UseTestServer();
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
         builder.Services.AddSingleton<TimeProvider>(time);
@@ -82,11 +83,18 @@ public sealed class HubHarness : IAsyncDisposable
     public async Task<HttpClient> AdminClientAsync()
     {
         var client = AnonymousClient();
-        var response = await client.PostAsJsonAsync("/api/auth/login", new { username = AdminUser, password = AdminPassword });
+        client.DefaultRequestHeaders.Add("Cookie", await AdminCookieAsync(client));
+        return client;
+    }
+
+    /// <summary>Cookie de sessão do painel no formato do cabeçalho <c>Cookie</c>.</summary>
+    public async Task<string> AdminCookieAsync(HttpClient? client = null, string password = AdminPassword)
+    {
+        client ??= AnonymousClient();
+        var response = await client.PostAsJsonAsync("/api/auth/login", new { username = AdminUser, password });
         response.EnsureSuccessStatusCode();
         var cookie = response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith(PanelAuth.CookieName, StringComparison.Ordinal));
-        client.DefaultRequestHeaders.Add("Cookie", cookie.Split(';')[0]);
-        return client;
+        return cookie.Split(';')[0];
     }
 
     public HttpClient AgentClient(string token)

@@ -24,6 +24,8 @@ public sealed class HubClientTests
             {
                 await h.Player.Engine.StepAsync(stepping.Token);
                 await Task.Delay(10, stepping.Token);
+                // O relógio do player é falso: andando 100 ms por passo, o resumo (snapshot de 500 ms) se atualiza.
+                h.Player.Time.Advance(TimeSpan.FromMilliseconds(100));
             }
         });
         await h.Engine.StartAsync(None);
@@ -37,6 +39,9 @@ public sealed class HubClientTests
             await SyncHarness.WaitUntilAsync(
                 () => h.Hub.WithDbAsync(db => db.StoreStates.AnyAsync(s => s.StoreId == h.StoreId && s.AppliedVersion == first)),
                 "o Hub saber da versão aplicada");
+            await SyncHarness.WaitUntilAsync(
+                () => h.Hub.WithDbAsync(db => db.StoreStates.AnyAsync(s => s.StoreId == h.StoreId && s.PlaylistKey == "p" + h.PlaylistId && s.QueueJson != null)),
+                "o status levar a playlist e a fila (D23 b)");
 
             var changedAt = Stopwatch.GetTimestamp();
             await h.AddTrackAsync("Faixa 3");

@@ -348,11 +348,13 @@ public sealed class HubClient : BackgroundService
             SyncProgress = _sync.Progress,
             DiskFreeMb = DiskFreeMb(),
             UptimeS = (long)_time.GetElapsedTime(_startedAt).TotalSeconds,
+            PlaylistId = snapshot.WindowPlaylistId,
+            Queue = snapshot.UpcomingHashes,
         };
     }
 
     private static string StatusKey(StatusMessage status) =>
-        $"{status.Player}|{status.NowPlaying}|{status.Volume}|{status.Bluetooth}|{status.PendingVersion}|{status.SyncProgress?.Done}/{status.SyncProgress?.Total}";
+        $"{status.Player}|{status.NowPlaying}|{status.Volume}|{status.Bluetooth}|{status.PendingVersion}|{status.SyncProgress?.Done}/{status.SyncProgress?.Total}|{status.PlaylistId}|{string.Join(',', status.Queue ?? [])}";
 
     private long DiskFreeMb()
     {

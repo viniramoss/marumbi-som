@@ -71,15 +71,23 @@ public static class PanelAuth
     public static void MapPanelAuth(this IEndpointRouteBuilder app)
     {
         var auth = app.MapGroup("/api/auth");
-        auth.MapPost("/login", LoginAsync).RequireRateLimiting(LoginRateLimit);
+        auth.MapPost("/login", LoginAsync).RequireRateLimiting(LoginRateLimit)
+            .Returns<SessionInfo>(StatusCodes.Status200OK, StatusCodes.Status401Unauthorized, StatusCodes.Status429TooManyRequests);
         auth.MapPost("/logout", async (HttpContext context) =>
         {
             await context.SignOutAsync(Scheme);
-            return Results.Ok(new { ok = true });
-        });
+            return Results.NoContent();
+        }).ReturnsNothing();
         auth.MapGet("/me", (ClaimsPrincipal user) => user.Identity?.IsAuthenticated == true
-            ? Results.Ok(new { username = user.Identity.Name })
-            : Results.Unauthorized());
+            ? Results.Ok(new SessionInfo(user.Identity.Name ?? string.Empty))
+            : Results.Unauthorized()).Returns<SessionInfo>().Produces(StatusCodes.Status401Unauthorized);
+    }
+
+    /// <summary>Troca de senha pelo painel (D23 c); exige a senha atual.</summary>
+    public static void MapPasswordChange(this RouteGroupBuilder api)
+    {
+        ArgumentNullException.ThrowIfNull(api);
+        api.MapPost("/auth/password", ChangePasswordAsync).ReturnsNothing(StatusCodes.Status204NoContent, StatusCodes.Status400BadRequest);
     }
 
     public static int? UserId(this ClaimsPrincipal user) =>
@@ -127,8 +135,37 @@ public static class PanelAuth
         db.Audit(new ClaimsPrincipal(identity), time, "login", user.Username);
         await db.SaveChangesAsync(context.RequestAborted);
         logger.LogInformation("Login no painel: {Username}", user.Username);
-        return Results.Ok(new { username = user.Username });
+        return Results.Ok(new SessionInfo(user.Username));
+    }
+
+    private static async Task<IResult> ChangePasswordAsync(
+        PasswordChange request, ClaimsPrincipal principal, HubDb db, IPasswordHasher<User> hasher, TimeProvider time, CancellationToken cancellationToken)
+    {
+        var user = principal.UserId() is { } id ? await db.Users.SingleOrDefaultAsync(u => u.Id == id, cancellationToken) : null;
+        if (user is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        if (hasher.VerifyHashedPassword(user, user.PasswordHash, request.CurrentPassword ?? string.Empty) == PasswordVerificationResult.Failed)
+        {
+            return ApiResults.BadRequest("A senha atual não confere.");
+        }
+
+        if (ValidatePassword(request.NewPassword) is { } error)
+        {
+            return ApiResults.BadRequest(error);
+        }
+
+        user.PasswordHash = hasher.HashPassword(user, request.NewPassword!);
+        db.Audit(principal, time, "auth.password", user.Username);
+        await db.SaveChangesAsync(cancellationToken);
+        return Results.NoContent();
     }
 
     public sealed record LoginRequest(string Username, string? Password);
+
+    public sealed record SessionInfo(string Username);
+
+    public sealed record PasswordChange(string? CurrentPassword, string? NewPassword);
 }

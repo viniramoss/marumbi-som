@@ -18,6 +18,9 @@ public sealed class ManifestPublisher(IServiceScopeFactory scopes, AgentConnecti
     public const int KeptVersions = 20;
     private readonly SemaphoreSlim _lock = new(1, 1);
 
+    /// <summary>Disparado para cada loja cuja versão subiu (o painel mostra "Baixando" até a loja aplicar).</summary>
+    public event EventHandler<PublishedManifest>? Published;
+
     public void Dispose() => _lock.Dispose();
 
     /// <summary>Regenera todas as lojas. Uma loja cujo conteúdo não mudou mantém a versão.</summary>
@@ -67,6 +70,7 @@ public sealed class ManifestPublisher(IServiceScopeFactory scopes, AgentConnecti
         {
             logger.LogInformation("Manifesto da loja {Store} agora na versão {Version}", item.Slug, item.Version);
             await agents.NotifyManifestChangedAsync(item.StoreId, item.Version, cancellationToken);
+            Published?.Invoke(this, item);
         }
 
         return published;

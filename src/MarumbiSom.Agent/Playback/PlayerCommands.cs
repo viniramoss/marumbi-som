@@ -80,4 +80,7 @@ public sealed record PlayerSnapshot
     public IReadOnlyList<string> QueuedSpots { get; init; } = [];
 
     public IReadOnlyList<string> Upcoming { get; init; } = [];
+
+    /// <summary>Hashes das mesmas faixas de <see cref="Upcoming"/>, para o Hub.</summary>
+    public IReadOnlyList<string> UpcomingHashes { get; init; } = [];
 }
