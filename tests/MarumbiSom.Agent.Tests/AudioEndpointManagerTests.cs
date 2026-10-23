@@ -63,6 +63,79 @@ public class AudioEndpointManagerTests
         Assert.Equal(1.0f, _windows.SpeakerEndpointVolume);
     }
 
+    [Fact]
+    public void Nunca_restaura_para_o_viva_voz_da_propria_caixa()
+    {
+        // O "Viva-voz" da caixa é outro endpoint no mesmo contêiner. Se ele virou padrão antes, não serve de destino.
+        const string handsFree = "{0.0.0.00000000}.{sim-bt-handsfree}";
+        _windows.ExtraRenderEndpoints.Add(new AudioEndpoint(handsFree, "Viva-voz (Caixa Simulada)", _windows.SpeakerContainerId, AudioEndpointState.Active));
+        _windows.DefaultEndpointId = handsFree;
+        using var manager = Create();
+        manager.Enforce(); // caixa ainda não conectada: o viva-voz parece uma saída qualquer
+
+        _connection.Connect(SimulatedWindowsEnvironment.SpeakerEndpointId);
+        _windows.DefaultEndpointId = SimulatedWindowsEnvironment.SpeakerEndpointId;
+        manager.Enforce();
+
+        Assert.Equal(SimulatedWindowsEnvironment.PcSpeakersId, _windows.DefaultEndpointId);
+    }
+
+    [Fact]
+    public void Viva_voz_da_caixa_como_padrao_tambem_e_restaurado()
+    {
+        const string handsFree = "{0.0.0.00000000}.{sim-bt-handsfree}";
+        _windows.ExtraRenderEndpoints.Add(new AudioEndpoint(handsFree, "Viva-voz (Caixa Simulada)", _windows.SpeakerContainerId, AudioEndpointState.Active));
+        _connection.Connect(SimulatedWindowsEnvironment.SpeakerEndpointId);
+        _windows.DefaultEndpointId = handsFree;
+        using var manager = Create();
+
+        manager.Enforce();
+
+        Assert.Equal(SimulatedWindowsEnvironment.PcSpeakersId, _windows.DefaultEndpointId);
+    }
+
+    [Fact]
+    public void Padrao_anterior_desconectado_nao_e_usado()
+    {
+        const string hdmi = "{0.0.0.00000000}.{sim-hdmi}";
+        _windows.ExtraRenderEndpoints.Add(new AudioEndpoint(hdmi, "Monitor (HDMI)", Guid.NewGuid(), AudioEndpointState.Active));
+        _windows.DefaultEndpointId = hdmi;
+        using var manager = Create();
+        manager.Enforce(); // memoriza o monitor
+
+        _windows.ExtraRenderEndpoints[0] = _windows.ExtraRenderEndpoints[0] with { State = AudioEndpointState.Unplugged };
+        _connection.Connect(SimulatedWindowsEnvironment.SpeakerEndpointId);
+        _windows.DefaultEndpointId = SimulatedWindowsEnvironment.SpeakerEndpointId;
+        manager.Enforce();
+
+        Assert.Equal(SimulatedWindowsEnvironment.PcSpeakersId, _windows.DefaultEndpointId);
+    }
+
+    [Fact]
+    public void Para_de_brigar_quando_o_windows_volta_para_a_caixa_tres_vezes_seguidas()
+    {
+        _connection.Connect(SimulatedWindowsEnvironment.SpeakerEndpointId);
+        using var manager = Create();
+        var restores = 0;
+        for (var pass = 0; pass < 6; pass++)
+        {
+            _windows.DefaultEndpointId = SimulatedWindowsEnvironment.SpeakerEndpointId; // o Windows troca de novo
+            manager.Enforce();
+            if (_windows.DefaultEndpointId == SimulatedWindowsEnvironment.PcSpeakersId)
+            {
+                restores++;
+            }
+        }
+
+        Assert.Equal(3, restores);
+
+        // A caixa reconectou: volta a tentar.
+        _connection.Connect(SimulatedWindowsEnvironment.SpeakerEndpointId);
+        _windows.DefaultEndpointId = SimulatedWindowsEnvironment.SpeakerEndpointId;
+        manager.Enforce();
+        Assert.Equal(SimulatedWindowsEnvironment.PcSpeakersId, _windows.DefaultEndpointId);
+    }
+
     private AudioEndpointManager Create() => new(_windows, _connection, TimeProvider.System, NullLogger<AudioEndpointManager>.Instance);
 
     private sealed class FakeConnection : IBluetoothConnection

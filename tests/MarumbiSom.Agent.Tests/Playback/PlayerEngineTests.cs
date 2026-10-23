@@ -207,6 +207,26 @@ public sealed class PlayerEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task Oferta_que_termina_antes_da_duracao_conta_como_interrompida()
+    {
+        // PC piloto, 23/10/2026: a saída de áudio caiu no meio da oferta e o mpv respondeu eof, registrado como "tocou".
+        var t1 = _h.AddTrack("Um", 60);
+        var t2 = _h.AddTrack("Dois", 60);
+        var offer = _h.AddTrack("Picanha", 20, TrackKind.Offer);
+        _h.Publish(
+            new Dictionary<string, PlaylistDefinition> { ["manha"] = PlayerHarness.Playlist(false, t1, t2) },
+            spots: Spots(offer, new AnchorBetweenPlacement { Id = "pl-1", OfferId = "of-1", PlaylistId = "manha", AfterItemId = "it-1" }));
+        await _h.RunUntilAsync("10:01:05");
+        Assert.Equal(_h.PathOf(offer), _h.Spot.CurrentFile);
+
+        _h.Spot.LoseAudioOutput();
+        await _h.RunForAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(SpotResult.Interrupted, _h.Messages.OfType<SpotFinishedMessage>().Single().Result);
+        Assert.Equal([t1, t2], _h.TrackStarts.Select(s => s.Hash));
+    }
+
+    [Fact]
     public async Task Oferta_durante_a_musica_faz_ducking_de_800_ms_e_volta_em_1500_ms()
     {
         var t1 = _h.AddTrack("Um", 120);

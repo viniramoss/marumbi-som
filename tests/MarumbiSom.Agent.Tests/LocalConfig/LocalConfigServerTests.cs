@@ -179,6 +179,12 @@ public sealed class LocalConfigServerTests : IAsyncLifetime, IDisposable
             }
         });
 
+        // Sob carga (suíte inteira), o mpv de ofertas pode ainda não estar de pé quando o pedido chega.
+        for (var i = 0; i < 200 && !_player.Spot.IsRunning; i++)
+        {
+            await Task.Delay(10, CancellationToken.None);
+        }
+
         var response = await PostAsync("/api/test-sound", new { });
         await cts.CancelAsync();
         await loop;

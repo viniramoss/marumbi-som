@@ -158,6 +158,12 @@ public sealed class SimulatedMpvInstance : IMpvInstance
         }
     }
 
+    /// <summary>
+    /// Simula a saída de áudio caindo no meio do arquivo (ex.: a caixa Bluetooth some por um instante): o mpv encerra o
+    /// arquivo atual com <c>end-file</c> reason=eof, como se tivesse chegado ao fim.
+    /// </summary>
+    public void LoseAudioOutput() => EndCurrent("eof", advance: true);
+
     /// <summary>Simula o processo morrendo (ex.: encerrado pelo Gerenciador de Tarefas).</summary>
     public void Crash()
     {
