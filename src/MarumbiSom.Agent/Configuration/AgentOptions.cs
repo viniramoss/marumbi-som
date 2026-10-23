@@ -36,7 +36,7 @@ public sealed class PlayerOptions
     /// <summary>Volume da loja (0–100), aplicado no mpv. O endpoint da caixa fica fixo em 100%.</summary>
     public int Volume { get; set; } = 70;
 
-    public string MusicPipeName { get; set; } = "marumbisom-mpv";
+    public string MusicPipeName { get; set; } = "marumbisom-mpv-a";
 
     public string SpotPipeName { get; set; } = "marumbisom-mpv-spot";
 

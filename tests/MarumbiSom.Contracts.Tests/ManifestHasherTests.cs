@@ -50,6 +50,12 @@ public class ManifestHasherTests
     }
 
     [Fact]
+    public void Hash_muda_quando_a_mixagem_muda()
+    {
+        Assert.NotEqual(ManifestHasher.ComputeContentHash(Sample), ManifestHasher.ComputeContentHash(Sample with { CrossfadeS = 0 }));
+    }
+
+    [Fact]
     public void Hash_nao_depende_da_ordem_de_insercao_dos_dicionarios()
     {
         var reversedTracks = Sample with
@@ -77,5 +83,5 @@ public class ManifestHasherTests
         Assert.Equal(ManifestHasher.ComputeContentHash(Sample), withHash.ContentHash);
     }
 
-    private const string GoldenHash = "sha256:137443907c113a890659eecb84f1efb2b90c427c9fa5e1ea143c6df330afef67";
+    private const string GoldenHash = "sha256:c464fd047636eb1666ae7927a9b439d8533ea4dcdaa8fd917d1df26c233e4d86";
 }

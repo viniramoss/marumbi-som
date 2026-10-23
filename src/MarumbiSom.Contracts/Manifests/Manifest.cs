@@ -23,6 +23,9 @@ public sealed record Manifest
     /// <summary>Volume da loja, 0–100.</summary>
     public required int Volume { get; init; }
 
+    /// <summary>Duração da mixagem entre músicas, em segundos (seção 10.2.1). 0 = emenda sem pausa.</summary>
+    public int CrossfadeS { get; init; } = 5;
+
     public IReadOnlyList<ScheduleEntry> Schedules { get; init; } = [];
 
     public IReadOnlyDictionary<string, PlaylistDefinition> Playlists { get; init; } = new Dictionary<string, PlaylistDefinition>();

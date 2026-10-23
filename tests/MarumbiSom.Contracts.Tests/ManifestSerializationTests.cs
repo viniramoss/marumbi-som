@@ -18,6 +18,7 @@ public class ManifestSerializationTests
         Assert.Equal(47, manifest.Version);
         Assert.Equal(new DateTimeOffset(2026, 10, 22, 16, 20, 0, TimeSpan.FromHours(-3)), manifest.GeneratedAt);
         Assert.Equal(70, manifest.Volume);
+        Assert.Equal(5, manifest.CrossfadeS);
         Assert.Equal(2, manifest.Schedules.Count);
         Assert.Equal(new TimeOnly(8, 0), manifest.Schedules[0].Start);
         Assert.Equal([1, 2, 3, 4, 5, 6], manifest.Schedules[0].Days);
