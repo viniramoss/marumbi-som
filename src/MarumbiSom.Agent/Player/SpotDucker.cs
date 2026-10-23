@@ -15,8 +15,13 @@ public sealed class SpotDucker(TimeProvider time, ILogger<SpotDucker> logger)
     /// <summary>Indica se um ducking está em andamento; o volume imposto à música é o da rampa.</summary>
     public bool IsDucking { get; private set; }
 
-    /// <summary><c>duckLevel</c> é relativo ao volume da loja: loja 70 e ducking 30% → 21.</summary>
-    public static double DuckedVolume(double storeVolume, int duckLevel) => storeVolume * Math.Clamp(duckLevel, 0, 100) / 100.0;
+    /// <summary>
+    /// Volume do mpv durante a oferta. <c>duckLevel</c> é a fração da amplitude da música em relação ao volume
+    /// da loja (30% ≈ −10,5 dB). O volume do mpv é cúbico (ganho = (volume/100)³), por isso o resultado é
+    /// volume da loja × ∛(duckLevel/100): loja 70 e ducking 30% → 46,9 (decisão D17).
+    /// </summary>
+    public static double DuckedVolume(double storeVolume, int duckLevel) =>
+        MpvVolume.FromGain(MpvVolume.ToGain(storeVolume) * Math.Clamp(duckLevel, 0, 100) / 100.0);
 
     public async Task<SpotResult> PlayDuringAsync(
         IMpvInstance music,

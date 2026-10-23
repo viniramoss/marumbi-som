@@ -620,7 +620,7 @@ Oferta é um áudio curto de locução (ex.: "Picanha R$ 69,90 até sábado"). E
 3. **Fim da oferta:** rampa da música de volta a 100% em 1.500 ms.
 4. Se a música terminar durante a oferta, a próxima música começa já em `duckLevel` e só sobe quando a oferta terminar.
 5. Rampas são feitas em passos de no máximo 40 ms. NUNCA alterar o volume em degrau.
-6. `duckLevel` é relativo ao volume da loja. Exemplo: loja em 70 e ducking de 30% → música em 21 durante a oferta.
+6. `duckLevel` é a fração da amplitude da música em relação ao volume da loja (30% ≈ −10,5 dB). Como o volume do mpv é cúbico (ganho = (volume/100)³), o volume aplicado ao mpv durante a oferta é volume da loja × ∛(duckLevel/100). Exemplo: loja em 70 e ducking de 30% → mpv da música em 46,9 durante a oferta (decisão D17).
 7. O volume da oferta é o volume da loja. O destaque da voz vem da normalização mais alta da locução (−14 LUFS, seção 6.5).
 
 #### 10.3.4 Posicionamento
@@ -1121,6 +1121,7 @@ Aceite:
 | D14 | Guardião Bluetooth com estado "Verificando" (4 s após cada método antes de contar falha), checagem do endpoint a cada 2 s durante o backoff, e nova tentativa do nível 1 após os níveis 2 e 3 | Detalha a seção 9.1: caixa que volta sozinha é detectada sem esperar o backoff de 60 s (meta de 30 s); reiniciar `bthserv` ou o adaptador devolve o rádio no último estado salvo |
 | D15 | Hash SHA-256 de binários de terceiros (mpv, ffmpeg) gravado em `scripts/tools.lock.json` e versionado; o valor vem do digest exibido na página de releases do GitHub ou, se não houver, de conferência humana (`download-tools.ps1 -AcceptNewHash`) | Os builds do mpv para Windows são de terceiros; todo download (scripts e CI) é verificado contra o lock |
 | D16 | Fade-in de 0,5 s e fade-out de 3 s na ingestão das músicas, e mixagem (crossfade) de 5 s entre músicas no agente, com dois processos mpv de música alternados (seções 6.5, 10.1 e 10.2.1) | Decisão do proprietário: músicas cortadas no fim e transição natural, sem parar a música. Reaproveita as rampas de volume e a mistura de fluxos pelo Windows (D10) |
+| D17 | `duckLevel` é fração de amplitude; o volume do mpv durante a oferta é volume da loja × ∛(duckLevel/100) | O mpv aplica curva cúbica ao volume. Com a conta linear (70 × 30% = 21) a música caía cerca de 31 dB e parecia parar durante a oferta no teste do PC piloto (23/10/2026) |
 
 Novas decisões DEVEM ser adicionadas aqui com número sequencial.
 

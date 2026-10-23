@@ -34,7 +34,8 @@ public class SpotDuckerTests
         Assert.False(ducker.IsDucking);
 
         var history = music.VolumeHistory.Select(h => (At: h.At - t0, h.Volume)).ToList();
-        var duckedAt = history.First(h => Math.Abs(h.Volume - 21) < 1e-9).At;
+        var ducked = Math.Round(SpotDucker.DuckedVolume(70, 30), 2);
+        var duckedAt = history.First(h => Math.Abs(h.Volume - ducked) < 1e-9).At;
         Assert.InRange(duckedAt, SpotDucker.DuckDown, SpotDucker.DuckDown + Tolerance);
 
         var spotOffset = spotStartedAt!.Value.TimeOfDay - t0;
@@ -42,9 +43,9 @@ public class SpotDuckerTests
         Assert.Equal(70, spot.Volume);
 
         Assert.Equal(70, history[^1].Volume);
-        var restoreDuration = history[^1].At - history.Last(h => Math.Abs(h.Volume - 21) < 1e-9).At;
+        var restoreDuration = history[^1].At - history.Last(h => Math.Abs(h.Volume - ducked) < 1e-9).At;
         Assert.InRange(restoreDuration, SpotDucker.Restore, SpotDucker.Restore + Tolerance);
-        Assert.True(history.Min(h => h.Volume) >= 21 - 1e-9);
+        Assert.True(history.Min(h => h.Volume) >= ducked - 1e-9);
     }
 
     [Fact]

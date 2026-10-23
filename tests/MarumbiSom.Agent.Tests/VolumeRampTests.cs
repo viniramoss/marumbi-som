@@ -49,12 +49,23 @@ public class VolumeRampTests
     }
 
     [Theory]
-    [InlineData(70, 30, 21)]
-    [InlineData(100, 30, 30)]
+    [InlineData(70, 30, 46.86)]
+    [InlineData(100, 30, 66.94)]
     [InlineData(50, 0, 0)]
     [InlineData(50, 100, 50)]
-    public void Nivel_de_ducking_e_relativo_ao_volume_da_loja(double store, int duckLevel, double expected)
+    public void Nivel_de_ducking_considera_a_curva_cubica_do_mpv(double store, int duckLevel, double expected)
     {
-        Assert.Equal(expected, SpotDucker.DuckedVolume(store, duckLevel), precision: 6);
+        Assert.Equal(expected, SpotDucker.DuckedVolume(store, duckLevel), precision: 2);
+    }
+
+    [Theory]
+    [InlineData(70, 30)]
+    [InlineData(40, 30)]
+    [InlineData(100, 50)]
+    public void Ducking_reduz_a_amplitude_da_musica_para_a_fracao_configurada(double store, int duckLevel)
+    {
+        var ratio = MpvVolume.ToGain(SpotDucker.DuckedVolume(store, duckLevel)) / MpvVolume.ToGain(store);
+
+        Assert.Equal(duckLevel / 100.0, ratio, precision: 6);
     }
 }
