@@ -18,7 +18,8 @@ public static class AgentEndpoints
     private const string CodeAlphabet = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
     private const string StoreItem = "marumbisom.store";
 
-    private static readonly ConcurrentDictionary<(int StoreId, long Version), HashSet<string>> AllowedFiles = new();
+    // Pela contentHash (e não loja+versão): um banco restaurado de backup pode repetir números de versão com outro conteúdo.
+    private static readonly ConcurrentDictionary<string, HashSet<string>> AllowedFiles = new(StringComparer.Ordinal);
 
     public static string NewToken() => Base64Url(RandomNumberGenerator.GetBytes(32));
 
@@ -116,7 +117,12 @@ public static class AgentEndpoints
             return Results.NotFound();
         }
 
-        var allowed = AllowedFiles.GetOrAdd((store.Id, manifest.Version), _ => [.. ManifestPublisher.Deserialize(manifest).Tracks.Keys]);
+        if (AllowedFiles.Count > 500)
+        {
+            AllowedFiles.Clear();
+        }
+
+        var allowed = AllowedFiles.GetOrAdd(manifest.ContentHash, _ => [.. ManifestPublisher.Deserialize(manifest).Tracks.Keys]);
         var path = paths.LibraryFile(hash);
         if (!allowed.Contains(hash) || !File.Exists(path))
         {

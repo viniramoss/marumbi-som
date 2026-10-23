@@ -25,8 +25,8 @@ public sealed class StorageService(
             var missing = cache.Missing(active);
             if (missing.Count > 0)
             {
-                // Sem o Hub (Etapa 2) não há como baixar de novo; as faixas ausentes são puladas.
-                logger.LogWarning("{Count} arquivo(s) do manifesto ativo ausentes no cache; serão pulados: {Hashes}",
+                // Enquanto o SyncEngine não baixa de novo (ou sem Hub), as faixas ausentes são puladas.
+                logger.LogWarning("{Count} arquivo(s) do manifesto ativo ausentes no cache; serão pulados até serem baixados: {Hashes}",
                     missing.Count, string.Join(", ", missing.Take(10)));
             }
         }

@@ -72,13 +72,16 @@ public sealed class ManifestStore(AgentDataPaths paths, ILogger<ManifestStore> l
         return true;
     }
 
-    /// <summary>Grava um manifesto como pendente. Versões menores ou iguais à ativa são rejeitadas.</summary>
+    /// <summary>
+    /// Grava um manifesto como pendente. Versões menores ou iguais à ativa da mesma loja são rejeitadas; a versão é
+    /// contada por loja, então o manifesto do Hub substitui um local (<c>--build-manifest</c>) mesmo com número menor.
+    /// </summary>
     public bool SavePending(Manifest manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         lock (_lock)
         {
-            if (Active is not null && manifest.Version <= Active.Version)
+            if (Active is not null && Active.StoreId == manifest.StoreId && manifest.Version <= Active.Version)
             {
                 logger.LogInformation("Manifesto versão {Version} ignorado: ativo já é {Active}", manifest.Version, Active.Version);
                 return false;

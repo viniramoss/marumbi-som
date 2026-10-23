@@ -73,15 +73,52 @@ async function loadStatus() {
   const rows = [
     ['Música', `<span class="${p.status === 'playing' || betweenSpot ? 'ok' : 'bad'}">${musicLabel}</span>${p.reason && !betweenSpot ? ' · ' + escapeHtml(p.reason) : ''}`],
     ['Faixa', p.title ? `${escapeHtml(p.artist ? p.artist + ' – ' + p.title : p.title)} (${time(p.positionS)} / ${time(p.durationS)})${p.crossfading ? ' · mixando' : ''}` : '–'],
-    ['Playlist', escapeHtml(p.playlist || '–')],
+    ['Playlist', escapeHtml(p.playlistName || p.playlist || '–')],
     ['Oferta', escapeHtml(p.spot || '–')],
     ['Volume', String(p.volume)],
     ['Caixa', `<span class="${s.bluetooth === 'connected' ? 'ok' : 'bad'}">${bluetoothText[s.bluetooth] || s.bluetooth}</span>${s.speakerAddress ? ' · ' + s.speakerAddress : ' · nenhuma escolhida'}`],
-    ['Loja', escapeHtml(s.storeId || '–')],
+    ['Loja', escapeHtml((s.hub && s.hub.linked && s.hub.storeId === s.storeId && s.hub.storeName) || s.storeId || '–')],
     ['Configuração', s.manifestVersion != null ? `versão ${s.manifestVersion}` : 'nenhuma'],
     ['Agente', `${escapeHtml(version)} · ligado há ${uptime(s.uptimeS)}`],
   ];
   $('status').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  renderHub(s.hub);
+}
+
+function clock(iso) {
+  return iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '–';
+}
+
+function renderHub(h) {
+  const state = $('hub-state');
+  if (!h) {
+    state.textContent = 'Sincronização com o Hub indisponível nesta versão.';
+    $('hub-form').hidden = true;
+    return;
+  }
+  $('hub-unlink').hidden = !h.linked;
+  $('hub-link').textContent = h.linked ? 'Vincular de novo' : 'Vincular esta loja';
+  if (!h.linked) {
+    state.innerHTML = 'Esta loja <strong>não está vinculada</strong> a um Hub: toca só a configuração que já está no computador.';
+    return;
+  }
+  const parts = [
+    `Vinculada como <strong>${escapeHtml(h.storeName || h.storeId)}</strong> em ${escapeHtml(h.url)}.`,
+    h.connected
+      ? `<span class="ok">Conectada ao Hub</span> desde ${clock(h.connectedSince)}.`
+      : '<span class="bad">Sem conexão ao vivo com o Hub</span>; a música continua com o que já foi baixado.',
+  ];
+  if (h.pendingVersion != null && h.progress) {
+    parts.push(`Baixando a versão ${h.pendingVersion}: ${h.progress.done} de ${h.progress.total} arquivos. A troca acontece no fim da música, quando tudo estiver baixado.`);
+  }
+  parts.push(`Última verificação: ${clock(h.lastCheckAt)}.`);
+  if (h.error) {
+    parts.push(`<span class="bad">${escapeHtml(h.error)}</span>`);
+  }
+  state.innerHTML = parts.join(' ');
+  if (!$('hub-url').value && document.activeElement !== $('hub-url')) {
+    $('hub-url').value = h.url || '';
+  }
 }
 
 async function loadDevices() {
@@ -153,6 +190,30 @@ $('test-sound').addEventListener('click', async () => {
     setMsg('speaker-msg', 'Som de teste enviado para a caixa.', true);
   } catch (e) {
     setMsg('speaker-msg', e.message, false);
+  }
+});
+
+$('hub-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  setMsg('hub-msg', 'Vinculando…', true);
+  try {
+    const r = await api('/api/hub', { method: 'POST', body: { url: $('hub-url').value, code: $('hub-code').value } });
+    $('hub-code').value = '';
+    setMsg('hub-msg', `Loja vinculada: ${r.storeName || r.storeId}. As músicas começam a baixar agora; a troca acontece quando tudo estiver no computador.`, true);
+    await loadStatus();
+  } catch (e) {
+    setMsg('hub-msg', e.message, false);
+  }
+});
+
+$('hub-unlink').addEventListener('click', async () => {
+  if (!confirm('Desvincular esta loja do Hub? A música continua com a configuração atual, mas não recebe mais mudanças.')) return;
+  try {
+    await api('/api/hub/unlink', { method: 'POST' });
+    setMsg('hub-msg', 'Loja desvinculada.', true);
+    await loadStatus();
+  } catch (e) {
+    setMsg('hub-msg', e.message, false);
   }
 });
 

@@ -7,6 +7,7 @@ using MarumbiSom.Agent.Player;
 using MarumbiSom.Agent.Simulation;
 using MarumbiSom.Agent.Spots;
 using MarumbiSom.Agent.Storage;
+using MarumbiSom.Agent.Sync;
 using MarumbiSom.Agent.Windows.Abstractions;
 using MarumbiSom.Agent.Windows.Implementations;
 using Microsoft.Extensions.Options;
@@ -20,6 +21,7 @@ public static class AgentServiceCollectionExtensions
         services.Configure<BluetoothOptions>(configuration.GetSection(BluetoothOptions.Section));
         services.Configure<PlayerOptions>(configuration.GetSection(PlayerOptions.Section));
         services.Configure<LocalConfigOptions>(configuration.GetSection(LocalConfigOptions.Section));
+        services.Configure<SyncOptions>(configuration.GetSection(SyncOptions.Section));
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton(paths);
 
@@ -59,6 +61,13 @@ public static class AgentServiceCollectionExtensions
 
         services.AddSingleton<LocalConfigFile>();
         services.AddSingleton<LocalAuth>();
+
+        services.AddHttpClient(HttpHubTransport.ClientName);
+        services.AddSingleton<IHubTransport, HttpHubTransport>();
+        services.AddSingleton<HubLink>();
+        services.AddSingleton<SyncEngine>();
+        services.AddSingleton<HubClient>();
+
         services.AddSingleton(sp => new LocalConfigContext(
             sp.GetRequiredService<LocalAuth>(),
             sp.GetRequiredService<LocalConfigFile>(),
@@ -68,13 +77,16 @@ public static class AgentServiceCollectionExtensions
             sp.GetRequiredService<IBluetoothSpeakerControl>(),
             sp.GetRequiredService<ManifestStore>(),
             paths.LogsDirectory,
-            sp.GetRequiredService<TimeProvider>()));
+            sp.GetRequiredService<TimeProvider>(),
+            new HubContext(sp.GetRequiredService<HubLink>(), sp.GetRequiredService<SyncEngine>(), sp.GetRequiredService<HubClient>())));
 
         // A ordem importa: o armazenamento carrega estado e manifestos antes do player começar.
         services.AddHostedService<StorageService>();
         services.AddHostedService<BluetoothGuardianService>();
         services.AddHostedService<AudioEndpointManager>();
         services.AddHostedService<PlayerService>();
+        services.AddHostedService(sp => sp.GetRequiredService<SyncEngine>());
+        services.AddHostedService(sp => sp.GetRequiredService<HubClient>());
         services.AddHostedService<LocalConfigServer>();
         return services;
     }
@@ -85,6 +97,7 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<ISystemServices, WindowsSystemServices>();
         services.AddSingleton<IBluetoothSpeakerControl, WindowsBluetoothSpeakerControl>();
         services.AddSingleton<IAudioEndpoints, CoreAudioEndpoints>();
+        services.AddSingleton<ISecretProtector, DpapiSecretProtector>();
         services.AddSingleton<IBluetoothAdapterControl>(sp => new PnpBluetoothAdapterControl(
             sp.GetRequiredService<ILogger<PnpBluetoothAdapterControl>>(),
             sp.GetRequiredService<IOptions<BluetoothOptions>>().Value.AdapterInstanceId));
@@ -112,6 +125,7 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<IBluetoothAdapterControl>(sp => sp.GetRequiredService<SimulatedWindowsEnvironment>());
         services.AddSingleton<IBluetoothSpeakerControl>(sp => sp.GetRequiredService<SimulatedWindowsEnvironment>());
         services.AddSingleton<IAudioEndpoints>(sp => sp.GetRequiredService<SimulatedWindowsEnvironment>());
+        services.AddSingleton<ISecretProtector, PlainSecretProtector>();
 
         foreach (var (key, name) in new[] { (PlayerKeys.MusicA, "música A"), (PlayerKeys.MusicB, "música B"), (PlayerKeys.Spot, "ofertas") })
         {

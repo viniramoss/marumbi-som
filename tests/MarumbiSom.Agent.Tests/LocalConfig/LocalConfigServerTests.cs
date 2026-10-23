@@ -166,6 +166,9 @@ public sealed class LocalConfigServerTests : IAsyncLifetime, IDisposable
     {
         _auth.SetPassword(Password);
         await LoginAsync();
+        // Primeiro ciclo antes do pedido: sobe os mpv. Sem isso, com a máquina carregada, o comando podia chegar
+        // antes e receber "Caixa não conectada".
+        await _player.Engine.StepAsync(CancellationToken.None);
         using var cts = new CancellationTokenSource();
         var loop = Task.Run(async () =>
         {
