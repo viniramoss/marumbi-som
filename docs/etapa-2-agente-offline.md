@@ -17,7 +17,8 @@ playlists, mixagem entre músicas, ofertas, estado salvo e a página **Configura
 - **Configurar Som** (seção 8.4): página em `http://127.0.0.1:47800`, só neste computador, com senha. Mostra o
   status, escolhe a caixa pareada, toca o som de teste, mostra os últimos registros e troca a senha.
 - **`--build-manifest`**: monta o manifesto a partir de pastas de músicas e ofertas (na Etapa 3 isso passa a
-  vir do Hub).
+  vir do Hub; ao vincular a loja, o manifesto do Hub substitui o local assim que todos os arquivos forem
+  baixados — ver [Etapa 3](etapa-3-hub-sincronizacao.md)).
 
 O modo de teste da Etapa 1 (pasta `poc\musicas` e oferta a cada 2 min) foi removido.
 

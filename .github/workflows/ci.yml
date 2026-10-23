@@ -17,11 +17,13 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - name: ffmpeg para os testes de ingestão do Hub
+        run: command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
       - run: dotnet restore
       - run: dotnet build --no-restore
       - run: dotnet test --no-build --verbosity normal
 
-  publish-agent:
+  publish:
     runs-on: windows-latest
     needs: test
     steps:
@@ -49,4 +51,15 @@ jobs:
         with:
           name: MarumbiSom.Agent-win-x64
           path: publish/agent
+          retention-days: 30
+      - run: dotnet publish src/MarumbiSom.Hub -c Release -r win-x64 --self-contained -o publish/hub
+      - name: Baixar ffmpeg e ffprobe (SHA-256 conferido pelo tools.lock.json)
+        run: ./scripts/download-tools.ps1 -For hub -Destination publish/hub/tools
+        shell: pwsh
+      - run: Copy-Item -Recurse scripts publish/hub/scripts
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarumbiSom.Hub-win-x64
+          path: publish/hub
           retention-days: 30

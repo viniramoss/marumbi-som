@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Baixa o mpv (e, futuramente, o ffmpeg) com verificação de SHA-256 (seção 13.1).
+    Baixa o mpv (agente) ou o ffmpeg/ffprobe (Hub) com verificação de SHA-256 (seção 13.1).
 
 .DESCRIPTION
     As URLs e os hashes ficam em scripts\tools.lock.json, que é versionado. Os binários nunca são commitados.
@@ -9,18 +9,27 @@
     Arquivo cujo hash não confere é apagado e o script falha.
 
 .PARAMETER Destination
-    Pasta onde os executáveis serão colocados (padrão: publish\agent\tools).
+    Pasta onde os executáveis serão colocados (padrão: publish\agent\tools ou publish\hub\tools).
+
+.PARAMETER For
+    Para quem são as ferramentas: agent (mpv, padrão) ou hub (ffmpeg e ffprobe).
 
 .EXAMPLE
     .\download-tools.ps1 -Destination ..\publish\agent\tools
+
+.EXAMPLE
+    .\download-tools.ps1 -For hub -Destination ..\publish\hub\tools
 #>
 [CmdletBinding()]
 param(
-    [string] $Destination = (Join-Path $PSScriptRoot '..\publish\agent\tools'),
+    [string] $Destination,
+    [ValidateSet('agent', 'hub')]
+    [string] $For = 'agent',
     [switch] $AcceptNewHash
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $Destination) { $Destination = Join-Path $PSScriptRoot "..\publish\$For\tools" }
 $lockPath = Join-Path $PSScriptRoot 'tools.lock.json'
 $lock = Get-Content $lockPath -Raw | ConvertFrom-Json
 $cache = Join-Path $env:TEMP 'marumbisom-tools'
@@ -28,6 +37,10 @@ New-Item -ItemType Directory -Force -Path $cache, $Destination | Out-Null
 $lockChanged = $false
 
 foreach ($tool in $lock.tools) {
+    # Item sem "for" é do agente (lock anterior à Etapa 3).
+    $targets = if ($tool.PSObject.Properties['for']) { @($tool.for) } else { @('agent') }
+    if ($targets -notcontains $For) { continue }
+
     $archive = Join-Path $cache ([IO.Path]::GetFileName(([Uri]$tool.url).AbsolutePath))
     if (-not (Test-Path $archive)) {
         Write-Host "Baixando $($tool.name) de $($tool.url)"
