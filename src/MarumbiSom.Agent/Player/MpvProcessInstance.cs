@@ -61,6 +61,16 @@ public sealed class MpvProcessInstance(string name, string mpvPath, string pipeN
 
         _process = process;
         await ConnectPipeAsync(cancellationToken);
+
+        // Avisos e erros do próprio mpv (ex.: a saída WASAPI caiu) vão para o log do agente como eventos do IPC.
+        try
+        {
+            await CommandAsync(["request_log_messages", "warn"], cancellationToken);
+        }
+        catch (MpvCommandException ex)
+        {
+            logger.LogWarning(ex, "mpv '{Name}' não aceitou request_log_messages", Name);
+        }
     }
 
     public async Task StopAsync()
@@ -246,6 +256,17 @@ public sealed class MpvProcessInstance(string name, string mpvPath, string pipeN
 
             if (root.TryGetProperty("event", out var eventName) && eventName.GetString() is { } name)
             {
+                if (name == "log-message")
+                {
+                    logger.LogWarning(
+                        "mpv '{Name}' [{Prefix}] {Level}: {Text}",
+                        Name,
+                        root.TryGetProperty("prefix", out var prefix) ? prefix.GetString() : null,
+                        root.TryGetProperty("level", out var level) ? level.GetString() : null,
+                        root.TryGetProperty("text", out var text) ? text.GetString()?.TrimEnd() : null);
+                    return;
+                }
+
                 try
                 {
                     EventReceived?.Invoke(this, new MpvEventArgs(name, root));

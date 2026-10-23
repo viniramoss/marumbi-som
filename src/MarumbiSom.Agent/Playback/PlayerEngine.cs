@@ -27,6 +27,7 @@ public sealed class PlayerEngine
     public static readonly TimeSpan DuckRestore = TimeSpan.FromMilliseconds(1500);
     public static readonly TimeSpan BetweenSpotGap = TimeSpan.FromMilliseconds(300);
     public static readonly TimeSpan MaxSpotDuration = TimeSpan.FromSeconds(150);
+    public static readonly TimeSpan SpotEarlyEndTolerance = TimeSpan.FromSeconds(1.5);
     public static readonly TimeSpan PreloadLead = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan RestartDelay = TimeSpan.FromSeconds(2);
     public static readonly TimeSpan StallLimit = TimeSpan.FromSeconds(30);
@@ -264,14 +265,14 @@ public sealed class PlayerEngine
 
             if (deck == _spotDeck)
             {
-                if (e.Name == "end-file" && _spot is { Phase: SpotPhase.Playing } && e.Reason is "eof" or "error")
+                if (e.Name == "file-loaded" && _spot is { Phase: SpotPhase.Playing } loaded)
                 {
-                    if (e.Reason == "error")
-                    {
-                        _logger.LogWarning("mpv de ofertas não conseguiu tocar {Path}", _spot.Path);
-                    }
-
-                    await FinishSpotAsync(e.Reason == "eof" ? SpotResult.Played : SpotResult.Interrupted, now);
+                    loaded.LoadedAt = now;
+                    loaded.DurationS = await GetDurationAsync(deck.Mpv, cancellationToken);
+                }
+                else if (e.Name == "end-file" && _spot is { Phase: SpotPhase.Playing } spot && e.Reason is "eof" or "error")
+                {
+                    await FinishSpotAsync(SpotEndResult(spot, e.Reason, now), now);
                 }
 
                 continue;
@@ -972,6 +973,30 @@ public sealed class PlayerEngine
         }
     }
 
+    /// <summary>
+    /// O mpv também responde eof quando a saída de áudio cai no meio do arquivo (teste no PC piloto, 23/10/2026: oferta de
+    /// "entre músicas" cortada logo após o Windows trocar a saída padrão). Oferta que termina bem antes da duração conta
+    /// como interrompida, e o log diz quanto tocou.
+    /// </summary>
+    private SpotResult SpotEndResult(ActiveSpot spot, string? reason, DateTimeOffset now)
+    {
+        if (reason == "error")
+        {
+            _logger.LogWarning("mpv de ofertas não conseguiu tocar {Path}", spot.Path);
+            return SpotResult.Interrupted;
+        }
+
+        if (spot.LoadedAt is { } loadedAt && spot.DurationS is { } duration && (now - loadedAt).TotalSeconds < duration - SpotEarlyEndTolerance.TotalSeconds)
+        {
+            _logger.LogWarning(
+                "Oferta '{Spot}' terminou antes do fim: tocou {Played:F1} s de {Duration:F1} s (a saída de áudio pode ter caído)",
+                spot.Label, (now - loadedAt).TotalSeconds, duration);
+            return SpotResult.Interrupted;
+        }
+
+        return SpotResult.Played;
+    }
+
     private Task FinishSpotAsync(SpotResult result, DateTimeOffset now)
     {
         if (_spot is not { } spot)
@@ -1441,6 +1466,11 @@ public sealed class PlayerEngine
         public SpotPhase Phase { get; set; }
 
         public DateTimeOffset PhaseStartedAt { get; set; }
+
+        /// <summary>Quando o mpv carregou o arquivo e a duração que informou (para notar fim antecipado).</summary>
+        public DateTimeOffset? LoadedAt { get; set; }
+
+        public double? DurationS { get; set; }
 
         public static ActiveSpot From(SpotToPlay spot) =>
             new(spot, spot.Path, spot.Offer.Name, spot.Offer.DuckLevel, spot.Request.Mode);

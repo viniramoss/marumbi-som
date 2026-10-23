@@ -148,10 +148,14 @@ public sealed class SimulatedWindowsEnvironment : IBluetoothRadio, ISystemServic
         return Task.FromResult(LinkIfWorks("B"));
     }
 
+    /// <summary>Saídas além do alto-falante do PC e da caixa (ex.: o "Viva-voz" da caixa, um monitor HDMI).</summary>
+    public List<AudioEndpoint> ExtraRenderEndpoints { get; } = [];
+
     public IReadOnlyList<AudioEndpoint> ListRenderEndpoints() =>
     [
         new(PcSpeakersId, "Alto-falantes (Realtek)", Guid.Parse("00000000-0000-0000-ffff-ffffffffffff"), AudioEndpointState.Active),
         new(SpeakerEndpointId, "Fones de ouvido (Caixa Simulada)", SpeakerContainerId, SpeakerActive ? AudioEndpointState.Active : AudioEndpointState.Unplugged),
+        .. ExtraRenderEndpoints,
     ];
 
     public string? GetDefaultRenderEndpointId() => DefaultEndpointId;

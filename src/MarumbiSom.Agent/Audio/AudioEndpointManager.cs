@@ -10,6 +10,7 @@ namespace MarumbiSom.Agent.Audio;
 public sealed class AudioEndpointManager : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(10);
+    private const int MaxBounces = 3;
 
     private readonly IAudioEndpoints _endpoints;
     private readonly IBluetoothConnection _connection;
@@ -19,6 +20,9 @@ public sealed class AudioEndpointManager : BackgroundService
 
     private string? _lastNonSpeakerDefault;
     private bool _policyConfigDisabled;
+    private bool _restoredLastPass;
+    private int _bounces;
+    private volatile bool _gaveUp;
 
     public AudioEndpointManager(IAudioEndpoints endpoints, IBluetoothConnection connection, TimeProvider time, ILogger<AudioEndpointManager> logger)
     {
@@ -30,6 +34,7 @@ public sealed class AudioEndpointManager : BackgroundService
         {
             if (e.IsConnected)
             {
+                _gaveUp = false;
                 _wake.Release();
             }
         };
@@ -112,13 +117,37 @@ public sealed class AudioEndpointManager : BackgroundService
             return;
         }
 
-        if (current != speakerEndpointId)
+        var endpoints = _endpoints.ListRenderEndpoints();
+        if (!IsSpeakerSide(current, speakerEndpointId, endpoints))
         {
             _lastNonSpeakerDefault = current;
+            _bounces = 0;
+            _restoredLastPass = false;
             return;
         }
 
-        var target = _lastNonSpeakerDefault ?? FindAlternativeOutput(speakerEndpointId);
+        if (_gaveUp)
+        {
+            return;
+        }
+
+        // O Windows devolveu a saída para a caixa logo depois da última restauração (PC piloto, 23/10/2026: a cada 10 s).
+        // Brigar com ele não adianta e cada troca pode cortar o áudio da caixa; desiste até a caixa reconectar.
+        if (_restoredLastPass && ++_bounces >= MaxBounces)
+        {
+            _logger.LogWarning(
+                "O Windows voltou a saída padrão para a caixa {Count} vezes seguidas; a saída padrão fica na caixa até ela reconectar",
+                _bounces);
+            _gaveUp = true;
+            _bounces = 0;
+            _restoredLastPass = false;
+            return;
+        }
+
+        // Só restaura para uma saída ativa que não seja da própria caixa (o perfil "Viva-voz" da caixa tem outro endpoint no
+        // mesmo contêiner; usá-lo como padrão abre o perfil de chamada e corta o áudio estéreo).
+        var target = Usable(_lastNonSpeakerDefault, speakerEndpointId, endpoints)
+            ?? endpoints.FirstOrDefault(e => e.State == AudioEndpointState.Active && !IsSpeakerSide(e.Id, speakerEndpointId, endpoints));
         if (target is null)
         {
             return;
@@ -126,8 +155,11 @@ public sealed class AudioEndpointManager : BackgroundService
 
         try
         {
-            _endpoints.SetDefaultRenderEndpoint(target);
-            _logger.LogInformation("Saída padrão do Windows restaurada para {EndpointId} (o Windows tinha trocado para a caixa)", target);
+            _endpoints.SetDefaultRenderEndpoint(target.Id);
+            _restoredLastPass = true;
+            _logger.LogInformation(
+                "Saída padrão do Windows restaurada para {Target} ({EndpointId}); o Windows tinha trocado para {Current}",
+                target.FriendlyName, target.Id, NameOf(current, endpoints));
         }
         catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or InvalidCastException)
         {
@@ -137,10 +169,28 @@ public sealed class AudioEndpointManager : BackgroundService
         }
     }
 
-    private string? FindAlternativeOutput(string speakerEndpointId)
+    /// <summary>O endpoint é a caixa ou outro endpoint do mesmo dispositivo (mesmo contêiner, ex.: "Viva-voz").</summary>
+    private static bool IsSpeakerSide(string endpointId, string? speakerEndpointId, IReadOnlyList<AudioEndpoint> endpoints)
     {
-        var speakerContainer = _endpoints.ListRenderEndpoints().FirstOrDefault(e => e.Id == speakerEndpointId)?.ContainerId;
-        return _endpoints.ListRenderEndpoints()
-            .FirstOrDefault(e => e.State == AudioEndpointState.Active && e.Id != speakerEndpointId && e.ContainerId != speakerContainer)?.Id;
+        if (speakerEndpointId is null)
+        {
+            return false;
+        }
+
+        if (endpointId == speakerEndpointId)
+        {
+            return true;
+        }
+
+        var container = endpoints.FirstOrDefault(e => e.Id == speakerEndpointId)?.ContainerId;
+        return container is not null && endpoints.Any(e => e.Id == endpointId && e.ContainerId == container);
     }
+
+    private static AudioEndpoint? Usable(string? endpointId, string? speakerEndpointId, IReadOnlyList<AudioEndpoint> endpoints) =>
+        endpointId is null || IsSpeakerSide(endpointId, speakerEndpointId, endpoints)
+            ? null
+            : endpoints.FirstOrDefault(e => e.Id == endpointId && e.State == AudioEndpointState.Active);
+
+    private static string NameOf(string endpointId, IReadOnlyList<AudioEndpoint> endpoints) =>
+        endpoints.FirstOrDefault(e => e.Id == endpointId)?.FriendlyName ?? endpointId;
 }
