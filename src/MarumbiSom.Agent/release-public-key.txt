@@ -1,4 +1,6 @@
 # Chave pública Ed25519 das atualizações do agente (seção 12.2, D27 c).
-# Gere o par com scripts\new-signing-key.ps1 no PC de desenvolvimento do administrador e cole abaixo só a chave
-# PÚBLICA (uma linha em base64). A chave privada nunca entra no repositório nem no Hub.
-# Sem uma chave aqui, o agente instalado recusa qualquer atualização remota.
+# Gerada pelo administrador com scripts\new-signing-key.ps1 em 24/10/2026. A chave privada correspondente fica só no
+# PC do administrador e na cópia offline; ela nunca entra no repositório nem no Hub.
+# Trocar esta linha deixa as lojas instaladas sem aceitar as próximas atualizações (veja "Perdi a chave privada" no
+# docs/runbook.md).
+PuwYentz/FGOZychLrCR1Xf1guKKNE20IK3+2g/Vrqk=

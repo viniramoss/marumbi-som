@@ -42,7 +42,7 @@ cd C:\MarumbiSom-release
 3. A chave privada fica em `Documentos\MarumbiSom\chave-assinatura-atualizacoes.txt`, legível só pelo seu
    usuário. Copie para um pendrive guardado em local seguro. Ela nunca vai para o Git, o Hub, e-mail ou nuvem.
 4. A chave pública aparece na tela. Ela entra no repositório em `src/MarumbiSom.Agent/release-public-key.txt`;
-   os builds seguintes do CI já saem com ela.
+   os builds seguintes do CI já saem com ela. A chave atual foi gerada em 24/10/2026.
 
 ## Publicar uma versão
 
