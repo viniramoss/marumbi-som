@@ -125,15 +125,3 @@ public sealed record AgentReleaseInfo(string Version, string Sha256, long SizeBy
 
 /// <summary>Andamento de uma atualização, no campo <c>update</c> do status (D27 e). <see cref="Stage"/> é de <see cref="UpdateStages"/>.</summary>
 public sealed record UpdateProgress(string Version, string Stage, long DoneBytes, long TotalBytes, string? Error = null);
-
-public static class UpdateStages
-{
-    public const string Downloading = "downloading";
-    public const string Verifying = "verifying";
-    public const string Installing = "installing";
-    public const string Done = "done";
-    public const string Failed = "failed";
-    public const string RolledBack = "rolledBack";
-
-    public static bool InProgress(string stage) => stage is Downloading or Verifying or Installing;
-}

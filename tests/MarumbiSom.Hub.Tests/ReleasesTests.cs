@@ -1,8 +1,6 @@
-using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using MarumbiSom.Contracts.Json;
@@ -15,8 +13,6 @@ namespace MarumbiSom.Hub.Tests;
 /// <summary>Versões do agente para distribuição e o comando "atualizar agente" (Etapa 6, D27 d).</summary>
 public sealed class ReleasesTests
 {
-    private static readonly string[] AgentFiles = ["MarumbiSom.Agent.exe", "MarumbiSom.Updater.exe", ReleaseSigning.PublicKeyFileName];
-
     [Fact]
     public async Task Envio_confere_o_sha_e_o_conteudo_e_a_ultima_versao_vira_a_de_distribuicao()
     {
@@ -24,14 +20,14 @@ public sealed class ReleasesTests
         var admin = await hub.AdminClientAsync();
         var (key, _) = ReleaseSigning.NewKeyPair();
 
-        var first = await UploadAsync(admin, Package("0.6.10", key));
+        var first = await ReleasePackages.UploadAsync(admin, ReleasePackages.Package("0.6.10", key));
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
         var info = await HubHarness.JsonAsync(first);
         Assert.Equal(("0.6.10", true, 0), (info.GetProperty("version").GetString(), info.GetProperty("isCurrent").GetBoolean(), info.GetProperty("storeCount").GetInt32()));
 
-        var second = Package("0.6.11", key);
-        Assert.Equal(HttpStatusCode.Created, (await UploadAsync(admin, second)).StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, (await UploadAsync(admin, second)).StatusCode);
+        var second = ReleasePackages.Package("0.6.11", key);
+        Assert.Equal(HttpStatusCode.Created, (await ReleasePackages.UploadAsync(admin, second)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await ReleasePackages.UploadAsync(admin, second)).StatusCode);
 
         var list = (await HubHarness.JsonAsync(await admin.GetAsync("/api/releases"))).EnumerateArray().ToList();
         Assert.Equal(["0.6.11", "0.6.10"], list.Select(r => r.GetProperty("version").GetString()));
@@ -49,19 +45,19 @@ public sealed class ReleasesTests
         var admin = await hub.AdminClientAsync();
         var (key, _) = ReleaseSigning.NewKeyPair();
 
-        async Task<string> RejectedAsync(ReleaseFiles files)
+        async Task<string> RejectedAsync(ReleasePackages.ReleaseFiles files)
         {
-            var response = await UploadAsync(admin, files);
+            var response = await ReleasePackages.UploadAsync(admin, files);
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
             return await ErrorAsync(response);
         }
 
-        var good = Package("0.6.10", key);
-        var other = Package("0.6.10", key, extra: "outro conteúdo");
+        var good = ReleasePackages.Package("0.6.10", key);
+        var other = ReleasePackages.Package("0.6.10", key, extra: "outro conteúdo");
         Assert.Contains("SHA-256", await RejectedAsync(good with { Zip = other.Zip }), StringComparison.Ordinal);
-        Assert.Contains("MarumbiSom.Updater.exe", await RejectedAsync(Package("0.6.10", key, files: ["MarumbiSom.Agent.exe", ReleaseSigning.PublicKeyFileName])), StringComparison.Ordinal);
-        Assert.Contains("caminhos inválidos", await RejectedAsync(Package("0.6.10", key, extra: "x", extraName: "../fora.txt")), StringComparison.Ordinal);
-        Assert.Contains("não é um .zip", await RejectedAsync(Signed("0.6.10", key, Encoding.UTF8.GetBytes("isto não é zip"))), StringComparison.Ordinal);
+        Assert.Contains("MarumbiSom.Updater.exe", await RejectedAsync(ReleasePackages.Package("0.6.10", key, files: ["MarumbiSom.Agent.exe", ReleaseSigning.PublicKeyFileName])), StringComparison.Ordinal);
+        Assert.Contains("caminhos inválidos", await RejectedAsync(ReleasePackages.Package("0.6.10", key, extra: "x", extraName: "../fora.txt")), StringComparison.Ordinal);
+        Assert.Contains("não é um .zip", await RejectedAsync(ReleasePackages.SignedZip("0.6.10", key, Encoding.UTF8.GetBytes("isto não é zip"))), StringComparison.Ordinal);
         Assert.Contains("assinatura inválido", await RejectedAsync(good with { Signature = "{\"version\":\"1.2\"}"u8.ToArray() }), StringComparison.Ordinal);
         Assert.Contains("dois arquivos", await RejectedAsync(good with { Signature = null }), StringComparison.Ordinal);
 
@@ -75,8 +71,8 @@ public sealed class ReleasesTests
         await using var hub = await HubHarness.StartAsync();
         var admin = await hub.AdminClientAsync();
         var (key, _) = ReleaseSigning.NewKeyPair();
-        await UploadAsync(admin, Package("0.6.10", key));
-        await UploadAsync(admin, Package("0.6.11", key));
+        await ReleasePackages.UploadAsync(admin, ReleasePackages.Package("0.6.10", key));
+        await ReleasePackages.UploadAsync(admin, ReleasePackages.Package("0.6.11", key));
 
         Assert.Equal(HttpStatusCode.BadRequest, (await admin.DeleteAsync("/api/releases/0.6.11")).StatusCode);
         var current = await HubHarness.JsonAsync(await admin.PutAsJsonAsync("/api/releases/current", new { version = "0.6.10" }));
@@ -100,8 +96,8 @@ public sealed class ReleasesTests
         Assert.Equal(HttpStatusCode.NotFound, (await agent.GetAsync("/agent/releases/current")).StatusCode);
 
         var (key, publicKey) = ReleaseSigning.NewKeyPair();
-        var package = Package("0.6.12", key);
-        await UploadAsync(admin, package);
+        var package = ReleasePackages.Package("0.6.12", key);
+        await ReleasePackages.UploadAsync(admin, package);
 
         var info = (await agent.GetFromJsonAsync<AgentReleaseInfo>("/agent/releases/current", ContractJson.Options))!;
         Assert.Equal(("0.6.12", package.Zip.LongLength), (info.Version, info.SizeBytes));
@@ -136,15 +132,15 @@ public sealed class ReleasesTests
         Assert.Contains("Configurações", await ErrorAsync(none), StringComparison.Ordinal);
 
         var (key, _) = ReleaseSigning.NewKeyPair();
-        var package = Package("0.6.12", key);
-        await UploadAsync(admin, package);
+        var package = ReleasePackages.Package("0.6.12", key);
+        await ReleasePackages.UploadAsync(admin, package);
         var commandTask = admin.PostAsJsonAsync($"/api/stores/{storeId}/commands", new { command = "updateAgent" });
         var command = Assert.IsType<CommandMessage>(await PanelTests.ReceiveAgentAsync(agent));
         await PanelTests.SendAsync(agent, new CommandResultMessage(command.Id, true));
         Assert.Equal("ok", (await HubHarness.JsonAsync(await commandTask)).GetProperty("result").GetString());
 
         var args = command.Args.Deserialize<AgentReleaseInfo>(ContractJson.Options)!;
-        Assert.Equal(new AgentReleaseInfo("0.6.12", Sha(package.Zip), package.Zip.LongLength, package.SignatureText), args);
+        Assert.Equal(new AgentReleaseInfo("0.6.12", ReleasePackages.Sha(package.Zip), package.Zip.LongLength, package.SignatureText), args);
         var wrong = await admin.PostAsJsonAsync($"/api/stores/{storeId}/commands", new { command = "updateAgent", args = new { version = "0.5.0" } });
         Assert.Equal(HttpStatusCode.BadRequest, wrong.StatusCode);
 
@@ -170,50 +166,7 @@ public sealed class ReleasesTests
         Assert.Equal(JsonValueKind.Null, later.GetProperty("status").GetProperty("update").ValueKind);
     }
 
-    internal sealed record ReleaseFiles(byte[] Zip, byte[]? Signature, string SignatureText);
-
-    internal static ReleaseFiles Package(string version, string privateKey, string[]? files = null, string? extra = null, string extraName = "leia-me.txt")
-    {
-        using var buffer = new MemoryStream();
-        using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
-        {
-            foreach (var name in files ?? AgentFiles)
-            {
-                using var writer = new StreamWriter(zip.CreateEntry(name).Open());
-                writer.Write($"{name} {version}");
-            }
-
-            if (extra is not null)
-            {
-                using var writer = new StreamWriter(zip.CreateEntry(extraName).Open());
-                writer.Write(extra);
-            }
-        }
-
-        return Signed(version, privateKey, buffer.ToArray());
-    }
-
-    private static ReleaseFiles Signed(string version, string privateKey, byte[] zip)
-    {
-        var sha = Sha(zip);
-        var signature = ReleaseSigning.Sign(privateKey, version, sha);
-        return new ReleaseFiles(zip, JsonSerializer.SerializeToUtf8Bytes(new ReleaseSignature(version, sha, signature), ContractJson.Options), signature);
-    }
-
     private static async Task<string> ErrorAsync(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.GetProperty("error").GetString()!;
 
-    private static string Sha(byte[] data) => Convert.ToHexStringLower(SHA256.HashData(data));
-
-    private static async Task<HttpResponseMessage> UploadAsync(HttpClient admin, ReleaseFiles files)
-    {
-        using var form = new MultipartFormDataContent();
-        form.Add(new ByteArrayContent(files.Zip), "package", "MarumbiSom.Agent-x.zip");
-        if (files.Signature is not null)
-        {
-            form.Add(new ByteArrayContent(files.Signature), "signature", "MarumbiSom.Agent-x.sig.json");
-        }
-
-        return await admin.PostAsync("/api/releases", form);
-    }
 }
