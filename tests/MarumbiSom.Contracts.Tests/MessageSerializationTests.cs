@@ -25,6 +25,19 @@ public class MessageSerializationTests
     }
 
     [Fact]
+    public void Status_traz_a_proxima_oferta_prevista_da_D26()
+    {
+        const string json = """
+            { "type": "status", "player": "playing", "volume": 70, "bluetooth": "connected", "diskFreeMb": 1, "uptimeS": 1,
+              "nextSpot": { "offerId": "of-12", "at": "2026-10-22T16:30:00-03:00" } }
+            """;
+
+        var status = Assert.IsType<StatusMessage>(JsonSerializer.Deserialize<AgentMessage>(json, ContractJson.Options));
+
+        Assert.Equal(new NextSpot("of-12", new DateTimeOffset(2026, 10, 22, 16, 30, 0, TimeSpan.FromHours(-3))), status.NextSpot);
+    }
+
+    [Fact]
     public void Mensagens_do_agente_incluem_o_campo_type()
     {
         AgentMessage message = new SpotSkippedMessage("of-12", "pl-3", SpotSkipReasons.Stale);

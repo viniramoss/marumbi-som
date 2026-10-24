@@ -43,9 +43,15 @@ public sealed record StatusMessage : AgentMessage
 
     /// <summary>Hashes das próximas até 10 faixas previstas (D23).</summary>
     public IReadOnlyList<string>? Queue { get; init; }
+
+    /// <summary>Próxima oferta prevista (D26 d).</summary>
+    public NextSpot? NextSpot { get; init; }
 }
 
 public sealed record SyncProgress(int Done, int Total);
+
+/// <summary>Oferta que o agente prevê tocar em seguida e quando (estimativa: a fila e as regras podem mudar).</summary>
+public sealed record NextSpot(string OfferId, DateTimeOffset At);
 
 [JsonConverter(typeof(JsonStringEnumConverter<PlayerStatus>))]
 public enum PlayerStatus

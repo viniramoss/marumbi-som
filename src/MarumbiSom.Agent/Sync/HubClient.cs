@@ -348,11 +348,14 @@ public sealed class HubClient : BackgroundService
             UptimeS = (long)_time.GetElapsedTime(_startedAt).TotalSeconds,
             PlaylistId = snapshot.WindowPlaylistId,
             Queue = snapshot.UpcomingHashes,
+            NextSpot = snapshot.NextSpot,
         };
     }
 
     private static string StatusKey(StatusMessage status) =>
-        $"{status.Player}|{status.NowPlaying}|{status.Volume}|{status.Bluetooth}|{status.PendingVersion}|{status.SyncProgress?.Done}/{status.SyncProgress?.Total}|{status.PlaylistId}|{string.Join(',', status.Queue ?? [])}";
+        $"{status.Player}|{status.NowPlaying}|{status.Volume}|{status.Bluetooth}|{status.PendingVersion}|{status.SyncProgress?.Done}/{status.SyncProgress?.Total}|{status.PlaylistId}|{string.Join(',', status.Queue ?? [])}"
+        // A previsão anda alguns milissegundos a cada ciclo; só a troca de oferta ou de minuto conta como mudança.
+        + $"|{status.NextSpot?.OfferId}@{status.NextSpot?.At.ToUniversalTime():yyyyMMddHHmm}";
 
     private long DiskFreeMb()
     {

@@ -677,6 +677,65 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/playlists/{id}/anchors': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: number;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['AnchorInput'][];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['PlaylistDetail'];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+        /** @description Not Found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/stores': {
     parameters: {
       query?: never;
@@ -1124,6 +1183,52 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/stores/{id}/offers': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: number;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['StoreOffer'][];
+          };
+        };
+        /** @description Not Found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/stores/{id}/history': {
     parameters: {
       query?: never;
@@ -1238,10 +1343,349 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/offers': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['OfferSummary'][];
+          };
+        };
+      };
+    };
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['OfferInput'];
+        };
+      };
+      responses: {
+        /** @description Created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['OfferDetail'];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/offers/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: number;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['OfferDetail'];
+          };
+        };
+        /** @description Not Found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: number;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description No Content */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Not Found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: number;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['OfferInput'];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['OfferDetail'];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+        /** @description Not Found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  '/api/offers/{id}/rules': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: number;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['OfferRule'][];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['OfferDetail'];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+        /** @description Not Found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/offers/{id}/audio': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: number;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Not Found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/offers/{id}/plays': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: number;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['OfferStorePlays'][];
+          };
+        };
+        /** @description Not Found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    AnchorInput: {
+      /** Format: int32 */
+      offerId: number;
+      itemId: string;
+      /** Format: int64 */
+      offsetMs?: null | number;
+      kind?: null | string;
+    };
     ApiError: {
       error: string;
     };
@@ -1279,12 +1723,16 @@ export interface components {
       createdAt: string;
     };
     HistoryEntry: {
-      trackHash: string;
+      trackHash: null | string;
       /** Format: date-time */
       startedAt: string;
       title: null | string;
       artist: null | string;
+      kind: components['schemas']['HistoryKind'];
+      result: null | string;
     };
+    /** @enum {unknown} */
+    HistoryKind: 'music' | 'offer';
     /** Format: binary */
     IFormFile: string;
     IFormFileCollection: components['schemas']['IFormFile'][];
@@ -1307,9 +1755,25 @@ export interface components {
     JsonObject: {
       [key: string]: unknown;
     };
+    LastOfferInfo: {
+      /** Format: int32 */
+      offerId: null | number;
+      name: string;
+      /** Format: date-time */
+      at: string;
+      result: null | string;
+    };
     LoginRequest: {
       username: string;
       password?: null | string;
+    };
+    NextOfferInfo: {
+      key: string;
+      /** Format: int32 */
+      offerId: null | number;
+      name: string;
+      /** Format: date-time */
+      at: string;
     };
     NowPlayingInfo: {
       hash: string;
@@ -1321,6 +1785,96 @@ export interface components {
       positionMs: null | number;
       /** Format: date-time */
       positionAt: null | string;
+    };
+    OfferAnchor: {
+      /** Format: int32 */
+      id: number;
+      /** Format: int32 */
+      offerId: number;
+      offerName: string;
+      /** Format: int32 */
+      playlistId: number;
+      playlistName: string;
+      itemId: string;
+      /** Format: int32 */
+      position: number;
+      trackTitle: string;
+      kind: string;
+      /** Format: int64 */
+      offsetMs: null | number;
+    };
+    OfferDetail: {
+      offer: components['schemas']['OfferSummary'];
+      rules: components['schemas']['OfferRule'][];
+      anchors: components['schemas']['OfferAnchor'][];
+      plays: components['schemas']['OfferStorePlays'][];
+    };
+    OfferInput: {
+      name?: null | string;
+      audioHash?: null | string;
+      /** Format: date-time */
+      validFrom?: null | string;
+      /** Format: date-time */
+      validUntil?: null | string;
+      /** Format: int32 */
+      duckLevel?: null | number;
+      enabled?: null | boolean;
+      storeIds?: null | number[];
+      rules?: null | components['schemas']['OfferRule'][];
+    };
+    OfferRule: {
+      kind: string;
+      /** Format: int32 */
+      id: null | number;
+      mode: null | components['schemas']['SpotMode'];
+      /** Format: int32 */
+      minutes: null | number;
+      /** @example 07:30 */
+      time: string;
+      days: null | number[];
+      /** Format: int32 */
+      n: null | number;
+      playlistIds: null | number[];
+    };
+    /** @enum {unknown} */
+    OfferState: 'live' | 'scheduled' | 'disabled' | 'expired';
+    OfferStorePlays: {
+      /** Format: int32 */
+      storeId: number;
+      storeName: string;
+      /** Format: int32 */
+      played: number;
+      /** Format: int32 */
+      interrupted: number;
+      /** Format: int32 */
+      skipped: number;
+    };
+    OfferSummary: {
+      /** Format: int32 */
+      id: number;
+      key: string;
+      name: string;
+      audioHash: string;
+      /** Format: int64 */
+      durationMs: number;
+      /** Format: date-time */
+      validFrom: string;
+      /** Format: date-time */
+      validUntil: string;
+      /** Format: int32 */
+      duckLevel: number;
+      enabled: boolean;
+      storeIds: number[];
+      status: components['schemas']['OfferState'];
+      expiresSoon: boolean;
+      /** Format: int32 */
+      ruleCount: number;
+      /** Format: int32 */
+      anchorCount: number;
+      /** Format: int32 */
+      plays7d: number;
+      /** Format: date-time */
+      updatedAt: string;
     };
     PanelMessage:
       | {
@@ -1344,6 +1898,7 @@ export interface components {
       shuffle: boolean;
       items: components['schemas']['PlaylistItemDetail'][];
       usage: components['schemas']['PlaylistUsage'][];
+      anchors: components['schemas']['OfferAnchor'][];
     };
     PlaylistInput: {
       name?: null | string;
@@ -1404,6 +1959,8 @@ export interface components {
       diskFreeMb: null | number;
       backup: components['schemas']['BackupInfo'];
     };
+    /** @enum {unknown} */
+    SpotMode: 'between' | 'during' | null;
     StoreAlert: {
       code: string;
       message: string;
@@ -1434,6 +1991,16 @@ export interface components {
       minOfferGapS?: null | number;
       timezone?: null | string;
       btDeviceName?: null | string;
+    };
+    StoreOffer: {
+      key: string;
+      /** Format: int32 */
+      offerId: null | number;
+      name: string;
+      /** Format: int64 */
+      durationMs: number;
+      /** Format: date-time */
+      validUntil: string;
     };
     StoreSummary: {
       /** Format: int32 */
@@ -1466,6 +2033,8 @@ export interface components {
       playlistName: null | string;
       open: boolean;
       hasSchedule: boolean;
+      nextOffer: null | components['schemas']['NextOfferInfo'];
+      lastOffer: null | components['schemas']['LastOfferInfo'];
       alerts: components['schemas']['StoreAlert'][];
     };
     StoreTrack: {

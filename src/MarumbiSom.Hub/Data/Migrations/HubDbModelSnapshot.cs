@@ -568,6 +568,14 @@ namespace MarumbiSom.Hub.Data.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("last_seen_at");
 
+                    b.Property<long?>("NextOfferAt")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("next_offer_at");
+
+                    b.Property<string>("NextOfferKey")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("next_offer_key");
+
                     b.Property<string>("NowPlayingHash")
                         .HasColumnType("TEXT")
                         .HasColumnName("now_playing_hash");

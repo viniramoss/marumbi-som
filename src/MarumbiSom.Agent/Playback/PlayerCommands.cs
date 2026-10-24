@@ -83,4 +83,7 @@ public sealed record PlayerSnapshot
 
     /// <summary>Hashes das mesmas faixas de <see cref="Upcoming"/>, para o Hub.</summary>
     public IReadOnlyList<string> UpcomingHashes { get; init; } = [];
+
+    /// <summary>Próxima oferta prevista (D26 d).</summary>
+    public NextSpot? NextSpot { get; init; }
 }

@@ -1423,6 +1423,7 @@ public sealed class PlayerEngine
             QueuedSpots = _spots.Queue.Select(q => $"{q.OfferId} ({q.Priority}, {q.Mode})").ToList(),
             Upcoming = upcoming.Select(i => TitleOf(i.Hash)).ToList(),
             UpcomingHashes = upcoming.Select(i => i.Hash).ToList(),
+            NextSpot = _spots.NextPlanned(BuildContext(now, _window), upcoming, hash => InfoOf(hash)?.DurationMs / 1000.0, _window?.End),
         };
     }
 

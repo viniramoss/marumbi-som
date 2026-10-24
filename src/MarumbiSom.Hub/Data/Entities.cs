@@ -159,6 +159,11 @@ public sealed class StoreState
     /// <summary>Lista JSON com os hashes das próximas faixas.</summary>
     public string? QueueJson { get; set; }
 
+    /// <summary>Próxima oferta prevista pelo agente, como no manifesto (<c>of-12</c>), e quando (D26 d).</summary>
+    public string? NextOfferKey { get; set; }
+
+    public DateTimeOffset? NextOfferAt { get; set; }
+
     public int? Volume { get; set; }
 
     public long? DiskFreeMb { get; set; }

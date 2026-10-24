@@ -241,6 +241,8 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
                     state.UptimeS = status.UptimeS;
                     state.PlaylistKey = status.PlaylistId;
                     state.QueueJson = status.Queue is null ? null : JsonSerializer.Serialize(status.Queue.Take(10));
+                    state.NextOfferKey = status.NextSpot?.OfferId;
+                    state.NextOfferAt = status.NextSpot?.At.ToUniversalTime();
                     break;
                 case CommandResultMessage result:
                     if (int.TryParse(result.Id, NumberStyles.None, CultureInfo.InvariantCulture, out var commandId)

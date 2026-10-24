@@ -606,6 +606,69 @@
         }
       }
     },
+    "/api/playlists/{id}/anchors": {
+      "put": {
+        "tags": [
+          "PlaylistsEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AnchorInput"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/stores": {
       "get": {
         "tags": [
@@ -1043,6 +1106,49 @@
         }
       }
     },
+    "/api/stores/{id}/offers": {
+      "get": {
+        "tags": [
+          "StoresEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StoreOffer"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/stores/{id}/history": {
       "get": {
         "tags": [
@@ -1151,10 +1257,359 @@
           }
         }
       }
+    },
+    "/api/offers": {
+      "get": {
+        "tags": [
+          "OffersEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OfferSummary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "OffersEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfferInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfferDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/offers/{id}": {
+      "get": {
+        "tags": [
+          "OffersEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfferDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "OffersEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfferInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfferDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "OffersEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/offers/{id}/rules": {
+      "put": {
+        "tags": [
+          "OffersEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OfferRule"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OfferDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/offers/{id}/audio": {
+      "get": {
+        "tags": [
+          "OffersEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/offers/{id}/plays": {
+      "get": {
+        "tags": [
+          "OffersEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OfferStorePlays"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AnchorInput": {
+        "required": [
+          "offerId",
+          "itemId"
+        ],
+        "type": "object",
+        "properties": {
+          "offerId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "offsetMs": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "kind": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "ApiError": {
         "required": [
           "error"
@@ -1303,12 +1758,17 @@
           "trackHash",
           "startedAt",
           "title",
-          "artist"
+          "artist",
+          "kind",
+          "result"
         ],
         "type": "object",
         "properties": {
           "trackHash": {
-            "type": "string"
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "startedAt": {
             "type": "string",
@@ -1325,8 +1785,23 @@
               "null",
               "string"
             ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/HistoryKind"
+          },
+          "result": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
+      },
+      "HistoryKind": {
+        "enum": [
+          "music",
+          "offer"
+        ]
       },
       "IFormFile": {
         "type": "string",
@@ -1411,6 +1886,37 @@
         "type": "object",
         "additionalProperties": {}
       },
+      "LastOfferInfo": {
+        "required": [
+          "offerId",
+          "name",
+          "at",
+          "result"
+        ],
+        "type": "object",
+        "properties": {
+          "offerId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "result": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "LoginRequest": {
         "required": [
           "username"
@@ -1425,6 +1931,34 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "NextOfferInfo": {
+        "required": [
+          "key",
+          "offerId",
+          "name",
+          "at"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "offerId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -1473,6 +2007,355 @@
               "null",
               "string"
             ],
+            "format": "date-time"
+          }
+        }
+      },
+      "OfferAnchor": {
+        "required": [
+          "id",
+          "offerId",
+          "offerName",
+          "playlistId",
+          "playlistName",
+          "itemId",
+          "position",
+          "trackTitle",
+          "kind",
+          "offsetMs"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "offerId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "offerName": {
+            "type": "string"
+          },
+          "playlistId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "playlistName": {
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "position": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "trackTitle": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "offsetMs": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "OfferDetail": {
+        "required": [
+          "offer",
+          "rules",
+          "anchors",
+          "plays"
+        ],
+        "type": "object",
+        "properties": {
+          "offer": {
+            "$ref": "#/components/schemas/OfferSummary"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OfferRule"
+            }
+          },
+          "anchors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OfferAnchor"
+            }
+          },
+          "plays": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OfferStorePlays"
+            }
+          }
+        }
+      },
+      "OfferInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "audioHash": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "validFrom": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "validUntil": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "duckLevel": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "enabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "storeIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "rules": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/OfferRule"
+            }
+          }
+        }
+      },
+      "OfferRule": {
+        "required": [
+          "kind",
+          "id",
+          "mode",
+          "minutes",
+          "time",
+          "days",
+          "n",
+          "playlistIds"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "id": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SpotMode"
+              }
+            ]
+          },
+          "minutes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "time": {
+            "examples": [
+              "07:30"
+            ],
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$",
+            "type": "string"
+          },
+          "days": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "n": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "playlistIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        }
+      },
+      "OfferState": {
+        "enum": [
+          "live",
+          "scheduled",
+          "disabled",
+          "expired"
+        ]
+      },
+      "OfferStorePlays": {
+        "required": [
+          "storeId",
+          "storeName",
+          "played",
+          "interrupted",
+          "skipped"
+        ],
+        "type": "object",
+        "properties": {
+          "storeId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "storeName": {
+            "type": "string"
+          },
+          "played": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "interrupted": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "OfferSummary": {
+        "required": [
+          "id",
+          "key",
+          "name",
+          "audioHash",
+          "durationMs",
+          "validFrom",
+          "validUntil",
+          "duckLevel",
+          "enabled",
+          "storeIds",
+          "status",
+          "expiresSoon",
+          "ruleCount",
+          "anchorCount",
+          "plays7d",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "audioHash": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "validFrom": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "duckLevel": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "storeIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/OfferState"
+          },
+          "expiresSoon": {
+            "type": "boolean"
+          },
+          "ruleCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "anchorCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "plays7d": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updatedAt": {
+            "type": "string",
             "format": "date-time"
           }
         }
@@ -1542,7 +2425,8 @@
           "name",
           "shuffle",
           "items",
-          "usage"
+          "usage",
+          "anchors"
         ],
         "type": "object",
         "properties": {
@@ -1566,6 +2450,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PlaylistUsage"
+            }
+          },
+          "anchors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OfferAnchor"
             }
           }
         }
@@ -1790,6 +2680,13 @@
           }
         }
       },
+      "SpotMode": {
+        "enum": [
+          "between",
+          "during",
+          null
+        ]
+      },
       "StoreAlert": {
         "required": [
           "code",
@@ -1914,6 +2811,39 @@
           }
         }
       },
+      "StoreOffer": {
+        "required": [
+          "key",
+          "offerId",
+          "name",
+          "durationMs",
+          "validUntil"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "offerId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "StoreSummary": {
         "required": [
           "id",
@@ -1937,6 +2867,8 @@
           "playlistName",
           "open",
           "hasSchedule",
+          "nextOffer",
+          "lastOffer",
           "alerts"
         ],
         "type": "object",
@@ -2058,6 +2990,26 @@
           },
           "hasSchedule": {
             "type": "boolean"
+          },
+          "nextOffer": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NextOfferInfo"
+              }
+            ]
+          },
+          "lastOffer": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LastOfferInfo"
+              }
+            ]
           },
           "alerts": {
             "type": "array",
@@ -2194,6 +3146,9 @@
     },
     {
       "name": "StoresEndpoints"
+    },
+    {
+      "name": "OffersEndpoints"
     }
   ]
 }

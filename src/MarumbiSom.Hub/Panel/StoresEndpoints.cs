@@ -31,6 +31,7 @@ public static class StoresEndpoints
         api.MapPost("/stores/{id:int}/commands", CommandAsync)
             .Returns<CommandOutcome>(StatusCodes.Status200OK, StatusCodes.Status400BadRequest, StatusCodes.Status404NotFound);
         api.MapGet("/stores/{id:int}/tracks", TracksAsync).Returns<IReadOnlyList<StoreTrack>>(StatusCodes.Status200OK, StatusCodes.Status404NotFound);
+        api.MapGet("/stores/{id:int}/offers", OffersAsync).Returns<IReadOnlyList<StoreOffer>>(StatusCodes.Status200OK, StatusCodes.Status404NotFound);
         api.MapGet("/stores/{id:int}/history", HistoryAsync).Returns<IReadOnlyList<HistoryEntry>>();
         api.MapGet("/stores/{id:int}/events", EventsAsync).Returns<IReadOnlyList<EventEntry>>();
     }
@@ -278,22 +279,57 @@ public static class StoresEndpoints
         return Results.Ok(tracks);
     }
 
+    /// <summary>Ofertas do manifesto que a loja aplicou e que valem agora (para "tocar oferta agora", D26 g).</summary>
+    private static async Task<IResult> OffersAsync(int id, HubDb db, TimeProvider time, CancellationToken cancellationToken)
+    {
+        if (!await db.Stores.AnyAsync(s => s.Id == id, cancellationToken))
+        {
+            return Results.NotFound();
+        }
+
+        var applied = await db.StoreStates.Where(s => s.StoreId == id).Select(s => s.AppliedVersion).SingleOrDefaultAsync(cancellationToken);
+        var stored = await db.StoreManifests.AsNoTracking().Where(m => m.StoreId == id && m.Version == applied).SingleOrDefaultAsync(cancellationToken)
+            ?? await ManifestPublisher.LatestAsync(db, id, cancellationToken);
+        if (stored is null)
+        {
+            return Results.Ok(Array.Empty<StoreOffer>());
+        }
+
+        var now = time.GetUtcNow();
+        var manifest = ManifestPublisher.Deserialize(stored);
+        var offers = manifest.Spots.Offers.Where(o => o.Value.IsValidAt(now))
+            .Select(o => new StoreOffer(
+                o.Key, ManifestGenerator.ParseKey(o.Key, "of-"), o.Value.Name, manifest.Tracks.GetValueOrDefault(o.Value.Hash)?.DurationMs ?? 0, o.Value.ValidUntil))
+            .OrderBy(o => o.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        return Results.Ok(offers);
+    }
+
+    /// <summary>O que tocou na loja: músicas e ofertas (D26 g), da mais recente para a mais antiga.</summary>
     private static async Task<IResult> HistoryAsync(int id, HubDb db, int? limit, DateTimeOffset? since, CancellationToken cancellationToken)
     {
         var take = Math.Clamp(limit ?? 100, 1, 2000);
         var query = db.PlayHistory.AsNoTracking().Where(h => h.StoreId == id);
+        var plays = db.OfferPlays.AsNoTracking().Where(p => p.StoreId == id && (p.Result == null || p.Result != "skipped"));
         if (since is { } from)
         {
             query = query.Where(h => h.StartedAt >= from);
+            plays = plays.Where(p => p.StartedAt >= from);
         }
 
-        var history = await query.OrderByDescending(h => h.StartedAt).Take(take)
+        var tracks = await query.OrderByDescending(h => h.StartedAt).Take(take)
             .GroupJoin(db.Tracks, h => h.TrackHash, t => t.Hash, (h, tracks) => new { h, tracks })
             .SelectMany(
                 x => x.tracks.DefaultIfEmpty(),
-                (x, t) => new HistoryEntry(x.h.TrackHash, x.h.StartedAt, t != null ? t.Title : null, t != null ? t.Artist : null))
+                (x, t) => new HistoryEntry(x.h.TrackHash, x.h.StartedAt, t != null ? t.Title : null, t != null ? t.Artist : null, HistoryKind.Music, null))
             .ToListAsync(cancellationToken);
-        return Results.Ok(history.OrderByDescending(h => h.StartedAt));
+        var offers = await plays.OrderByDescending(p => p.StartedAt).Take(take)
+            .GroupJoin(db.Offers, p => p.OfferId, o => o.Id, (p, offers) => new { p, offers })
+            .SelectMany(
+                x => x.offers.DefaultIfEmpty(),
+                (x, o) => new HistoryEntry(o != null ? o.AudioHash : null, x.p.StartedAt, o != null ? o.Name : null, null, HistoryKind.Offer, x.p.Result))
+            .ToListAsync(cancellationToken);
+        return Results.Ok(tracks.Concat(offers).OrderByDescending(h => h.StartedAt).Take(take));
     }
 
     private static async Task<IResult> EventsAsync(int id, HubDb db, int? limit, CancellationToken cancellationToken)
@@ -442,7 +478,18 @@ public static class StoresEndpoints
 
     public sealed record StoreTrack(string Hash, string Title, string? Artist, long DurationMs);
 
-    public sealed record HistoryEntry(string TrackHash, DateTimeOffset StartedAt, string? Title, string? Artist);
+    /// <param name="Key">Identificador no manifesto, usado no comando <c>playOffer</c> (<c>of-12</c>).</param>
+    public sealed record StoreOffer(string Key, int? OfferId, string Name, long DurationMs, DateTimeOffset ValidUntil);
+
+    /// <param name="TrackHash">Hash do áudio; nulo numa oferta que já foi removida.</param>
+    /// <param name="Result">Só nas ofertas: <c>played</c>, <c>interrupted</c> ou nulo enquanto toca.</param>
+    public sealed record HistoryEntry(string? TrackHash, DateTimeOffset StartedAt, string? Title, string? Artist, HistoryKind Kind, string? Result);
+
+    public enum HistoryKind
+    {
+        Music,
+        Offer,
+    }
 
     public sealed record EventEntry(string Type, JsonObject? Data, DateTimeOffset CreatedAt);
 
