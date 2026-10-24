@@ -4,12 +4,14 @@
     <Project Path="src/MarumbiSom.Agent/MarumbiSom.Agent.csproj" />
     <Project Path="src/MarumbiSom.Contracts/MarumbiSom.Contracts.csproj" />
     <Project Path="src/MarumbiSom.Hub/MarumbiSom.Hub.csproj" />
+    <Project Path="src/MarumbiSom.Release/MarumbiSom.Release.csproj" />
     <Project Path="src/MarumbiSom.Updater/MarumbiSom.Updater.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/MarumbiSom.Agent.Tests/MarumbiSom.Agent.Tests.csproj" />
     <Project Path="tests/MarumbiSom.Contracts.Tests/MarumbiSom.Contracts.Tests.csproj" />
     <Project Path="tests/MarumbiSom.Hub.Tests/MarumbiSom.Hub.Tests.csproj" />
+    <Project Path="tests/MarumbiSom.Release.Tests/MarumbiSom.Release.Tests.csproj" />
     <Project Path="tests/MarumbiSom.Updater.Tests/MarumbiSom.Updater.Tests.csproj" />
   </Folder>
 </Solution>
