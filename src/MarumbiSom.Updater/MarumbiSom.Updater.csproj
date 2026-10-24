@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>MarumbiSom.Updater</RootNamespace>
+    <AssemblyName>MarumbiSom.Updater</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Analisa no build o que o trimming da publicação precisa (JSON por source generator, sem reflexão). -->
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+  </PropertyGroup>
+
+  <!--
+    Um único .exe com o runtime embutido: o Updater roda copiado em data\updates\updater, longe da pasta do programa
+    que ele troca (D27 e, f).
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed>true</PublishTrimmed>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.ServiceProcess.ServiceController" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Arquivos trocados com o agente; compilado aqui para o Updater não depender do Contracts. -->
+    <Compile Include="..\MarumbiSom.Contracts\Releases\UpdateFiles.cs" Link="UpdateFiles.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MarumbiSom.Updater.Tests" />
+  </ItemGroup>
+
+</Project>
