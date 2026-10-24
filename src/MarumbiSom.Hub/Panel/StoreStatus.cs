@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MarumbiSom.Contracts.Releases;
 using MarumbiSom.Hub.Agents;
 using MarumbiSom.Hub.Data;
 using MarumbiSom.Hub.Manifests;
@@ -83,8 +84,22 @@ public sealed class StoreStatusReader(AgentConnections agents, TimeProvider time
                 state?.AppliedVersion, state?.PendingVersion, state?.SyncDone, state?.SyncTotal, state?.PlayerState, nowPlaying, state?.BtState, state?.Volume,
                 state?.DiskFreeMb, state?.AgentVersion, state?.LastSeenAt, state?.PlaylistKey,
                 playlistId is { } p && playlists.TryGetValue(p, out var name) ? name : null, open, store.Schedules.Count > 0, nextOffer, lastOffer,
-                Alerts(store, state, online, open, restarts.GetValueOrDefault(store.Id), now));
+                Update(state, now), Alerts(store, state, online, open, restarts.GetValueOrDefault(store.Id), now));
         }).ToList();
+    }
+
+    public static readonly TimeSpan UpdateResultFor = TimeSpan.FromHours(24);
+
+    public static UpdateInfo? Update(StoreState? state, DateTimeOffset now)
+    {
+        if (state is not { UpdateVersion: { } version, UpdateStage: { } stage, UpdateAt: { } at })
+        {
+            return null;
+        }
+
+        return UpdateStages.InProgress(stage) || now - at < UpdateResultFor
+            ? new UpdateInfo(version, stage, state.UpdateDoneBytes, state.UpdateTotalBytes, state.UpdateError, at)
+            : null;
     }
 
     private static string OfferName(Dictionary<int, string> names, int? offerId) =>
@@ -204,6 +219,7 @@ public sealed record StoreSummary(
     bool HasSchedule,
     NextOfferInfo? NextOffer,
     LastOfferInfo? LastOffer,
+    UpdateInfo? Update,
     IReadOnlyList<StoreAlert> Alerts);
 
 /// <summary>Próxima oferta prevista pelo agente (D26 d); só com a loja conectada.</summary>
@@ -211,3 +227,8 @@ public sealed record NextOfferInfo(string Key, int? OfferId, string Name, DateTi
 
 /// <summary>Última oferta que começou a tocar na loja nos últimos 7 dias; <c>Result</c> nulo = tocando agora.</summary>
 public sealed record LastOfferInfo(int? OfferId, string Name, DateTimeOffset At, string? Result);
+
+/// <summary>
+/// Atualização do agente (D27 h): em andamento sempre; o resultado (<c>done</c>, <c>failed</c>, <c>rolledBack</c>) por 24 horas.
+/// </summary>
+public sealed record UpdateInfo(string Version, string Stage, long? DoneBytes, long? TotalBytes, string? Error, DateTimeOffset At);

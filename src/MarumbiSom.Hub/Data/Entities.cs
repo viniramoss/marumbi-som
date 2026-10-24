@@ -166,6 +166,20 @@ public sealed class StoreState
 
     public int? Volume { get; set; }
 
+    /// <summary>Atualização do agente: a em andamento (pelo status) ou o último resultado (pelos eventos), D27 e/f.</summary>
+    public string? UpdateVersion { get; set; }
+
+    /// <summary>Um dos valores de <see cref="Contracts.Releases.UpdateStages"/>.</summary>
+    public string? UpdateStage { get; set; }
+
+    public long? UpdateDoneBytes { get; set; }
+
+    public long? UpdateTotalBytes { get; set; }
+
+    public string? UpdateError { get; set; }
+
+    public DateTimeOffset? UpdateAt { get; set; }
+
     public long? DiskFreeMb { get; set; }
 
     public string? AgentVersion { get; set; }
@@ -319,6 +333,26 @@ public sealed class AuditEntry
     public string? DataJson { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>Pacote assinado do agente (seção 12.2, D27 d). O arquivo fica em data\releases.</summary>
+public sealed class AgentRelease
+{
+    public required string Version { get; set; }
+
+    public required string Sha256 { get; set; }
+
+    public long SizeBytes { get; set; }
+
+    /// <summary>Assinatura Ed25519 em Base64; quem confere é o agente, com a chave pública dele.</summary>
+    public required string Signature { get; set; }
+
+    public required string FileName { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>Versão para distribuição: a que "Atualizar agente" instala.</summary>
+    public bool IsCurrent { get; set; }
 }
 
 public sealed class Setting

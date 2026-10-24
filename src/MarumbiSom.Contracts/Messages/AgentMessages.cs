@@ -46,6 +46,9 @@ public sealed record StatusMessage : AgentMessage
 
     /// <summary>Próxima oferta prevista (D26 d).</summary>
     public NextSpot? NextSpot { get; init; }
+
+    /// <summary>Atualização do agente em andamento (D27 e).</summary>
+    public Releases.UpdateProgress? Update { get; init; }
 }
 
 public sealed record SyncProgress(int Done, int Total);
@@ -112,4 +115,13 @@ public static class AgentEvents
     public const string BluetoothRecoveryAction = "bluetooth.recovery";
     public const string PlayerRestarted = "player.restarted";
     public const string AgentStarted = "agent.started";
+
+    /// <summary>Atualização recusada ou que falhou antes de instalar (D27 e); <c>data</c> traz version e error.</summary>
+    public const string UpdateFailed = "update.failed";
+
+    /// <summary>Agente novo no ar depois de uma atualização (D27 f).</summary>
+    public const string UpdateDone = "update.done";
+
+    /// <summary>O Updater restaurou a versão anterior (D27 f).</summary>
+    public const string UpdateRolledBack = "update.rolledBack";
 }

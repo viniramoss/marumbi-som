@@ -33,6 +33,7 @@ export function storeSummary(overrides: Partial<StoreSummary> = {}): StoreSummar
     hasSchedule: true,
     nextOffer: null,
     lastOffer: null,
+    update: null,
     alerts: [],
     ...overrides,
   };

@@ -43,6 +43,8 @@ public sealed class HubDb(DbContextOptions<HubDb> options) : DbContext(options)
 
     public DbSet<Setting> Settings => Set<Setting>();
 
+    public DbSet<AgentRelease> AgentReleases => Set<AgentRelease>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         ArgumentNullException.ThrowIfNull(configurationBuilder);
@@ -159,6 +161,11 @@ public sealed class HubDb(DbContextOptions<HubDb> options) : DbContext(options)
         {
             e.ToTable("settings");
             e.HasKey(x => x.Key);
+        });
+        modelBuilder.Entity<AgentRelease>(e =>
+        {
+            e.ToTable("agent_releases");
+            e.HasKey(r => r.Version);
         });
 
         // Colunas em snake_case, como na seção 6.3.

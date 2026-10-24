@@ -17,6 +17,44 @@ namespace MarumbiSom.Hub.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
 
+            modelBuilder.Entity("MarumbiSom.Hub.Data.AgentRelease", b =>
+                {
+                    b.Property<string>("Version")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("version");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("file_name");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("is_current");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("sha256");
+
+                    b.Property<string>("Signature")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("signature");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("size_bytes");
+
+                    b.HasKey("Version");
+
+                    b.ToTable("agent_releases", (string)null);
+                });
+
             modelBuilder.Entity("MarumbiSom.Hub.Data.AuditEntry", b =>
                 {
                     b.Property<long>("Id")
@@ -615,6 +653,30 @@ namespace MarumbiSom.Hub.Data.Migrations
                     b.Property<int?>("SyncTotal")
                         .HasColumnType("INTEGER")
                         .HasColumnName("sync_total");
+
+                    b.Property<long?>("UpdateAt")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("update_at");
+
+                    b.Property<long?>("UpdateDoneBytes")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("update_done_bytes");
+
+                    b.Property<string>("UpdateError")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("update_error");
+
+                    b.Property<string>("UpdateStage")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("update_stage");
+
+                    b.Property<long?>("UpdateTotalBytes")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("update_total_bytes");
+
+                    b.Property<string>("UpdateVersion")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("update_version");
 
                     b.Property<long?>("UptimeS")
                         .HasColumnType("INTEGER")

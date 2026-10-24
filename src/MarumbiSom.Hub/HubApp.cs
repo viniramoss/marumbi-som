@@ -113,6 +113,7 @@ public static class HubApp
         api.MapStores();
         api.MapSettings();
         api.MapOffers();
+        api.MapReleases();
         app.MapPanelOpenApi();
         app.MapAgentApi();
         app.MapGet("/healthz", () => Results.Ok(new { ok = true })).ExcludeFromDescription();

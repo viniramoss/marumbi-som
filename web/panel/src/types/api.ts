@@ -1674,6 +1674,183 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/releases': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ReleaseInfo'][];
+          };
+        };
+      };
+    };
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'multipart/form-data': components['schemas']['IFormFileCollection'];
+        };
+      };
+      responses: {
+        /** @description Created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ReleaseInfo'];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+        /** @description Conflict */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/releases/current': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['CurrentReleaseInput'];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ReleaseInfo'];
+          };
+        };
+        /** @description Not Found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/releases/{version}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          version: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description No Content */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Bad Request */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+        /** @description Not Found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1710,6 +1887,9 @@ export interface components {
       id: number;
       result: string;
       error: null | string;
+    };
+    CurrentReleaseInput: {
+      version: string;
     };
     EnrollCodeResult: {
       code: string;
@@ -1940,6 +2120,17 @@ export interface components {
       /** @example 07:30 */
       end: string;
     };
+    ReleaseInfo: {
+      version: string;
+      sha256: string;
+      /** Format: int64 */
+      sizeBytes: number;
+      /** Format: date-time */
+      createdAt: string;
+      isCurrent: boolean;
+      /** Format: int32 */
+      storeCount: number;
+    };
     ScheduleInput: {
       days: number[];
       /** @example 07:30 */
@@ -2035,6 +2226,7 @@ export interface components {
       hasSchedule: boolean;
       nextOffer: null | components['schemas']['NextOfferInfo'];
       lastOffer: null | components['schemas']['LastOfferInfo'];
+      update: null | components['schemas']['UpdateInfo'];
       alerts: components['schemas']['StoreAlert'][];
     };
     StoreTrack: {
@@ -2065,6 +2257,17 @@ export interface components {
     TrackUpdate: {
       title?: null | string;
       artist?: null | string;
+    };
+    UpdateInfo: {
+      version: string;
+      stage: string;
+      /** Format: int64 */
+      doneBytes: null | number;
+      /** Format: int64 */
+      totalBytes: null | number;
+      error: null | string;
+      /** Format: date-time */
+      at: string;
     };
   };
   responses: never;

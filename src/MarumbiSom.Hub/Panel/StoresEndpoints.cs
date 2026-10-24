@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using MarumbiSom.Contracts.Json;
 using MarumbiSom.Contracts.Messages;
 using MarumbiSom.Hub.Agents;
 using MarumbiSom.Hub.Data;
@@ -233,10 +234,27 @@ public static class StoresEndpoints
             return ApiResults.BadRequest($"Comando desconhecido: {input.Command}.");
         }
 
+        var args = input.Args;
+        if (input.Command == CommandTypes.UpdateAgent)
+        {
+            // O Hub completa o comando com a versão, o SHA-256 e a assinatura do pacote (D27 d).
+            var wanted = (string?)args?["version"];
+            var release = await db.AgentReleases.AsNoTracking()
+                .SingleOrDefaultAsync(r => wanted == null ? r.IsCurrent : r.Version == wanted, cancellationToken);
+            if (release is null)
+            {
+                return ApiResults.BadRequest(wanted is null
+                    ? "Nenhuma versão do agente para distribuição. Envie o pacote em Configurações."
+                    : $"A versão {wanted} do agente não foi enviada ao Hub.");
+            }
+
+            args = JsonSerializer.SerializeToNode(ReleasesEndpoints.ToAgentInfo(release), ContractJson.Options)!.AsObject();
+        }
+
         var now = time.GetUtcNow();
-        var command = new StoreCommand { StoreId = id, Type = input.Command, ArgsJson = input.Args?.ToJsonString(), CreatedAt = now };
+        var command = new StoreCommand { StoreId = id, Type = input.Command, ArgsJson = args?.ToJsonString(), CreatedAt = now };
         db.Commands.Add(command);
-        db.Audit(user, time, "stores.command", store.Slug, new { input.Command, args = input.Args?.ToJsonString() });
+        db.Audit(user, time, "stores.command", store.Slug, new { input.Command, args = args?.ToJsonString() });
         await db.SaveChangesAsync(cancellationToken);
 
         var commandId = command.Id.ToString(CultureInfo.InvariantCulture);
@@ -249,7 +267,7 @@ public static class StoresEndpoints
 
         command.SentAt = now;
         await db.SaveChangesAsync(cancellationToken);
-        var result = await agents.SendCommandAsync(id, new CommandMessage(commandId, input.Command, input.Args), CommandWait, cancellationToken);
+        var result = await agents.SendCommandAsync(id, new CommandMessage(commandId, input.Command, args), CommandWait, cancellationToken);
         return result is null
             ? Results.Ok(new CommandOutcome(command.Id, "pending", "A loja não respondeu a tempo; o resultado aparece no histórico."))
             : Results.Ok(new CommandOutcome(command.Id, result.Ok ? "ok" : "error", result.Error));

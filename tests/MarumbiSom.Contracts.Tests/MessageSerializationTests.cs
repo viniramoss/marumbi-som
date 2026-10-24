@@ -38,6 +38,19 @@ public class MessageSerializationTests
     }
 
     [Fact]
+    public void Status_traz_o_andamento_da_atualizacao_da_D27()
+    {
+        const string json = """
+            { "type": "status", "player": "playing", "volume": 70, "bluetooth": "connected", "diskFreeMb": 1, "uptimeS": 1,
+              "update": { "version": "0.6.41", "stage": "downloading", "doneBytes": 1048576, "totalBytes": 73400320 } }
+            """;
+
+        var status = Assert.IsType<StatusMessage>(JsonSerializer.Deserialize<AgentMessage>(json, ContractJson.Options));
+
+        Assert.Equal(new MarumbiSom.Contracts.Releases.UpdateProgress("0.6.41", "downloading", 1_048_576, 73_400_320), status.Update);
+    }
+
+    [Fact]
     public void Mensagens_do_agente_incluem_o_campo_type()
     {
         AgentMessage message = new SpotSkippedMessage("of-12", "pl-3", SpotSkipReasons.Stale);

@@ -5,6 +5,7 @@ using System.Net.WebSockets;
 using System.Text.Json;
 using MarumbiSom.Contracts.Json;
 using MarumbiSom.Contracts.Messages;
+using MarumbiSom.Contracts.Releases;
 using MarumbiSom.Hub.Data;
 using MarumbiSom.Hub.Manifests;
 using Microsoft.EntityFrameworkCore;
@@ -243,6 +244,16 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
                     state.QueueJson = status.Queue is null ? null : JsonSerializer.Serialize(status.Queue.Take(10));
                     state.NextOfferKey = status.NextSpot?.OfferId;
                     state.NextOfferAt = status.NextSpot?.At.ToUniversalTime();
+                    if (status.Update is { } update)
+                    {
+                        SetUpdate(state, update.Version, update.Stage, update.DoneBytes, update.TotalBytes, update.Error, now);
+                    }
+                    else if (state.UpdateStage is { } stage && UpdateStages.InProgress(stage))
+                    {
+                        // A atualização acabou ou o agente reiniciou no meio: o resultado, se houver, vem por evento.
+                        SetUpdate(state, null, null, null, null, null, null);
+                    }
+
                     break;
                 case CommandResultMessage result:
                     if (int.TryParse(result.Id, NumberStyles.None, CultureInfo.InvariantCulture, out var commandId)
@@ -269,6 +280,11 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
                     break;
                 case AgentEventMessage agentEvent:
                     db.Events.Add(new StoreEvent { StoreId = storeId, Type = agentEvent.Event, DataJson = agentEvent.Data?.ToJsonString(), CreatedAt = now });
+                    if (UpdateOutcome(agentEvent.Event) is { } outcome)
+                    {
+                        SetUpdate(state, (string?)agentEvent.Data?["version"], outcome, null, null, (string?)agentEvent.Data?["error"], now);
+                    }
+
                     break;
                 case TrackStartedMessage track:
                     state.NowPlayingHash = track.Hash;
@@ -319,6 +335,24 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
         }
 
         MessageHandled?.Invoke(this, (storeId, message));
+    }
+
+    private static string? UpdateOutcome(string agentEvent) => agentEvent switch
+    {
+        AgentEvents.UpdateDone => UpdateStages.Done,
+        AgentEvents.UpdateFailed => UpdateStages.Failed,
+        AgentEvents.UpdateRolledBack => UpdateStages.RolledBack,
+        _ => null,
+    };
+
+    private static void SetUpdate(StoreState state, string? version, string? stage, long? done, long? total, string? error, DateTimeOffset? at)
+    {
+        state.UpdateVersion = version;
+        state.UpdateStage = stage;
+        state.UpdateDoneBytes = done;
+        state.UpdateTotalBytes = total;
+        state.UpdateError = error;
+        state.UpdateAt = at;
     }
 
     private static string Wire<T>(T value)

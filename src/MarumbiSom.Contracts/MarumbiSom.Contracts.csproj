@@ -5,4 +5,9 @@
     <RootNamespace>MarumbiSom.Contracts</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Ed25519 da atualização assinada (D27 a): o .NET 10 não traz Ed25519. -->
+    <PackageReference Include="BouncyCastle.Cryptography" />
+  </ItemGroup>
+
 </Project>
