@@ -132,7 +132,7 @@ public static class AgentEndpoints
         return Results.File(path, "audio/mp4", enableRangeProcessing: true);
     }
 
-    private static async Task SocketAsync(HttpContext context, AgentConnections connections)
+    private static async Task SocketAsync(HttpContext context, AgentConnections connections, IHostApplicationLifetime lifetime)
     {
         var store = (Store)context.Items[StoreItem]!;
         if (!context.WebSockets.IsWebSocketRequest)
@@ -142,7 +142,9 @@ public static class AgentEndpoints
         }
 
         using var socket = await context.WebSockets.AcceptWebSocketAsync(new WebSocketAcceptContext { KeepAliveInterval = TimeSpan.FromSeconds(30) });
-        await connections.RunAsync(store.Id, store.Slug, socket, context.RequestAborted);
+        // Ao parar o serviço, a conexão fecha na hora; sem isso o Kestrel espera 30 s pelo fim da conexão aberta.
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, lifetime.ApplicationStopping);
+        await connections.RunAsync(store.Id, store.Slug, socket, stopping.Token);
     }
 
     private static async Task<Store?> AuthenticateAsync(HttpContext context)
