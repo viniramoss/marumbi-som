@@ -21,10 +21,11 @@
     Onde gravar o .zip e o .sig.json (padrão: a pasta atual). Não pode ficar dentro de -AgentDir.
 
 .PARAMETER Version
-    Opcional. Se informada, precisa ser a do MarumbiSom.Agent.dll (ou a versão do pacote de teste quebrado).
+    Opcional. Se informada, precisa ser a do MarumbiSom.Agent.dll (nos pacotes de teste, qualquer versão).
 
 .PARAMETER TestInvalidSignature
-    Gera um pacote de teste assinado com uma chave descartável (critério de aceite: a loja recusa).
+    Gera um pacote de teste assinado com uma chave descartável (critério de aceite: a loja recusa). Com -Version, usa
+    uma versão própria (ex.: 0.6.998), para não ocupar no Hub a versão do pacote bom.
 
 .PARAMETER TestBroken
     Gera um pacote de teste com o agente estragado, na -Version informada (critério de aceite: a loja volta sozinha
@@ -32,6 +33,9 @@
 
 .EXAMPLE
     .\sign-release.ps1 -AgentDir C:\Users\vinicius\Downloads\MarumbiSom.Agent-win-x64
+
+.EXAMPLE
+    .\sign-release.ps1 -AgentDir ..\MarumbiSom.Agent-win-x64 -TestInvalidSignature -Version 0.6.998
 
 .EXAMPLE
     .\sign-release.ps1 -AgentDir ..\MarumbiSom.Agent-win-x64 -TestBroken -Version 0.6.999

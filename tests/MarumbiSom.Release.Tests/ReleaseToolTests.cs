@@ -97,6 +97,9 @@ public sealed class ReleaseToolTests : IDisposable
         var invalid = Path.Combine(Out, $"MarumbiSom.Agent-{Version}-teste-assinatura-invalida");
         Assert.Equal(1, Run("verify", "--zip", invalid + ".zip", "--sig", invalid + ".sig.json", "--public-key-file", publicKeyFile));
         Assert.Contains("Assinatura inválida", _error.ToString(), StringComparison.Ordinal);
+        // Numa versão própria, para não ocupar no Hub a versão do pacote bom.
+        Assert.Equal(0, Run("pack", "--key", Key, "--agent", Agent, "--out", Out, "--test-invalid-signature", "--version", "0.9.0"));
+        Assert.True(File.Exists(Path.Combine(Out, "MarumbiSom.Agent-0.9.0-teste-assinatura-invalida.zip")));
 
         Assert.Equal(1, Run("pack", "--key", Key, "--agent", Agent, "--out", Out, "--test-broken"));
         Assert.Equal(0, Run("pack", "--key", Key, "--agent", Agent, "--out", Out, "--test-broken", "--version", "0.9.1"));

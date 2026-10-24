@@ -22,6 +22,7 @@ public sealed class UpdateRunnerTests : IDisposable
         Write(Program, "Antigo.dll", "só na versão antiga");
         Write(Program, "wwwroot/antigo.js", "antigo");
         Write(Program, "tools/mpv.exe", "mpv instalado à parte");
+        Write(Program, "appsettings.Production.json", "{}");
     }
 
     private UpdatePaths Paths { get; }
@@ -44,6 +45,7 @@ public sealed class UpdateRunnerTests : IDisposable
         Assert.False(File.Exists(Path.Combine(Program, "Antigo.dll")));
         Assert.False(File.Exists(Path.Combine(Program, "wwwroot", "antigo.js")));
         Assert.Equal("mpv instalado à parte", Read(Program, "tools/mpv.exe"));
+        Assert.Equal("{}", Read(Program, "appsettings.Production.json"));
         Assert.Equal("agente 0.6.10", Read(Paths.Backup, "MarumbiSom.Agent.exe"));
         Assert.Equal(UpdateStages.Done, ReadResult().Outcome);
         Assert.False(File.Exists(Paths.Pending));

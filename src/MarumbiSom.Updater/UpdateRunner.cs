@@ -260,16 +260,20 @@ public sealed class UpdateRunner(UpdatePaths paths, IServiceControl service, Tim
         return result;
     }
 
+    /// <summary>Ajustes locais que o administrador pode ter posto ao lado do exe (fora do Git, seção 12.1).</summary>
+    private static readonly string[] LocalFiles = ["appsettings.Production.json"];
+
     /// <summary>
     /// Deixa <paramref name="target"/> igual a <paramref name="source"/>. Pastas da raiz que o pacote não traz (ex.:
-    /// <c>tools\</c> instalado à parte) ficam como estão.
+    /// <c>tools\</c> instalado à parte) e os ajustes locais ficam como estão.
     /// </summary>
     internal static void Mirror(string source, string target)
     {
         Directory.CreateDirectory(target);
         foreach (var file in Directory.GetFiles(target))
         {
-            if (!File.Exists(Path.Combine(source, Path.GetFileName(file))))
+            var name = Path.GetFileName(file);
+            if (!File.Exists(Path.Combine(source, name)) && !LocalFiles.Contains(name, StringComparer.OrdinalIgnoreCase))
             {
                 File.Delete(file);
             }

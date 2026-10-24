@@ -31,7 +31,8 @@ internal sealed class ReleaseTool(TextWriter output, TextWriter error)
           pack --key <arquivo> --agent <pasta do agente publicado> [--version <0.6.41>] [--out <pasta>]
                [--allow-key-change] [--test-invalid-signature] [--test-broken]
               Gera MarumbiSom.Agent-<versão>.zip e .sig.json para enviar no painel. A versão é a do MarumbiSom.Agent.dll.
-              --test-invalid-signature: assina com uma chave descartável (o agente precisa recusar).
+              --test-invalid-signature: assina com uma chave descartável (o agente precisa recusar); aceita qualquer
+                  --version, para não ocupar no Hub a versão do pacote bom.
               --test-broken: estraga o MarumbiSom.Agent.dll e usa a --version pedida (o Updater precisa reverter).
 
           verify --zip <pacote.zip> --sig <pacote.sig.json> (--public-key <base64> | --public-key-file <arquivo>)
@@ -133,7 +134,7 @@ internal sealed class ReleaseTool(TextWriter output, TextWriter error)
                 throw new ToolException($"--test-broken precisa de uma --version diferente da do agente ({dllVersion}) e mais nova que a instalada na loja.");
             }
         }
-        else if (version != dllVersion)
+        else if (!testInvalid && version != dllVersion)
         {
             throw new ToolException($"A versão pedida ({version}) não é a do {AgentDll} ({dllVersion}). Gere o pacote a partir do build dessa versão.");
         }
