@@ -18,6 +18,9 @@ describe('atualização do agente (D27 h)', () => {
     expect(compareVersions('0.6.10', '0.6.10')).toBe(0);
     expect(compareVersions('1.0.0', '0.9.99')).toBe(1);
     expect(compareVersions(null, '0.1.0')).toBe(-1);
+    // O agente informa a versão com o commit.
+    expect(compareVersions('0.6.12+abc1234', '0.6.12')).toBe(0);
+    expect(compareVersions('0.6.10+abc1234', '0.6.12')).toBe(-1);
   });
 
   it('só oferece atualizar lojas conectadas, mais antigas e sem atualização em andamento', () => {

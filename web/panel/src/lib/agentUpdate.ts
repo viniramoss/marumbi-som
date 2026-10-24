@@ -1,9 +1,14 @@
 import type { ReleaseInfo, StoreSummary, UpdateInfo } from '../api/types';
 
-/** Compara versões de três números (0.6.9 < 0.6.10), como o Hub e o agente; fora do padrão conta como menor. */
+/**
+ * Compara versões de três números (0.6.9 < 0.6.10), como o Hub e o agente; o commit que o agente manda junto
+ * (0.6.10+abc1234) não conta e versão fora do padrão conta como menor.
+ */
 export function compareVersions(a: string | null | undefined, b: string | null | undefined): number {
-  const parts = (version: string | null | undefined) =>
-    version && /^\d+\.\d+\.\d+$/.test(version) ? version.split('.').map(Number) : [-1, -1, -1];
+  const parts = (version: string | null | undefined) => {
+    const plain = version?.split('+')[0];
+    return plain && /^\d+\.\d+\.\d+$/.test(plain) ? plain.split('.').map(Number) : [-1, -1, -1];
+  };
   const [x, y] = [parts(a), parts(b)];
   for (let i = 0; i < 3; i++) {
     if (x[i] !== y[i]) return x[i]! < y[i]! ? -1 : 1;

@@ -268,6 +268,15 @@ public sealed class AgentUpdaterTests
         Assert.False(File.Exists(paths.Pending));
     }
 
+    [Fact]
+    public void Versao_instalada_para_comparar_e_confirmar_e_so_os_numeros()
+    {
+        // O hello leva o commit junto (0.1.0+abc1234); com ele, a confirmação ao Updater nunca bateria com a versão do pacote.
+        var version = UpdateEnvironment.Installed().CurrentVersion;
+        Assert.True(ReleaseSigning.IsVersion(version), version);
+        Assert.StartsWith(version, HubLink.AgentVersion, StringComparison.Ordinal);
+    }
+
     private static void InstallKey(SyncHarness h, string publicKey)
     {
         Directory.CreateDirectory(h.ProgramDirectory);

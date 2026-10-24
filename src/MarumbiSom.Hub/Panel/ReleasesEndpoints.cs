@@ -52,7 +52,9 @@ public static class ReleasesEndpoints
     private static async Task<List<ReleaseInfo>> ReadAsync(HubDb db, CancellationToken cancellationToken)
     {
         var releases = await db.AgentReleases.AsNoTracking().ToListAsync(cancellationToken);
-        var versions = await db.StoreStates.AsNoTracking().Where(s => s.AgentVersion != null).Select(s => s.AgentVersion!).ToListAsync(cancellationToken);
+        // O agente informa a versão com o commit (0.6.41+abc1234).
+        var versions = (await db.StoreStates.AsNoTracking().Where(s => s.AgentVersion != null).Select(s => s.AgentVersion!).ToListAsync(cancellationToken))
+            .Select(ReleaseSigning.ShortVersion).ToList();
         return releases
             .OrderByDescending(r => r.Version, Comparer<string>.Create(ReleaseSigning.CompareVersions))
             .Select(r => new ReleaseInfo(r.Version, r.Sha256, r.SizeBytes, r.CreatedAt, r.IsCurrent, versions.Count(v => v == r.Version)))

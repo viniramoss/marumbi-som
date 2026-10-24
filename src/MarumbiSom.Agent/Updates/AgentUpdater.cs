@@ -19,9 +19,10 @@ public sealed record UpdateEnvironment(string ProgramDirectory, string PublicKey
     public const string AgentServiceName = "MarumbiSom.Agent";
     public const string UpdaterFileName = "MarumbiSom.Updater.exe";
 
+    /// <remarks>O hello leva a versão com o commit (0.6.41+abc1234); a comparação e a confirmação usam só os números.</remarks>
     public static UpdateEnvironment Installed(string? publicKeyFile = null) => new(
-        AppContext.BaseDirectory, publicKeyFile ?? Path.Combine(AppContext.BaseDirectory, ReleaseSigning.PublicKeyFileName), HubLink.AgentVersion,
-        AgentServiceName);
+        AppContext.BaseDirectory, publicKeyFile ?? Path.Combine(AppContext.BaseDirectory, ReleaseSigning.PublicKeyFileName),
+        ReleaseSigning.ShortVersion(HubLink.AgentVersion), AgentServiceName);
 }
 
 /// <summary>

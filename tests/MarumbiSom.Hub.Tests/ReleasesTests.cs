@@ -160,6 +160,11 @@ public sealed class ReleasesTests
             .GetProperty("status").GetProperty("update");
         Assert.Equal(("rolledBack", "A versão nova não confirmou em 2 minutos."), (rolledBack.GetProperty("stage").GetString(), rolledBack.GetProperty("error").GetString()));
 
+        // A contagem por versão ignora o commit que o agente manda junto (0.6.12+abc1234).
+        await hub.WithDbAsync(db => db.StoreStates.ExecuteUpdateAsync(s => s.SetProperty(x => x.AgentVersion, "0.6.12+abc1234")));
+        var counted = Assert.Single((await HubHarness.JsonAsync(await admin.GetAsync("/api/releases"))).EnumerateArray());
+        Assert.Equal(1, counted.GetProperty("storeCount").GetInt32());
+
         // O resultado fica 24 horas no painel.
         hub.Time.Advance(TimeSpan.FromHours(25));
         var later = await HubHarness.JsonAsync(await admin.GetAsync($"/api/stores/{storeId}"));
