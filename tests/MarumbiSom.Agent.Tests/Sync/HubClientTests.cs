@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Json;
 using MarumbiSom.Agent.Sync;
+using MarumbiSom.Contracts.Messages;
 using MarumbiSom.Hub.Tests;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
@@ -97,6 +98,32 @@ public sealed class HubClientTests
     }
 
     [Fact]
+    public async Task Reiniciar_pelo_hub_encerra_o_servico_com_codigo_de_falha_para_o_scm_subir_de_novo()
+    {
+        await using var h = await SyncHarness.StartAsync(agentTime: TimeProvider.System);
+        var lifetime = new FakeLifetime();
+        int? serviceExitCode = null;
+        var restart = new AgentRestart(lifetime, code => serviceExitCode = code);
+        using var client = new HubClient(
+            h.Link, h.Transport, h.Player.Manifests, h.Engine, h.Player.Engine, h.Player.Bluetooth, h.Player.Events, h.Player.Paths, restart,
+            TimeProvider.System, NullLogger<HubClient>.Instance);
+        var exitCode = Environment.ExitCode;
+        try
+        {
+            await client.HandleCommandAsync(new CommandMessage("c1", CommandTypes.RestartAgent), None);
+
+            Assert.True(restart.Requested);
+            Assert.Equal(1, lifetime.StopRequests);
+            // Sem isto o SCM vê uma parada limpa e a recuperação do serviço não dispara (agente fica parado).
+            Assert.Equal(AgentRestart.ExitCode, serviceExitCode);
+        }
+        finally
+        {
+            Environment.ExitCode = exitCode;
+        }
+    }
+
+    [Fact]
     public void Endereco_do_websocket_segue_o_do_hub()
     {
         Assert.Equal("wss://hub.exemplo.ts.net/agent/ws", HubClient.SocketUri(new Uri("https://hub.exemplo.ts.net/")).ToString());
@@ -104,8 +131,8 @@ public sealed class HubClientTests
     }
 
     private static HubClient NewClient(SyncHarness h, IHostApplicationLifetime lifetime) => new(
-        h.Link, h.Transport, h.Player.Manifests, h.Engine, h.Player.Engine, h.Player.Bluetooth, h.Player.Events, h.Player.Paths, lifetime,
-        TimeProvider.System, NullLogger<HubClient>.Instance);
+        h.Link, h.Transport, h.Player.Manifests, h.Engine, h.Player.Engine, h.Player.Bluetooth, h.Player.Events, h.Player.Paths,
+        new AgentRestart(lifetime), TimeProvider.System, NullLogger<HubClient>.Instance);
 
     private sealed class FakeLifetime : IHostApplicationLifetime
     {
