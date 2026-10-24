@@ -68,7 +68,7 @@ public sealed class StoreStatusReader(AgentConnections agents, TimeProvider time
                 store.Id, store.Slug, store.Name, online, store.TokenHash is not null, latest.TryGetValue(store.Id, out var v) ? v : null,
                 state?.AppliedVersion, state?.PendingVersion, state?.SyncDone, state?.SyncTotal, state?.PlayerState, nowPlaying, state?.BtState, state?.Volume,
                 state?.DiskFreeMb, state?.AgentVersion, state?.LastSeenAt, state?.PlaylistKey,
-                playlistId is { } p && playlists.TryGetValue(p, out var name) ? name : null, open,
+                playlistId is { } p && playlists.TryGetValue(p, out var name) ? name : null, open, store.Schedules.Count > 0,
                 Alerts(store, state, online, open, restarts.GetValueOrDefault(store.Id), now));
         }).ToList();
     }
@@ -184,4 +184,5 @@ public sealed record StoreSummary(
     string? PlaylistId,
     string? PlaylistName,
     bool Open,
+    bool HasSchedule,
     IReadOnlyList<StoreAlert> Alerts);

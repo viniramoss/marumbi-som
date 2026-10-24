@@ -7,7 +7,7 @@ import { formatAgo } from '../../lib/format';
 import { bluetoothStatus, playerStatus, syncStatus } from '../../lib/status';
 import { LiveControls } from './LiveControls';
 import { NowPlaying } from './NowPlaying';
-import { StoreAlerts } from './StoreAlerts';
+import { NoScheduleNotice, StoreAlerts } from './StoreAlerts';
 
 /** Cartão de uma loja no Início (seção 7.2, Dashboard). */
 export function StoreCard({ store }: { store: StoreSummary }) {
@@ -32,6 +32,7 @@ export function StoreCard({ store }: { store: StoreSummary }) {
       </div>
       <div className="flex flex-1 flex-col gap-4 px-5 py-4">
         <StoreAlerts alerts={store.alerts} />
+        <NoScheduleNotice store={store} />
         <NowPlaying store={store} />
         {store.enrolled && (
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">

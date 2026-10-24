@@ -30,6 +30,7 @@ export function storeSummary(overrides: Partial<StoreSummary> = {}): StoreSummar
     playlistId: 'p1',
     playlistName: 'Manhã',
     open: true,
+    hasSchedule: true,
     alerts: [],
     ...overrides,
   };

@@ -21,7 +21,7 @@ import { useNow } from '../../hooks/useNow';
 import { formatAgo, formatDuration, formatMegabytes, matchesSearch } from '../../lib/format';
 import { bluetoothStatus, syncStatus } from '../../lib/status';
 import { NowPlaying } from '../dashboard/NowPlaying';
-import { StoreAlerts } from '../dashboard/StoreAlerts';
+import { NoScheduleNotice, StoreAlerts } from '../dashboard/StoreAlerts';
 import { EnrollCard } from './EnrollCode';
 
 /** Aba "Ao vivo": controle da loja agora, fila e situação do PC. */
@@ -36,6 +36,7 @@ export function LiveTab({ detail }: { detail: StoreDetail }) {
           <CardHeader title="Tocando agora" />
           <div className="space-y-5 px-5 py-4">
             <StoreAlerts alerts={store.alerts} />
+            <NoScheduleNotice store={store} />
             <NowPlaying store={store} large />
             <Controls store={store} />
           </div>
@@ -242,7 +243,11 @@ function QueueCard({ detail }: { detail: StoreDetail }) {
       />
       {detail.queue.length === 0 ? (
         <EmptyState icon={<ListMusic className="size-8" />} title="Fila vazia">
-          {store.open ? 'A loja ainda não informou a fila.' : 'Fora do horário da agenda a loja fica em silêncio.'}
+          {!store.hasSchedule
+            ? 'Sem faixas na agenda a loja não toca nada.'
+            : store.open
+              ? 'A loja ainda não informou a fila.'
+              : 'Fora do horário da agenda a loja fica em silêncio.'}
         </EmptyState>
       ) : (
         <ol className="divide-y divide-stone-100">
@@ -273,7 +278,9 @@ function SituationCard({ store }: { store: StoreSummary }) {
         <Row label="Conexão">{store.online ? 'Conectada' : `Último sinal ${formatAgo(store.lastSeenAt, now)}`}</Row>
         <Row label="Caixa de som">{bluetooth.label}</Row>
         <Row label="Configuração">{sync.label}</Row>
-        <Row label="Horário">{store.open ? 'Dentro do horário da agenda' : 'Fora do horário da agenda'}</Row>
+        <Row label="Horário">
+          {!store.hasSchedule ? 'Sem agenda' : store.open ? 'Dentro do horário da agenda' : 'Fora do horário da agenda'}
+        </Row>
         <Row label="Playlist da agenda">{store.playlistName ?? '–'}</Row>
         <Row label="Disco livre">{formatMegabytes(store.diskFreeMb)}</Row>
         <Row label="Versão do agente">{store.agentVersion ?? '–'}</Row>

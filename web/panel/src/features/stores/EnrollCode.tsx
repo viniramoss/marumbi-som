@@ -42,6 +42,10 @@ function EnrollSteps() {
         <code className="rounded bg-stone-100 px-1 py-0.5 text-xs">{window.location.origin}</code> e o código.
       </li>
       <li>A loja aparece como conectada aqui em poucos segundos e baixa a configuração.</li>
+      <li>
+        Monte a <strong>Agenda</strong> da loja (dias, horários e playlist): sem nenhuma faixa de horário ela não toca
+        nada.
+      </li>
     </ol>
   );
 }

@@ -87,6 +87,7 @@ public sealed class PanelTests
 
         var detail = await WaitForAsync(admin, $"/api/stores/{storeId}", d => d.GetProperty("status").GetProperty("alerts").GetArrayLength() > 0);
         Assert.Equal(["A", "A"], detail.GetProperty("queue").EnumerateArray().Select(t => t.GetProperty("title").GetString()));
+        Assert.True(detail.GetProperty("status").GetProperty("hasSchedule").GetBoolean());
         var alert = Assert.Single(detail.GetProperty("status").GetProperty("alerts").EnumerateArray());
         Assert.Equal("restarts", alert.GetProperty("code").GetString());
         var restarts = await hub.WithDbAsync(db => db.Events.CountAsync(e => e.Type == AgentConnections.AgentRestartedEvent));

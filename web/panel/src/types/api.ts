@@ -1465,6 +1465,7 @@ export interface components {
       playlistId: null | string;
       playlistName: null | string;
       open: boolean;
+      hasSchedule: boolean;
       alerts: components['schemas']['StoreAlert'][];
     };
     StoreTrack: {

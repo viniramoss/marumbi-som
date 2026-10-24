@@ -17,7 +17,9 @@ export function playerStatus(store: StoreSummary): StatusLabel {
     case 'paused':
       return { label: 'Pausada', tone: 'amber' };
     default:
-      return { label: 'Parada', tone: 'gray' };
+      // Sem nenhuma faixa na agenda a loja fica em silêncio o tempo todo; quem vincula nem sempre sabe disso.
+      if (!store.hasSchedule) return { label: 'Sem agenda', tone: 'amber' };
+      return { label: store.open ? 'Parada' : 'Fora do horário', tone: 'gray' };
   }
 }
 

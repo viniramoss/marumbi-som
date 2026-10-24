@@ -87,7 +87,12 @@ function StoreRow({ store, now }: { store: StoreSummary; now: number }) {
         </div>
       </td>
       <td className="py-3 pr-4 text-stone-700">
-        {store.playlistName ?? <span className="text-stone-400">{store.open ? 'Nenhuma' : 'Fora do horário'}</span>}
+        {store.playlistName ??
+          (store.hasSchedule ? (
+            <span className="text-stone-400">{store.open ? 'Nenhuma' : 'Fora do horário'}</span>
+          ) : (
+            <span className="text-amber-700">Sem agenda</span>
+          ))}
       </td>
       <td className="py-3 pr-4 text-stone-700">{store.enrolled ? bluetooth.label : '–'}</td>
       <td className="py-3 pr-4 text-stone-700">{sync.label}</td>

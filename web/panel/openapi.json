@@ -1936,6 +1936,7 @@
           "playlistId",
           "playlistName",
           "open",
+          "hasSchedule",
           "alerts"
         ],
         "type": "object",
@@ -2053,6 +2054,9 @@
             ]
           },
           "open": {
+            "type": "boolean"
+          },
+          "hasSchedule": {
             "type": "boolean"
           },
           "alerts": {

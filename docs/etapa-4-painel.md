@@ -10,7 +10,7 @@ as lojas usam). Entra com o usuário `admin` e a senha definida no `install-hub.
 
 | Tela | O que tem |
 |---|---|
-| **Início** | Um cartão por loja: tocando agora com barra de progresso, caixa Bluetooth, configuração aplicada ("Sincronizado ✅" / "Baixando 3/10"), volume, último sinal, alertas e os botões tocar/pausar, pular e volume −/+ |
+| **Início** | Um cartão por loja: tocando agora com barra de progresso, caixa Bluetooth, configuração aplicada ("Sincronizado ✅" / "Baixando 3/10"), volume, último sinal, alertas, aviso de loja sem agenda ("a loja não toca nada") e os botões tocar/pausar, pular e volume −/+ |
 | **Lojas** | Lista com situação de cada loja e cadastro de loja nova |
 | **Loja → Ao vivo** | Música atual, tocar/pausar, pular, volume (slider), "Tocar agora…" (escolhe uma música que já está no PC da loja), reconectar caixa, fila das próximas 10 e situação do PC (disco, versão do agente, horário) |
 | **Loja → Agenda** | Faixas de horário (dias, início, fim, playlist) com a grade semanal ao lado; sobreposição no mesmo dia aparece na hora e impede salvar; fim 00:00 = meia-noite, fim antes do início atravessa a meia-noite |
