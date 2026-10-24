@@ -59,7 +59,7 @@ public static class PanelStatic
             || string.Equals(host, request.Headers["X-Forwarded-Host"].ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task SocketAsync(HttpContext context, PanelHub panel)
+    private static async Task SocketAsync(HttpContext context, PanelHub panel, IHostApplicationLifetime lifetime)
     {
         if (!context.WebSockets.IsWebSocketRequest)
         {
@@ -74,7 +74,9 @@ public static class PanelStatic
         }
 
         using var socket = await context.WebSockets.AcceptWebSocketAsync(new WebSocketAcceptContext { KeepAliveInterval = TimeSpan.FromSeconds(30) });
-        await panel.RunAsync(socket, context.RequestAborted);
+        // Ao parar o serviço, a conexão fecha na hora (o painel reconecta sozinho), sem os 30 s de espera do Kestrel.
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, lifetime.ApplicationStopping);
+        await panel.RunAsync(socket, stopping.Token);
     }
 
     private static async Task IndexAsync(HttpContext context, IFileProvider files)
