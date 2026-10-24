@@ -58,7 +58,9 @@ public sealed class WindowsServiceControl(Action<string> log) : IServiceControl
                     }
 
                     log($"Encerrando {Path.GetFileName(path)} (PID {process.Id}) que ainda rodava da pasta do programa");
-                    process.Kill(entireProcessTree: true);
+                    // Só o processo: o próprio Updater é filho do agente e morreria junto com a árvore. Os mpv entram
+                    // na lista pelo nome.
+                    process.Kill(entireProcessTree: false);
                     process.WaitForExit(TimeSpan.FromSeconds(10));
                 }
                 catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or NotSupportedException)
