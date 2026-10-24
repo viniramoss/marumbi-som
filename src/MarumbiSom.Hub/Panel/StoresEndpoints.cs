@@ -244,7 +244,7 @@ public static class StoresEndpoints
             if (release is null)
             {
                 return ApiResults.BadRequest(wanted is null
-                    ? "Nenhuma versão do agente para distribuição. Envie o pacote em Configurações."
+                    ? "Nenhuma versão do agente para distribuição ainda. Ela chega do GitHub (veja em Configurações) ou pode ser enviada lá."
                     : $"A versão {wanted} do agente não foi enviada ao Hub.");
             }
 

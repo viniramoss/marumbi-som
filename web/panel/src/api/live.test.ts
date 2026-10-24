@@ -71,6 +71,7 @@ describe('topicKeys', () => {
     expect(topicKeys('events:2')).toEqual([keys.events(2)]);
     expect(topicKeys('offers')).toEqual([keys.offers, ['offer'], ['storeOffers'], ['playlist']]);
     expect(topicKeys('releases')).toEqual([keys.releases]);
+    expect(topicKeys('github')).toEqual([keys.github]);
     expect(topicKeys('novidade')).toEqual([]);
   });
 });

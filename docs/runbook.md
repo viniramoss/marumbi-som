@@ -16,7 +16,8 @@ sem Hub e sem painel.
 | Agente (PC da loja) | serviço `MarumbiSom.Agent` ("Marumbi Som - Agente da loja"); programa em `C:\Program Files\MarumbiSom`, dados em `C:\ProgramData\MarumbiSom` |
 | Logs da loja | `C:\ProgramData\MarumbiSom\logs\agent-AAAAMMDD.log` ou atalho **Configurar Som** → Últimos registros |
 | Atualizações da loja | `C:\ProgramData\MarumbiSom\updates\updater.log` e `result.json` |
-| Chave privada de assinatura | só no PC do administrador (`Documentos\MarumbiSom\chave-assinatura-atualizacoes.txt`) e no pendrive de cópia |
+| Chave privada de assinatura | no PC do administrador (`Documentos\MarumbiSom\chave-assinatura-atualizacoes.txt`), no pendrive de cópia e no secret `MARUMBI_SIGNING_KEY` do repositório (D29) |
+| Versões publicadas | GitHub → *Releases* → **Agente 0.6.N**: pacote assinado do agente (o Hub baixa sozinho), instalador `MarumbiSom.Agent-Setup-0.6.N.exe` e `MarumbiSom.Hub-0.6.N.zip` |
 | Pacotes do CI | GitHub → Actions → execução → artefatos `MarumbiSom.Hub-win-x64`, `MarumbiSom.Agent-win-x64`, `MarumbiSom.Agent-Setup`, `MarumbiSom.Release-win-x64` (guardados por 30 dias) |
 
 Pastas de pacotes baixados da internet: antes de rodar scripts, no PowerShell
@@ -51,51 +52,83 @@ Pastas de pacotes baixados da internet: antes de rodar scripts, no PowerShell
 
 ## Atualizar o agente das lojas
 
+As versões saem do GitHub (D29): ao juntar algo no `main`, o GitHub Actions monta o agente, assina com a chave
+guardada no secret do repositório e publica uma Release **Agente 0.6.N**. O Hub procura versão nova a cada 6 horas,
+baixa sozinho e mostra **"Versão X do agente disponível"** no Início. Nenhuma loja atualiza sem você mandar.
+
 ### Uma vez: gerar a chave de assinatura
 
 1. Baixe o artefato **MarumbiSom.Release-win-x64** do CI e extraia (ex.: `C:\MarumbiSom-release`).
 2. PowerShell (sem administrador): `cd C:\MarumbiSom-release` e `.\new-signing-key.ps1`.
 3. Copie `Documentos\MarumbiSom\chave-assinatura-atualizacoes.txt` para um pendrive guardado em local seguro.
-   Nunca coloque a chave privada no Git, no Hub, em e-mail ou em nuvem.
+   Nunca coloque a chave privada no Git, no Hub, em e-mail ou em nuvem (o secret do GitHub, abaixo, é a exceção).
 4. A chave pública aparece na tela. Coloque-a em `src/MarumbiSom.Agent/release-public-key.txt` no repositório
    (ou mande para quem cuida do repositório). Só os agentes instalados a partir daí aceitam atualização remota: as
    lojas instaladas antes precisam de uma reinstalação com o instalador novo (procedimento "PC da loja formatado",
    sem desvincular).
 
+### Uma vez: chave no GitHub e token no Hub
+
+1. **Secret com a chave** (para o GitHub assinar): no repositório `marumbi-som`, **Settings → Secrets and variables →
+   Actions → New repository secret**. Name: `MARUMBI_SIGNING_KEY`. Em *Secret*, cole a linha que começa com
+   `marumbi-som-ed25519-private:` do arquivo da chave (abra no Bloco de Notas; colar o arquivo inteiro também
+   funciona). **Add secret**. O GitHub não mostra o secret de novo; a cópia no pendrive continua sendo o backup.
+   Quem tiver permissão de escrita no repositório consegue publicar versões assinadas: deixe o repositório só com
+   você e com a verificação em duas etapas ligada.
+2. **Token de leitura** (o repositório é privado, e o Hub precisa ler as Releases): no GitHub, foto do perfil →
+   **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**. Nome
+   "Hub Marumbi Som", validade a maior disponível, *Repository access*: **Only select repositories** →
+   `marumbi-som`, *Repository permissions*: **Contents: Read-only**. **Generate token** e copie.
+3. Painel → Configurações → Versão do agente para distribuição → **Token do GitHub** → cole → **Salvar token**. O
+   Hub guarda o token cifrado e já procura a versão mais nova (a barra mostra o download, uns 110 MB).
+
+Quando o token vencer, a tela mostra "O GitHub recusou o token": gere outro (passo 2) e use **Trocar token**. Se o
+Hub for restaurado sem a pasta `data\keys`, o token salvo não abre mais: cadastre de novo.
+
 ### A cada versão
 
-1. Baixe o artefato **MarumbiSom.Agent-win-x64** da execução do CI na `main` que você quer distribuir e extraia.
-2. Gere o pacote assinado:
+1. Junte as mudanças no `main` (ou, para publicar antes, no GitHub: **Actions → CI → Run workflow**, escolha o branch
+   e marque **Publicar versão do agente**). Em uns 20 minutos a Release **Agente 0.6.N** aparece em *Releases*.
+2. Em até 6 horas o Hub baixa sozinho (ou Configurações → **Procurar agora**). A versão baixada vira a de distribuição
+   e o Início mostra "Versão 0.6.N do agente disponível".
+3. **Loja piloto primeiro**: Loja → Ajustes → **Atualizar agente**. O cartão mostra a barra do download; ao instalar,
+   a música para por alguns segundos. Resultado esperado: "Agente atualizado para X".
+4. Espere 1 dia com a loja piloto na versão nova.
+5. Configurações → **Atualizar lojas** atualiza todas as lojas conectadas que estão numa versão anterior.
+6. Loja que estava desconectada fica para depois: quando ela voltar, use **Atualizar agente** nela.
+
+Se aparecer **"Versão X revertida"**: a versão nova não subiu em 2 minutos e a loja voltou sozinha para a anterior.
+Não insista; em Configurações escolha a versão anterior em **Usar esta** e leve o `updater.log` e o log da loja para
+quem cuida do código. **"Atualização para X falhou"** mostra o motivo (assinatura, espaço em disco, download); a loja
+segue na versão anterior. Uma versão removida em Configurações não é baixada de novo do GitHub; a próxima, sim.
+
+### Sem o GitHub (pacotes de teste ou GitHub fora do ar)
+
+1. Baixe o artefato **MarumbiSom.Agent-win-x64** da execução do CI que você quer distribuir e extraia.
+2. Gere o pacote assinado no seu PC:
 
 ```powershell
 cd C:\MarumbiSom-release
 .\sign-release.ps1 -AgentDir C:\Downloads\MarumbiSom.Agent-win-x64 -OutDir C:\MarumbiSom-pacotes
 ```
 
-3. Painel → Configurações → Versão do agente para distribuição → **Enviar versão…** → escolha o `.zip` e o
-   `.sig.json` juntos. A versão enviada vira a de distribuição.
-4. **Loja piloto primeiro**: Loja → Ajustes → **Atualizar agente**. O cartão mostra a barra do download; ao instalar,
-   a música para por alguns segundos. Resultado esperado: "Agente atualizado para X".
-5. Espere 1 dia com a loja piloto na versão nova.
-6. Configurações → **Atualizar lojas** atualiza todas as lojas conectadas que estão numa versão anterior.
-7. Loja que estava desconectada fica para depois: quando ela voltar, use **Atualizar agente** nela.
-
-Se aparecer **"Versão X revertida"**: a versão nova não subiu em 2 minutos e a loja voltou sozinha para a anterior.
-Não insista; em Configurações escolha a versão anterior em **Usar esta** e leve o `updater.log` e o log da loja para
-quem cuida do código. **"Atualização para X falhou"** mostra o motivo (assinatura, espaço em disco, download); a loja
-segue na versão anterior.
+3. Painel → Configurações → Versão do agente para distribuição → **Enviar arquivo…** → escolha o `.zip` e o
+   `.sig.json` juntos. A versão enviada vira a de distribuição; daí em diante, como acima a partir do passo 3.
 
 ### Perdi a chave privada (ou ela vazou)
 
-1. Gere uma chave nova (`new-signing-key.ps1 -KeyFile <outro arquivo>`) e troque a chave pública no repositório.
+1. Gere uma chave nova (`new-signing-key.ps1 -KeyFile <outro arquivo>`), troque a chave pública no repositório e o
+   secret `MARUMBI_SIGNING_KEY` no GitHub. Se a chave vazou, apague o secret antigo na hora.
 2. Se ainda tem a chave antiga (troca planejada): gere o pacote do build novo com a chave **antiga** e
-   `-AllowKeyChange`; as lojas atualizadas passam a aceitar só a chave nova.
+   `-AllowKeyChange`, pelo caminho "Sem o GitHub" (o CI recusa assinar quando a chave do secret não é a do build); as
+   lojas atualizadas passam a aceitar só a chave nova.
 3. Sem a chave antiga: cada loja precisa ser reinstalada com o instalador do build novo (procedimento "PC da loja
    formatado", sem desvincular). Até lá as lojas seguem tocando, só não aceitam atualização remota.
 
 ## Atualizar o Hub
 
-1. Baixe o artefato **MarumbiSom.Hub-win-x64** do CI e extraia (ex.: `C:\MarumbiSom-hub-pacote`).
+1. Baixe o `MarumbiSom.Hub-<versão>.zip` da Release mais nova no GitHub (*Releases*, no repositório) ou o artefato
+   **MarumbiSom.Hub-win-x64** de uma execução do CI, e extraia (ex.: `C:\MarumbiSom-hub-pacote`).
 2. PowerShell **como administrador**:
 
 ```powershell
@@ -174,6 +207,8 @@ Start-ScheduledTask -TaskName 'MarumbiSom - copia do backup'
    depois das 02:00 do dia do backup se perdem; o painel pede login de novo.
 6. As lojas reconectam sozinhas com o mesmo token. Se mudou o endereço do Hub, cada loja precisa de **Desvincular** e
    **Vincular esta loja** na Configurar Som com o endereço novo e um código novo.
+7. O token do GitHub não vai na cópia (a pasta `keys` fica de fora): cadastre de novo em Configurações (passo
+   "Token de leitura" em "Atualizar o agente das lojas").
 
 Se só o banco estragou (o PC está bom): passos 2, 4 e `Start-Service MarumbiSom.Hub`.
 

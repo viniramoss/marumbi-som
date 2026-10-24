@@ -1727,6 +1727,93 @@
           }
         }
       }
+    },
+    "/api/releases/github": {
+      "get": {
+        "tags": [
+          "testhost"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/releases/github/check": {
+      "post": {
+        "tags": [
+          "ReleasesEndpoints"
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/releases/github/token": {
+      "put": {
+        "tags": [
+          "ReleasesEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitHubTokenInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1911,6 +1998,95 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "GitHubDownload": {
+        "required": [
+          "version",
+          "doneBytes",
+          "totalBytes"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "doneBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalBytes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "GitHubStatus": {
+        "required": [
+          "repository",
+          "tokenConfigured",
+          "checkIntervalHours",
+          "checkedAt",
+          "message",
+          "problem",
+          "checking",
+          "download"
+        ],
+        "type": "object",
+        "properties": {
+          "repository": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "tokenConfigured": {
+            "type": "boolean"
+          },
+          "checkIntervalHours": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "checkedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "message": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "problem": {
+            "type": "boolean"
+          },
+          "checking": {
+            "type": "boolean"
+          },
+          "download": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GitHubDownload"
+              }
+            ]
+          }
+        }
+      },
+      "GitHubTokenInput": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

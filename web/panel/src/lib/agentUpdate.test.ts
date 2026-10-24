@@ -49,7 +49,7 @@ describe('atualização do agente (D27 h)', () => {
     expect(updateBlocker(stores[1]!, current)).toBe('A loja já está na versão 0.6.12.');
     expect(updateBlocker(stores[2]!, current)).toBe('A loja está desconectada do Hub.');
     expect(updateBlocker(stores[3]!, current)).toBe('Já há uma atualização em andamento.');
-    expect(updateBlocker(stores[0]!, undefined)).toMatch(/Envie o pacote em Configurações/);
+    expect(updateBlocker(stores[0]!, undefined)).toMatch(/Veja em Configurações/);
   });
 
   it('separa o pacote e a assinatura escolhidos juntos', () => {

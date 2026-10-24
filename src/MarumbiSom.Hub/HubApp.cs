@@ -67,6 +67,14 @@ public static class HubApp
         services.AddPanelOpenApi();
         services.AddSingleton<DailyMaintenance>();
         services.AddHostedService(sp => sp.GetRequiredService<DailyMaintenance>());
+        services.AddHttpClient(GitHubReleaseWatcher.HttpClientName, client =>
+        {
+            client.BaseAddress = new Uri("https://api.github.com/");
+            client.Timeout = TimeSpan.FromMinutes(30);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("MarumbiSom-Hub");
+        });
+        services.AddSingleton<GitHubReleaseWatcher>();
+        services.AddHostedService(sp => sp.GetRequiredService<GitHubReleaseWatcher>());
         return services;
     }
 

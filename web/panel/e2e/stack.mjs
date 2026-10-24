@@ -163,7 +163,13 @@ writeFileSync(
 const children = [
     spawn(
         'dotnet',
-        [hubDll, `--webroot=${panelDist}`, `--Hub:DataDirectory=${hubData}`, `--Hub:Port=${stack.hubPort}`],
+        [
+            hubDll,
+            `--webroot=${panelDist}`,
+            `--Hub:DataDirectory=${hubData}`,
+            `--Hub:Port=${stack.hubPort}`,
+            `--Hub:GitHubRepository=`,
+        ],
         {
             stdio: 'inherit',
         },

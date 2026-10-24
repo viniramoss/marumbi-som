@@ -9,12 +9,19 @@ Os alertas pelo Telegram ficaram para depois (D21).
 - **Instalador do agente** `MarumbiSom.Agent-Setup-<versão>.exe` (artefato **MarumbiSom.Agent-Setup** do CI):
   instala em `C:\Program Files\MarumbiSom`, registra o serviço e, na primeira vez, pede a senha da página
   Configurar Som numa janela do PowerShell. Rodar de novo atualiza sem perder configuração, senha e cache.
-- **Chave de assinatura** (seção 12): a chave privada fica só no PC do administrador; a chave pública vai no
-  repositório (`src/MarumbiSom.Agent/release-public-key.txt`) e sai em todo build do agente. Sem a chave pública o
-  agente recusa qualquer atualização remota.
-- **Versão do agente para distribuição** (painel → Configurações): envia o `.zip` e o `.sig.json` gerados pelo
-  `sign-release.ps1` com barra de envio, mostra quantas lojas estão em cada versão e atualiza todas as lojas
-  conectadas de uma vez. Na loja (Loja → Ajustes), **Atualizar agente** atualiza só aquela loja (use na piloto).
+- **Chave de assinatura** (seção 12): a chave privada fica no PC do administrador e no secret
+  `MARUMBI_SIGNING_KEY` do repositório (D29); a chave pública vai no repositório
+  (`src/MarumbiSom.Agent/release-public-key.txt`) e sai em todo build do agente. Sem a chave pública o agente recusa
+  qualquer atualização remota.
+- **Versões pelo GitHub** (D29): ao juntar no `main`, ou em **Actions → CI → Run workflow** com **Publicar versão do
+  agente**, o CI assina o pacote com o secret e publica a Release **Agente 0.6.N** (pacote, assinatura, instalador e
+  Hub). O Hub procura a cada 6 horas (ou em **Procurar agora**), baixa com barra de andamento e deixa a versão como
+  a de distribuição; o Início mostra "Versão X do agente disponível". O repositório é privado: o Hub lê com um token
+  só de leitura cadastrado em Configurações (guardado cifrado, nunca volta para a tela).
+- **Versão do agente para distribuição** (painel → Configurações): mostra a procura no GitHub, quantas lojas estão em
+  cada versão e atualiza todas as lojas conectadas de uma vez. **Enviar arquivo…** recebe o `.zip` e o `.sig.json`
+  gerados pelo `sign-release.ps1` (pacotes de teste). Na loja (Loja → Ajustes), **Atualizar agente** atualiza só
+  aquela loja (use na piloto).
 - **Atualização na loja**: o agente baixa em segundo plano (com o limite de banda da sincronização e retomada),
   confere tamanho, SHA-256 e assinatura e só aceita versão **mais nova** que a instalada. O painel mostra a barra
   do download no cartão da loja. O `MarumbiSom.Updater.exe` (rodando de fora da pasta do programa) para o serviço,
@@ -46,25 +53,32 @@ cd C:\MarumbiSom-release
 
 ## Publicar uma versão
 
+Uma vez: o secret `MARUMBI_SIGNING_KEY` no GitHub e o token de leitura no painel (passo a passo no
+[runbook](runbook.md), "Chave no GitHub e token no Hub"). Depois, cada junção no `main` publica uma versão, e o Hub
+baixa sozinho. Para publicar de um branch antes de juntar: **Actions → CI → Run workflow** → branch → marcar
+**Publicar versão do agente** (sai como pré-lançamento, e o Hub baixa do mesmo jeito).
+
+Sem o GitHub (pacotes de teste):
+
 ```powershell
 cd C:\MarumbiSom-release
 .\sign-release.ps1 -AgentDir C:\Downloads\MarumbiSom.Agent-win-x64 -OutDir C:\MarumbiSom-pacotes
 ```
 
-Envie os dois arquivos (`MarumbiSom.Agent-<versão>.zip` e `.sig.json`) em Configurações → Versão do agente para
-distribuição → **Enviar versão…**. Passo a passo completo, com loja piloto primeiro, no [runbook](runbook.md).
+e envie os dois arquivos (`MarumbiSom.Agent-<versão>.zip` e `.sig.json`) em Configurações → Versão do agente para
+distribuição → **Enviar arquivo…**. Passo a passo completo, com loja piloto primeiro, no [runbook](runbook.md).
 
 ## Critérios de aceite (seção 15, Etapa 6)
 
 | # | Teste | Como fazer | Meta | Resultado |
 |---|---|---|---|---|
 | 1 | Instalação limpa | No PC de teste, remova o agente (`uninstall-agent.ps1 -RemoveData`) e instale seguindo só o [checklist](checklist-instalacao-loja.md) | Loja tocando e "Sincronizado" no painel, sem passos fora do checklist | |
-| 2 | Atualização boa | Gere o pacote de um build mais novo que o instalado, envie no painel e use **Atualizar agente** na loja | Barra de download no cartão; música para por poucos segundos; "Agente atualizado para X" e a versão nova em Loja → Ao vivo | |
+| 2 | Atualização boa pelo GitHub | Publique um build mais novo que o instalado (Run workflow com **Publicar versão do agente**), espere a Release, clique **Procurar agora** em Configurações e use **Atualizar agente** na loja | Barra do download no Hub e depois no cartão da loja; "Versão X do agente disponível" no Início; música para por poucos segundos; "Agente atualizado para X" e a versão nova em Loja → Ao vivo | |
 | 3 | Assinatura inválida | `sign-release.ps1 -AgentDir … -TestInvalidSignature -Version 0.6.998`, envie e atualize a loja | O painel mostra "Assinatura inválida… Atualização recusada"; a loja não baixa nada e segue tocando; evento `update.failed` | |
 | 4 | Versão quebrada | `sign-release.ps1 -AgentDir … -TestBroken -Version 0.6.999`, envie e atualize a loja (fora do horário de funcionamento: a música fica parada ~2 min) | Em até ~3 min a loja volta sozinha para a versão anterior e toca; o painel mostra "Versão 0.6.999 revertida" | |
 | 5 | Loja não acessa outra loja | Com dois dispositivos `tag:loja`, no PC da loja: `Test-NetConnection <IP Tailscale da outra loja> -Port 3389` e `-Port 445` | Todos `TcpTestSucceeded : False`; `Test-NetConnection <IP do Hub> -Port 443` dá `True` | |
 | 6 | Varredura de portas | De outro PC (rede da loja e Tailscale): `Test-NetConnection <IP da loja> -Port 47800` (ou `nmap -p- <IP>`) | A porta 47800 não aparece em nenhum dos dois endereços; no PC da loja, `netstat -ano \| findstr 47800` mostra só `127.0.0.1:47800` | |
-| 7 | Testes automatizados | CI do PR | Assinatura Ed25519, recusa de pacote adulterado, sem chave ou versão antiga, retomada do download, Updater com volta automática e proteção contra caminhos fora da pasta, ferramenta de assinatura, envio no painel e o teste ponta a ponta (enviar versão → atualizar loja) | ✅ |
+| 7 | Testes automatizados | CI do PR | Assinatura Ed25519, recusa de pacote adulterado, sem chave ou versão antiga, retomada do download, Updater com volta automática e proteção contra caminhos fora da pasta, ferramenta de assinatura, envio no painel, procura no GitHub (baixa a mais nova assinada, não repete, não traz de volta versão removida, recusa pacote adulterado, token cifrado) e o teste ponta a ponta (enviar versão → atualizar loja) | ✅ |
 
 Depois dos testes 3 e 4, em Configurações escolha a versão boa em **Usar esta** e remova as versões de teste.
 

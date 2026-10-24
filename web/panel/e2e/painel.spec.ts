@@ -223,6 +223,12 @@ test('envia uma versão assinada do agente e atualiza a loja', async () => {
   await expect(page.getByText(`Versão ${stack.release.version} recebida e marcada para distribuição.`)).toBeVisible();
   await expect(page.getByText('Para distribuição', { exact: true })).toBeVisible();
   await expect(page.getByText(`1 loja conectada está numa versão anterior à ${stack.release.version}.`)).toBeVisible();
+  await expect(page.getByText('A procura de versões no GitHub está desligada neste Hub.')).toBeVisible();
+
+  await page.getByRole('link', { name: 'Início' }).first().click();
+  await expect(
+    page.getByRole('link', { name: new RegExp(`Versão ${stack.release.version} do agente disponível`) }),
+  ).toBeVisible();
 
   await page.getByRole('link', { name: 'Lojas' }).first().click();
   await page.getByRole('link', { name: 'Marumbi Teste' }).click();

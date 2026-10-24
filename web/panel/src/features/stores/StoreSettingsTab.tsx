@@ -263,7 +263,7 @@ function Maintenance({ detail }: { detail: StoreDetail }) {
           description={
             <>
               Versão instalada: {store.agentVersion ?? 'desconhecida'}. Para distribuição:{' '}
-              {current?.version ?? 'nenhuma (envie em Configurações)'}.
+              {current?.version ?? 'nenhuma ainda (veja em Configurações)'}.
               <AgentUpdateStatus update={store.update} className="mt-2" />
             </>
           }

@@ -34,6 +34,7 @@ export const keys = {
   offerAudio: ['offerAudio'] as const,
   storeOffers: (id: number) => ['storeOffers', id] as const,
   releases: ['releases'] as const,
+  github: ['github'] as const,
 };
 
 export function useSession() {
@@ -373,6 +374,28 @@ export function useDeleteRelease() {
       client.setQueryData<ReleaseInfo[]>(keys.releases, (list) => list?.filter((r) => r.version !== version));
       void client.invalidateQueries({ queryKey: keys.releases });
     },
+  });
+}
+
+export function useGitHubStatus() {
+  return useQuery({ queryKey: keys.github, queryFn: () => call(api.GET('/api/releases/github')) });
+}
+
+/** "Procurar agora": o Hub responde na hora e avisa o andamento pelo painel ao vivo (tópico github). */
+export function useCheckGitHub() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => call(api.POST('/api/releases/github/check')),
+    onSuccess: (status) => client.setQueryData(keys.github, status),
+  });
+}
+
+/** Cadastra (ou apaga, com null) o token do GitHub; o Hub nunca devolve o token. */
+export function useSaveGitHubToken() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (token: string | null) => call(api.PUT('/api/releases/github/token', { body: { token } })),
+    onSuccess: (status) => client.setQueryData(keys.github, status),
   });
 }
 

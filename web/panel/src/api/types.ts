@@ -33,6 +33,7 @@ export type StoreOffer = Schemas['StoreOffer'];
 export type AnchorInput = Schemas['AnchorInput'];
 export type SettingsInfo = Schemas['SettingsInfo'];
 export type ReleaseInfo = Schemas['ReleaseInfo'];
+export type GitHubStatus = Schemas['GitHubStatus'];
 export type UpdateInfo = Schemas['UpdateInfo'];
 export type SessionInfo = Schemas['SessionInfo'];
 export type PanelMessage = Schemas['PanelMessage'];

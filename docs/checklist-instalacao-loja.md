@@ -10,9 +10,10 @@ acesso ao painel.
 - [ ] No painel, **Lojas → Nova loja**: nome (ex.: "Loja 2 - Centro"), volume padrão e fuso.
 - [ ] A loja tem **Agenda** (Loja → Agenda) cobrindo o horário de funcionamento, com uma playlist que tenha
       músicas. Sem agenda a loja não toca nada.
-- [ ] Baixe o instalador **MarumbiSom.Agent-Setup-<versão>.exe** do CI (Actions → execução mais recente da
-      `main` → artefato **MarumbiSom.Agent-Setup**) e copie para um pendrive. Use um build que já tenha a chave
-      pública de atualização (todos depois da geração da chave; veja o runbook).
+- [ ] Baixe o instalador **MarumbiSom.Agent-Setup-<versão>.exe** da Release mais nova no GitHub (repositório →
+      *Releases* → **Agente 0.6.N**) e copie para um pendrive. Sem Release ainda: Actions → execução mais recente da
+      `main` → artefato **MarumbiSom.Agent-Setup**, de um build que já tenha a chave pública de atualização (veja o
+      runbook).
 
 ## No PC da loja
 

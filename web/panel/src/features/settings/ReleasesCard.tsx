@@ -10,6 +10,7 @@ import { useToast } from '../../components/Toasts';
 import { Badge, Button, Card, CardHeader, ErrorNote, ProgressBar, Spinner } from '../../components/ui';
 import { storesToUpdate } from '../../lib/agentUpdate';
 import { formatBytes, formatDateTime } from '../../lib/format';
+import { GitHubReleases } from './GitHubReleases';
 
 interface Sending {
   name: string;
@@ -17,8 +18,9 @@ interface Sending {
 }
 
 /**
- * Versões do agente para distribuição (seção 12.2, D27 h): enviar o pacote assinado com barra de andamento, escolher a
- * versão e atualizar as lojas conectadas. O Hub confere SHA-256 e conteúdo; a assinatura, só o agente.
+ * Versões do agente para distribuição (seção 12.2, D27 h, D29): as do GitHub chegam sozinhas; também dá para enviar o
+ * pacote assinado à mão (testes), escolher a versão e atualizar as lojas conectadas. O Hub confere SHA-256 e conteúdo;
+ * a assinatura, só o agente.
  */
 export function ReleasesCard() {
   const releases = useReleases();
@@ -87,12 +89,13 @@ export function ReleasesCard() {
         }
         actions={
           <Button
+            variant="ghost"
             icon={<Upload className="size-4" />}
             busy={sending !== null}
             onClick={() => input.current?.click()}
-            title="Escolha o .zip e o .sig.json gerados pelo sign-release"
+            title="Escolha o .zip e o .sig.json gerados pelo sign-release (para testes)"
           >
-            Enviar versão…
+            Enviar arquivo…
           </Button>
         }
       />
@@ -110,6 +113,7 @@ export function ReleasesCard() {
         }}
       />
       <div className="space-y-4 px-5 py-4">
+        <GitHubReleases />
         {sending && (
           <div className="space-y-1">
             <p className="text-sm text-stone-600">
@@ -129,9 +133,9 @@ export function ReleasesCard() {
           <ErrorNote>{errorMessage(releases.error)}</ErrorNote>
         ) : releases.data.length === 0 ? (
           <p className="text-sm text-stone-500">
-            Nenhuma versão enviada. No seu PC, gere o pacote com <code className="text-xs">sign-release.ps1</code> a
-            partir do artefato <code className="text-xs">MarumbiSom.Agent-win-x64</code> do CI e envie os dois arquivos
-            (.zip e .sig.json) aqui.
+            Nenhuma versão no Hub ainda. Elas chegam sozinhas do GitHub quando o CI publica uma versão; para testes, dá
+            para enviar o .zip e o .sig.json gerados pelo <code className="text-xs">sign-release.ps1</code> em{' '}
+            <strong className="font-medium">Enviar arquivo…</strong>.
           </p>
         ) : (
           <ul className="divide-y divide-stone-100 rounded-lg ring-1 ring-stone-200" aria-label="Versões do agente">
@@ -147,7 +151,7 @@ export function ReleasesCard() {
                     )}
                   </p>
                   <p className="text-xs text-stone-500">
-                    {formatBytes(release.sizeBytes)} · enviada em {formatDateTime(release.createdAt)} ·{' '}
+                    {formatBytes(release.sizeBytes)} · recebida em {formatDateTime(release.createdAt)} ·{' '}
                     {release.storeCount === 1 ? '1 loja nesta versão' : `${release.storeCount} lojas nesta versão`}
                   </p>
                 </div>

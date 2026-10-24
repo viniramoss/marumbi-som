@@ -30,7 +30,7 @@ export function storesToUpdate(stores: readonly StoreSummary[], current: Release
 
 /** Por que o botão "Atualizar" de uma loja está desligado; nulo se pode atualizar. */
 export function updateBlocker(store: StoreSummary, current: ReleaseInfo | undefined): string | null {
-  if (!current) return 'Nenhuma versão para distribuição. Envie o pacote em Configurações.';
+  if (!current) return 'Nenhuma versão para distribuição ainda. Veja em Configurações.';
   if (!store.online) return 'A loja está desconectada do Hub.';
   if (isUpdating(store.update)) return 'Já há uma atualização em andamento.';
   if (compareVersions(store.agentVersion, current.version) >= 0)

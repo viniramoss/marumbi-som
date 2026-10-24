@@ -29,6 +29,8 @@ export function topicKeys(topic: string): QueryKey[] {
       return numeric === undefined ? [['history']] : [['history', numeric]];
     case 'releases':
       return [keys.releases];
+    case 'github':
+      return [keys.github];
     default:
       return [];
   }

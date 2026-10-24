@@ -79,8 +79,11 @@ cd web\panel; npm ci; npm run build; cd ..\..
 Copy-Item -Recurse web\panel\dist publish\hub\wwwroot
 ```
 
-As versões do agente distribuídas pelo painel são assinadas no PC do administrador (`sign-release.ps1`); a chave
-privada nunca entra no repositório. Os ajustes opcionais estão em `appsettings.example.json` do Hub e do agente.
+Ao juntar no `main` (ou em **Run workflow** com **Publicar versão do agente**), o CI assina o pacote do agente com a
+chave do secret `MARUMBI_SIGNING_KEY` e publica a Release `agente-v0.6.N`; o Hub baixa sozinho e o administrador
+atualiza as lojas pelo painel (D29). Pacotes de teste ainda são assinados no PC do administrador
+(`sign-release.ps1`). A chave privada nunca entra no repositório. Os ajustes opcionais estão em
+`appsettings.example.json` do Hub e do agente.
 
 ## Regras que o código não pode quebrar
 

@@ -3,6 +3,7 @@ import { Store } from 'lucide-react';
 import { useStores } from '../../api/queries';
 import { Button, Card, EmptyState, ErrorNote, PageHeader, Spinner } from '../../components/ui';
 import { errorMessage } from '../../api/client';
+import { AgentUpdateNotice } from './AgentUpdateNotice';
 import { StoreCard } from './StoreCard';
 
 export function DashboardPage() {
@@ -23,6 +24,7 @@ export function DashboardPage() {
   return (
     <>
       <PageHeader title="Início" description={summary} />
+      <AgentUpdateNotice stores={list} />
       {list.length === 0 ? (
         <Card>
           <EmptyState icon={<Store className="size-10" />} title="Cadastre a primeira loja">
