@@ -89,6 +89,9 @@ Hub for restaurado sem a pasta `data\keys`, o token salvo não abre mais: cadast
 
 1. Junte as mudanças no `main` (ou, para publicar antes, no GitHub: **Actions → CI → Run workflow**, escolha o branch
    e marque **Publicar versão do agente**). Em uns 20 minutos a Release **Agente 0.6.N** aparece em *Releases*.
+   O botão **Run workflow** só aparece depois que o `ci.yml` estiver no `main` (quando os PRs das etapas forem
+   juntados). Até lá, publicar de um branch só pela API: `gh workflow run ci.yml --ref <branch> -f publicar=true`
+   (ou peça a quem cuida do repositório).
 2. Em até 6 horas o Hub baixa sozinho (ou Configurações → **Procurar agora**). A versão baixada vira a de distribuição
    e o Início mostra "Versão 0.6.N do agente disponível".
 3. **Loja piloto primeiro**: Loja → Ajustes → **Atualizar agente**. O cartão mostra a barra do download; ao instalar,

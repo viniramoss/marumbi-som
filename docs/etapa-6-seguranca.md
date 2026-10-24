@@ -56,7 +56,8 @@ cd C:\MarumbiSom-release
 Uma vez: o secret `MARUMBI_SIGNING_KEY` no GitHub e o token de leitura no painel (passo a passo no
 [runbook](runbook.md), "Chave no GitHub e token no Hub"). Depois, cada junção no `main` publica uma versão, e o Hub
 baixa sozinho. Para publicar de um branch antes de juntar: **Actions → CI → Run workflow** → branch → marcar
-**Publicar versão do agente** (sai como pré-lançamento, e o Hub baixa do mesmo jeito).
+**Publicar versão do agente** (sai como pré-lançamento, e o Hub baixa do mesmo jeito). O botão só aparece com o
+`ci.yml` no `main`; antes de juntar os PRs, use `gh workflow run ci.yml --ref <branch> -f publicar=true`.
 
 Sem o GitHub (pacotes de teste):
 
