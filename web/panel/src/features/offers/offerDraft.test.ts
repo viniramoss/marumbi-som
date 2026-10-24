@@ -1,5 +1,6 @@
 import type { OfferDetail } from '../../api/types';
 import {
+  gapWarning,
   draftFromOffer,
   draftProblem,
   isOfferDirty,
@@ -117,5 +118,29 @@ describe('offerDraft', () => {
         name,
       ),
     ).toBe('Às 12:30, Seg a Sex · só em Manhã');
+  });
+});
+
+describe('gapWarning', () => {
+  const centro = { name: 'Marumbi Centro', minOfferGapS: 300 };
+
+  it('avisa quando a regra é mais curta que o intervalo mínimo da loja', () => {
+    expect(gapWarning(1, [centro])).toBe(
+      'Na prática toca a cada 5 min: a loja toca no máximo 1 oferta a cada 5 min, contando todas as ofertas (Loja → Ajustes → Intervalo mínimo entre ofertas).',
+    );
+    expect(gapWarning(5, [centro])).toBeNull();
+    expect(gapWarning(Number.NaN, [centro])).toBeNull();
+    expect(gapWarning(1, [])).toBeNull();
+  });
+
+  it('com várias lojas diz quais seguram a oferta', () => {
+    const batel = { name: 'Batel', minOfferGapS: 300 };
+    const loja2 = { name: 'Loja 2', minOfferGapS: 60 };
+    expect(gapWarning(2, [centro, batel, loja2])).toMatch(
+      /^Na prática toca a cada 5 min em Marumbi Centro e Batel: as lojas tocam/,
+    );
+    expect(gapWarning(2, [centro, { name: 'Batel', minOfferGapS: 600 }])).toMatch(
+      /^Na prática toca com menos frequência: Marumbi Centro toca no máximo 1 oferta a cada 5 min e Batel toca no máximo 1 oferta a cada 10 min,/,
+    );
   });
 });

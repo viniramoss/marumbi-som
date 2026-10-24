@@ -11,7 +11,7 @@ import {
   useStores,
   useUpdateOffer,
 } from '../../api/queries';
-import type { IngestionJob, OfferDetail } from '../../api/types';
+import type { IngestionJob, OfferDetail, StoreSummary } from '../../api/types';
 import { acceptedAudio, isAudioFile, uploadTrack, waitForIngestion } from '../../api/upload';
 import { AppliedStatus } from '../../components/AppliedStatus';
 import { ConfirmDialog } from '../../components/Modal';
@@ -37,6 +37,7 @@ import {
   draftFromOffer,
   draftProblem,
   expiresIn,
+  gapWarning,
   isOfferDirty,
   newOfferDraft,
   newRule,
@@ -68,6 +69,7 @@ function Editor({ saved, defaultStoreIds }: { saved: OfferDetail | null; default
   const [created, setCreated] = useState<{ id: number; draft: OfferDraft } | null>(null);
   const [draft, setDraft] = useState<OfferDraft>(initial);
   const [deleting, setDeleting] = useState(false);
+  const stores = useStores();
   const baseline = useMemo(
     () => (saved ? draftFromOffer(saved) : (created?.draft ?? initial)),
     [saved, created, initial],
@@ -194,6 +196,7 @@ function Editor({ saved, defaultStoreIds }: { saved: OfferDetail | null; default
           <RulesCard
             rules={draft.rules}
             hasAnchors={(saved?.anchors.length ?? 0) > 0}
+            stores={(stores.data ?? []).filter((s) => draft.storeIds.includes(s.id))}
             onChange={(rules) => change({ rules })}
           />
           <AnchorsCard saved={saved} />
@@ -424,10 +427,13 @@ function UploadProgress({ upload, onRetry }: { upload: UploadState; onRetry: () 
 function RulesCard({
   rules,
   hasAnchors,
+  stores,
   onChange,
 }: {
   rules: RuleDraft[];
   hasAnchors: boolean;
+  /** Lojas escolhidas para a oferta, para o aviso do intervalo mínimo entre ofertas. */
+  stores: StoreSummary[];
   onChange: (rules: RuleDraft[]) => void;
 }) {
   const playlists = usePlaylists();
@@ -469,6 +475,7 @@ function RulesCard({
               key={rule.key}
               rule={rule}
               playlists={playlists.data ?? []}
+              stores={stores}
               onChange={(patch) => update(rule.key, patch)}
               onRemove={() => remove(rule.key)}
             />
@@ -494,11 +501,13 @@ function RulesCard({
 function RuleEditor({
   rule,
   playlists,
+  stores,
   onChange,
   onRemove,
 }: {
   rule: RuleDraft;
   playlists: { id: number; name: string }[];
+  stores: StoreSummary[];
   onChange: (patch: Partial<RuleDraft>) => void;
   onRemove: () => void;
 }) {
@@ -567,6 +576,12 @@ function RuleEditor({
           <X className="size-4" />
         </IconButton>
       </div>
+      {rule.kind === 'everyMinutes' && gapWarning(rule.minutes, stores) && (
+        <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
+          <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <span>{gapWarning(rule.minutes, stores)}</span>
+        </p>
+      )}
       {playlists.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
           <span className="text-stone-500">

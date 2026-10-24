@@ -31,6 +31,7 @@ export function storeSummary(overrides: Partial<StoreSummary> = {}): StoreSummar
     playlistName: 'Manhã',
     open: true,
     hasSchedule: true,
+    minOfferGapS: 300,
     nextOffer: null,
     lastOffer: null,
     update: null,

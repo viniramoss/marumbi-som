@@ -1,4 +1,4 @@
-import type { OfferDetail, OfferInput, OfferRule, OfferState, OfferSummary } from '../../api/types';
+import type { OfferDetail, OfferInput, OfferRule, OfferState, OfferSummary, StoreSummary } from '../../api/types';
 import { formatDays } from '../../lib/format';
 import type { Tone } from '../../lib/status';
 
@@ -189,4 +189,30 @@ export function expiresIn(validUntil: string, now: number): string {
   const minutes = Math.max(0, Math.round((Date.parse(validUntil) - now) / 60_000));
   if (minutes < 60) return `vence em ${minutes} min`;
   return `vence em ${Math.round(minutes / 60)} h`;
+}
+
+/**
+ * Aviso para "a cada X minutos" menor que o intervalo mínimo entre ofertas das lojas escolhidas: o intervalo vale para
+ * todas as ofertas juntas e vence a regra, então na prática a oferta toca com menos frequência (achado no piloto).
+ */
+export function gapWarning(
+  minutes: number,
+  stores: readonly Pick<StoreSummary, 'name' | 'minOfferGapS'>[],
+): string | null {
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  const slower = stores
+    .map((s) => ({ name: s.name, gap: Math.round(s.minOfferGapS / 60) }))
+    .filter((s) => s.gap > minutes);
+  if (slower.length === 0) return null;
+  const names = (list: string[]) =>
+    list.length === 1 ? list[0]! : `${list.slice(0, -1).join(', ')} e ${list[list.length - 1]!}`;
+  const where = 'contando todas as ofertas (Loja → Ajustes → Intervalo mínimo entre ofertas)';
+  const gap = slower[0]!.gap;
+  if (slower.every((s) => s.gap === gap)) {
+    const place = stores.length > 1 ? ` em ${names(slower.map((s) => s.name))}` : '';
+    const who = slower.length === 1 ? 'a loja toca' : 'as lojas tocam';
+    return `Na prática toca a cada ${gap} min${place}: ${who} no máximo 1 oferta a cada ${gap} min, ${where}.`;
+  }
+  const each = slower.map((s) => `${s.name} toca no máximo 1 oferta a cada ${s.gap} min`);
+  return `Na prática toca com menos frequência: ${names(each)}, ${where}.`;
 }

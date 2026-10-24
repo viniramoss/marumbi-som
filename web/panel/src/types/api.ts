@@ -2373,6 +2373,8 @@ export interface components {
       playlistName: null | string;
       open: boolean;
       hasSchedule: boolean;
+      /** Format: int32 */
+      minOfferGapS: number;
       nextOffer: null | components['schemas']['NextOfferInfo'];
       lastOffer: null | components['schemas']['LastOfferInfo'];
       update: null | components['schemas']['UpdateInfo'];
