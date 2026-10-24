@@ -22,6 +22,9 @@ as lojas usam). Entra com o usuário `admin` e a senha definida no `install-hub.
 | **Configurações** | Trocar a senha, versão do Hub, disco livre e situação do backup |
 
 Toda tela que mexe com a configuração mostra se cada loja afetada já aplicou ("Aplicado" ou o andamento).
+Tudo que envia ou baixa tem barra de andamento: envio e processamento das músicas, download de uma versão nova
+na loja (no painel e na página Configurar Som). Os cards do Início e as linhas de Lojas e Playlists abrem a tela
+com um clique em qualquer parte, não só no nome.
 
 Ficam para depois, marcados como "Etapa 5" ou "Etapa 6" no painel (D23 a): tela de Ofertas, coluna de ofertas
 no editor de playlist, "tocar oferta agora", próxima/última oferta, distribuição e atualização do agente.

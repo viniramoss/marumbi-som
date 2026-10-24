@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import { useStores } from '../api/queries';
 import { appliedStatus } from '../lib/status';
+import { SyncProgress } from './SyncProgress';
 import { Badge } from './ui';
 
 /** Mostra se cada loja afetada já aplicou a última alteração (seção 7.1). */
@@ -17,9 +18,12 @@ export function AppliedStatus({ storeIds }: { storeIds: number[] }) {
             <Link to={`/lojas/${store.id}`} className="truncate font-medium text-stone-800 hover:text-brand-800">
               {store.name}
             </Link>
-            <Badge tone={status.tone} dot>
-              {status.label}
-            </Badge>
+            <span className="flex shrink-0 flex-col items-end gap-1">
+              <Badge tone={status.tone} dot>
+                {status.label}
+              </Badge>
+              <SyncProgress store={store} className="w-28" />
+            </span>
           </li>
         );
       })}

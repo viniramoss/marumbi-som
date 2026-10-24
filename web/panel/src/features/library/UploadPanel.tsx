@@ -1,5 +1,5 @@
 import { useRef, useState, type DragEvent } from 'react';
-import { CircleAlert, CircleCheck, Copy, LoaderCircle, Upload } from 'lucide-react';
+import { CircleAlert, CircleCheck, Copy, Upload } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { keys, useUploads } from '../../api/queries';
 import type { IngestionJob, IngestionStatus } from '../../api/types';
@@ -147,6 +147,11 @@ export function UploadPanel() {
                 </Button>
               )}
             </div>
+            {finished < rows.length && (
+              <div className="mb-3">
+                <ProgressBar value={finished} max={rows.length} label="Envios concluídos" />
+              </div>
+            )}
             <ul className="divide-y divide-stone-100 rounded-lg ring-1 ring-stone-200">
               {rows.map(({ key, name, upload, job }) => (
                 <UploadRow key={key} name={name} upload={upload} job={job} />
@@ -169,17 +174,26 @@ function UploadRow({ name, upload, job }: { name: string; upload?: LocalUpload; 
     );
   } else if (upload && !job && upload.progress < 1) {
     content = (
-      <span className="flex w-40 items-center gap-2">
+      <span className="flex w-56 flex-col gap-1">
+        <span className="flex justify-between text-xs text-stone-500">
+          Enviando <span className="tabular-nums">{Math.round(upload.progress * 100)}%</span>
+        </span>
         <ProgressBar value={upload.progress * 100} max={100} label={`Enviando ${name}`} />
-        <span className="w-9 text-right text-xs text-stone-500 tabular-nums">{Math.round(upload.progress * 100)}%</span>
+      </span>
+    );
+  } else if (statusLook[job?.status ?? 'queued'].icon === 'spin') {
+    // Na fila ou processando no Hub: sem porcentagem, então a barra fica em movimento até terminar.
+    const look = statusLook[job?.status ?? 'queued'];
+    content = (
+      <span className="flex w-56 flex-col gap-1">
+        <span className={`text-xs ${look.tone}`}>{look.text}</span>
+        <ProgressBar label={`${look.text}: ${name}`} />
       </span>
     );
   } else {
     const look = statusLook[job?.status ?? 'queued'];
     const icon =
-      look.icon === 'spin' ? (
-        <LoaderCircle className="size-4 animate-spin" />
-      ) : look.icon === 'ok' ? (
+      look.icon === 'ok' ? (
         <CircleCheck className="size-4" />
       ) : look.icon === 'dup' ? (
         <Copy className="size-4" />

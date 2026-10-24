@@ -143,7 +143,9 @@ test('o início mostra o cartão da loja e o histórico registra o que tocou', a
   await expect(page.getByRole('link', { name: 'Marumbi Teste' })).toBeVisible();
   await expect(page.getByText('Sincronizado ✅')).toBeVisible();
 
-  await page.getByRole('link', { name: 'Marumbi Teste' }).click();
+  // O card inteiro abre a loja, não só o nome.
+  await page.getByText('Sincronizado ✅').click();
+  await expect(page.getByRole('heading', { name: 'Marumbi Teste' })).toBeVisible();
   await page.getByRole('tab', { name: 'Histórico' }).click();
   await expect(page.getByText(/Abertura do Açougue|Fim de Tarde/).first()).toBeVisible();
 });

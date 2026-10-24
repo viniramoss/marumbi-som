@@ -1,8 +1,10 @@
 import { Link } from 'react-router';
 import { Bluetooth, ChevronRight, RefreshCw, Volume2 } from 'lucide-react';
 import type { StoreSummary } from '../../api/types';
+import { SyncProgress } from '../../components/SyncProgress';
 import { Badge, Card } from '../../components/ui';
 import { useNow } from '../../hooks/useNow';
+import { useOpenOnClick } from '../../hooks/useOpenOnClick';
 import { formatAgo } from '../../lib/format';
 import { bluetoothStatus, playerStatus, syncStatus } from '../../lib/status';
 import { LiveControls } from './LiveControls';
@@ -15,9 +17,10 @@ export function StoreCard({ store }: { store: StoreSummary }) {
   const status = playerStatus(store);
   const bluetooth = bluetoothStatus(store);
   const sync = syncStatus(store);
+  const open = useOpenOnClick();
 
   return (
-    <Card className="flex flex-col">
+    <Card className="flex flex-col" onClick={open(`/lojas/${store.id}`)}>
       <div className="flex items-center justify-between gap-3 px-5 pt-4">
         <Link
           to={`/lojas/${store.id}`}
@@ -50,7 +53,10 @@ export function StoreCard({ store }: { store: StoreSummary }) {
                 className={`size-4 ${sync.tone === 'green' ? 'text-emerald-600' : 'text-sky-600'}`}
                 aria-hidden
               />
-              <dd className="truncate">{sync.label}</dd>
+              <dd className="min-w-0 flex-1">
+                <span className="block truncate">{sync.label}</span>
+                <SyncProgress store={store} className="mt-1" />
+              </dd>
             </div>
             <div className="flex items-center gap-1.5">
               <dt className="sr-only">Volume</dt>

@@ -5,8 +5,10 @@ import { errorMessage } from '../../api/client';
 import { useCreateStore, useStores } from '../../api/queries';
 import type { StoreSummary } from '../../api/types';
 import { Modal } from '../../components/Modal';
+import { SyncProgress } from '../../components/SyncProgress';
 import { Badge, Button, Card, EmptyState, ErrorNote, Field, Input, PageHeader, Spinner } from '../../components/ui';
 import { useNow } from '../../hooks/useNow';
+import { useOpenOnClick } from '../../hooks/useOpenOnClick';
 import { formatAgo } from '../../lib/format';
 import { bluetoothStatus, playerStatus, syncStatus } from '../../lib/status';
 
@@ -68,8 +70,9 @@ function StoreRow({ store, now }: { store: StoreSummary; now: number }) {
   const status = playerStatus(store);
   const bluetooth = bluetoothStatus(store);
   const sync = syncStatus(store);
+  const open = useOpenOnClick();
   return (
-    <tr className="hover:bg-stone-50">
+    <tr className="cursor-pointer hover:bg-stone-50" onClick={open(`/lojas/${store.id}`)}>
       <td className="px-5 py-3">
         <Link to={`/lojas/${store.id}`} className="font-medium text-stone-900 hover:text-brand-800">
           {store.name}
@@ -95,7 +98,10 @@ function StoreRow({ store, now }: { store: StoreSummary; now: number }) {
           ))}
       </td>
       <td className="py-3 pr-4 text-stone-700">{store.enrolled ? bluetooth.label : '–'}</td>
-      <td className="py-3 pr-4 text-stone-700">{sync.label}</td>
+      <td className="py-3 pr-4 text-stone-700">
+        {sync.label}
+        <SyncProgress store={store} className="mt-1 w-28" />
+      </td>
       <td className="py-3 pr-5 text-stone-500">
         {!store.enrolled ? 'Nunca conectou' : store.online ? 'Conectada agora' : formatAgo(store.lastSeenAt, now)}
       </td>

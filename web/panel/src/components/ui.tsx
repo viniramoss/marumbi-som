@@ -2,6 +2,7 @@ import {
   forwardRef,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
+  type MouseEventHandler,
   type ReactNode,
   type SelectHTMLAttributes,
 } from 'react';
@@ -72,8 +73,26 @@ export function IconButton({
   );
 }
 
-export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <section className={`rounded-xl bg-white shadow-sm ring-1 ring-stone-200 ${className}`}>{children}</section>;
+export function Card({
+  children,
+  className = '',
+  onClick,
+}: {
+  children: ReactNode;
+  className?: string;
+  /** Card inteiro clicável (abre a tela da loja, por exemplo); botões e links dentro seguem com a ação deles. */
+  onClick?: MouseEventHandler<HTMLElement>;
+}) {
+  return (
+    <section
+      onClick={onClick}
+      className={`rounded-xl bg-white shadow-sm ring-1 ring-stone-200 ${
+        onClick ? 'cursor-pointer transition-shadow hover:shadow-md hover:ring-brand-200' : ''
+      } ${className}`}
+    >
+      {children}
+    </section>
+  );
 }
 
 export function CardHeader({
@@ -198,7 +217,15 @@ export function Select({ className = '', children, ...rest }: SelectHTMLAttribut
   );
 }
 
-export function ProgressBar({ value, max, label }: { value: number; max: number; label?: string }) {
+/** Barra de andamento; sem `value` fica indeterminada (algo em andamento sem porcentagem, ex.: processando no Hub). */
+export function ProgressBar({ value, max = 100, label }: { value?: number; max?: number; label?: string }) {
+  if (value === undefined) {
+    return (
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-stone-200" role="progressbar" aria-label={label}>
+        <div className="h-full w-2/5 animate-indeterminate rounded-full bg-brand-600" />
+      </div>
+    );
+  }
   const percent = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
   return (
     <div

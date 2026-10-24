@@ -15,6 +15,7 @@ import { errorMessage } from '../../api/client';
 import { useStoreTracks } from '../../api/queries';
 import type { StoreDetail, StoreSummary } from '../../api/types';
 import { Modal } from '../../components/Modal';
+import { SyncProgress } from '../../components/SyncProgress';
 import { Button, Card, CardHeader, EmptyState, ErrorNote, Input, SoonTag, Spinner } from '../../components/ui';
 import { useCommand } from '../../hooks/useCommand';
 import { useNow } from '../../hooks/useNow';
@@ -277,7 +278,10 @@ function SituationCard({ store }: { store: StoreSummary }) {
       <dl className="divide-y divide-stone-100 text-sm">
         <Row label="Conexão">{store.online ? 'Conectada' : `Último sinal ${formatAgo(store.lastSeenAt, now)}`}</Row>
         <Row label="Caixa de som">{bluetooth.label}</Row>
-        <Row label="Configuração">{sync.label}</Row>
+        <Row label="Configuração">
+          {sync.label}
+          <SyncProgress store={store} className="mt-1 ml-auto w-32" />
+        </Row>
         <Row label="Horário">
           {!store.hasSchedule ? 'Sem agenda' : store.open ? 'Dentro do horário da agenda' : 'Fora do horário da agenda'}
         </Row>

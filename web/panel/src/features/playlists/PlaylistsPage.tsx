@@ -5,12 +5,14 @@ import { errorMessage } from '../../api/client';
 import { useCreatePlaylist, usePlaylists } from '../../api/queries';
 import { Modal } from '../../components/Modal';
 import { Button, Card, EmptyState, ErrorNote, Field, Input, PageHeader, Spinner } from '../../components/ui';
+import { useOpenOnClick } from '../../hooks/useOpenOnClick';
 import { formatLongDuration } from '../../lib/format';
 import { usageText } from './usage';
 
 export function PlaylistsPage() {
   const playlists = usePlaylists();
   const [creating, setCreating] = useState(false);
+  const open = useOpenOnClick();
 
   return (
     <>
@@ -47,7 +49,11 @@ export function PlaylistsPage() {
               </thead>
               <tbody className="divide-y divide-stone-100">
                 {playlists.data.map((playlist) => (
-                  <tr key={playlist.id} className="hover:bg-stone-50">
+                  <tr
+                    key={playlist.id}
+                    className="cursor-pointer hover:bg-stone-50"
+                    onClick={open(`/playlists/${playlist.id}`)}
+                  >
                     <td className="px-5 py-3">
                       <Link
                         to={`/playlists/${playlist.id}`}
