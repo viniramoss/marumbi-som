@@ -9,6 +9,7 @@ const done: Record<StoreCommand['command'], string> = {
   next: 'Pulando para a próxima música.',
   setVolume: 'Volume ajustado.',
   playNow: 'A música escolhida entra agora.',
+  playOffer: 'A oferta entra agora, por cima da música.',
   reconnectBluetooth: 'Pedido de reconexão da caixa enviado.',
   restartAgent: 'O agente da loja está reiniciando.',
 };

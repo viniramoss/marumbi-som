@@ -56,7 +56,9 @@ const tracks = [
     ['Trio Marumbi - Abertura do Açougue.mp3', 'sine=frequency=440:duration=40'],
     ['Banda da Picanha - Fim de Tarde.mp3', 'sine=frequency=660:duration=45'],
 ];
-for (const [name, source] of tracks) {
+// Áudio de oferta: o perfil de ofertas aceita de 3 s a 2 min (seção 6.5).
+const offerAudio = ['Oferta Picanha.mp3', 'sine=frequency=880:duration=8'];
+for (const [name, source] of [...tracks, offerAudio]) {
     run('ffmpeg', [
         '-hide_banner',
         '-loglevel',
@@ -77,7 +79,17 @@ run('dotnet', [agentDll, '--set-local-password', `--Agent:DataDirectory=${agentD
 
 writeFileSync(
     join(here, '.stack.json'),
-    JSON.stringify({ ...stack, root, audio, tracks: tracks.map(([name]) => join(audio, name)) }, null, 2),
+    JSON.stringify(
+        {
+            ...stack,
+            root,
+            audio,
+            tracks: tracks.map(([name]) => join(audio, name)),
+            offerAudio: join(audio, offerAudio[0]),
+        },
+        null,
+        2,
+    ),
 );
 
 const children = [

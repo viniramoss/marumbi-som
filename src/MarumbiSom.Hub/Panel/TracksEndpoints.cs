@@ -32,9 +32,10 @@ public static class TracksEndpoints
     public static TrackDto ToDto(Data.Track track, IReadOnlyList<PlaylistRef> playlists) =>
         new(track.Hash, track.Kind, track.Title, track.Artist, track.DurationMs, track.SizeBytes, track.LoudnessLufs, track.OriginalName, track.CreatedAt, playlists);
 
-    private static async Task<IResult> ListAsync(HubDb db, string? q, TrackKind? kind, CancellationToken cancellationToken)
+    /// <param name="kind"><c>music</c> (padrão) ou <c>offer</c>, como no JSON (o enum na query só aceitaria "Offer").</param>
+    private static async Task<IResult> ListAsync(HubDb db, string? q, string? kind, CancellationToken cancellationToken)
     {
-        var wanted = kind ?? TrackKind.Music;
+        var wanted = string.Equals(kind, "offer", StringComparison.OrdinalIgnoreCase) ? TrackKind.Offer : TrackKind.Music;
         var tracks = await db.Tracks.AsNoTracking().Where(t => t.DeletedAt == null && t.Kind == wanted).ToListAsync(cancellationToken);
         if (!string.IsNullOrWhiteSpace(q))
         {

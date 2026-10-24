@@ -21,6 +21,8 @@ export function topicKeys(topic: string): QueryKey[] {
       return [keys.playlists, ['playlist']];
     case 'playlist':
       return numeric === undefined ? [['playlist']] : [keys.playlist(numeric)];
+    case 'offers':
+      return [keys.offers, ['offer'], ['storeOffers'], ['playlist']];
     case 'events':
       return numeric === undefined ? [['events']] : [keys.events(numeric)];
     case 'history':
@@ -48,11 +50,14 @@ export function applyLiveMessage(client: QueryClient, message: PanelMessage) {
     if (!known && client.getQueryData(keys.stores) !== undefined) {
       void client.invalidateQueries({ queryKey: keys.stores });
     }
-    // A fila e as músicas do manifesto vêm só no detalhe; ele é recarregado quando a música ou a versão muda.
+    // A fila e as músicas do manifesto vêm só no detalhe; ele é recarregado quando a música ou a versão muda, e
+    // enquanto a fila estiver vazia com música tocando (o detalhe pode ter sido lido antes de a loja informar a fila).
     const detail = client.getQueryData<StoreDetail>(keys.store(store.id));
     if (
       detail &&
-      (detail.queue[0]?.hash === store.nowPlaying?.hash || detail.status.appliedVersion !== store.appliedVersion)
+      (detail.queue[0]?.hash === store.nowPlaying?.hash ||
+        detail.status.appliedVersion !== store.appliedVersion ||
+        (detail.queue.length === 0 && store.nowPlaying !== null))
     ) {
       void client.invalidateQueries({ queryKey: keys.store(store.id) });
     }

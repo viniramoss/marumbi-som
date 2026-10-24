@@ -48,4 +48,31 @@ describe('StoreCard', () => {
     expect(bar).toHaveAttribute('aria-valuenow', '3');
     expect(bar).toHaveAttribute('aria-valuemax', '10');
   });
+
+  it('mostra a próxima oferta prevista e a última tocada', () => {
+    const at = new Date(Date.now() + 5 * 60_000).toISOString();
+    renderScreen(
+      <StoreCard
+        store={storeSummary({
+          nextOffer: { key: 'of-3', offerId: 3, name: 'Picanha', at },
+          lastOffer: {
+            offerId: 4,
+            name: 'Costela',
+            at: new Date(Date.now() - 600_000).toISOString(),
+            result: 'interrupted',
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText('Picanha')).toBeInTheDocument();
+    expect(screen.getByText(/\(em 5 min\)/)).toBeInTheDocument();
+    expect(screen.getByText(/há 10 min\), cortada/)).toBeInTheDocument();
+  });
+
+  it('sem ofertas o card não mostra a linha de ofertas', () => {
+    renderScreen(<StoreCard store={storeSummary()} />);
+
+    expect(screen.queryByText('Próxima oferta:')).not.toBeInTheDocument();
+  });
 });

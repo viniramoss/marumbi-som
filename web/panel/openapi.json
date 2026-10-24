@@ -138,7 +138,7 @@
             "name": "kind",
             "in": "query",
             "schema": {
-              "$ref": "#/components/schemas/TrackKind"
+              "type": "string"
             }
           }
         ],
@@ -2206,7 +2206,10 @@
               "07:30"
             ],
             "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$",
-            "type": "string"
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "days": {
             "type": [

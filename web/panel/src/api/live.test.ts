@@ -41,6 +41,16 @@ describe('applyLiveMessage', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.store(1) });
   });
 
+  it('fila vazia com música tocando é recarregada (o detalhe foi lido antes de a loja informar a fila)', () => {
+    const client = new QueryClient();
+    client.setQueryData(keys.store(1), storeDetail({ queue: [] }));
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+
+    applyLiveMessage(client, { type: 'store', store: storeSummary() });
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.store(1) });
+  });
+
   it('aviso de mudança invalida as chaves do tópico', () => {
     const client = new QueryClient();
     const invalidate = vi.spyOn(client, 'invalidateQueries');
@@ -59,6 +69,7 @@ describe('topicKeys', () => {
     expect(topicKeys('tracks')).toEqual([keys.tracks, ['storeTracks'], ['playlist']]);
     expect(topicKeys('uploads')).toEqual([keys.uploads]);
     expect(topicKeys('events:2')).toEqual([keys.events(2)]);
+    expect(topicKeys('offers')).toEqual([keys.offers, ['offer'], ['storeOffers'], ['playlist']]);
     expect(topicKeys('novidade')).toEqual([]);
   });
 });

@@ -1,8 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, call } from './client';
 import type {
+  AnchorInput,
   CommandOutcome,
   ItemInput,
+  OfferDetail,
+  OfferInput,
+  OfferSummary,
   PlaylistDetail,
   ScheduleInput,
   StoreDetail,
@@ -24,6 +28,10 @@ export const keys = {
   playlists: ['playlists'] as const,
   playlist: (id: number) => ['playlist', id] as const,
   settings: ['settings'] as const,
+  offers: ['offers'] as const,
+  offer: (id: number) => ['offer', id] as const,
+  offerAudio: ['offerAudio'] as const,
+  storeOffers: (id: number) => ['storeOffers', id] as const,
 };
 
 export function useSession() {
@@ -76,8 +84,9 @@ export function useTracks() {
   return useQuery({ queryKey: keys.tracks, queryFn: () => call(api.GET('/api/tracks')) });
 }
 
-export function useUploads() {
-  return useQuery({ queryKey: keys.uploads, queryFn: () => call(api.GET('/api/uploads')) });
+/** `refetchInterval`: consulta de tempos em tempos enquanto algo processa (caso o WebSocket do painel caia). */
+export function useUploads(refetchInterval: number | false = false) {
+  return useQuery({ queryKey: keys.uploads, queryFn: () => call(api.GET('/api/uploads')), refetchInterval });
 }
 
 export function usePlaylists() {
@@ -88,6 +97,35 @@ export function usePlaylist(id: number) {
   return useQuery({
     queryKey: keys.playlist(id),
     queryFn: () => call(api.GET('/api/playlists/{id}', { params: { path: { id } } })),
+  });
+}
+
+export function useOffers() {
+  return useQuery({ queryKey: keys.offers, queryFn: () => call(api.GET('/api/offers')) });
+}
+
+export function useOffer(id: number, enabled = true) {
+  return useQuery({
+    queryKey: keys.offer(id),
+    queryFn: () => call(api.GET('/api/offers/{id}', { params: { path: { id } } })),
+    enabled,
+  });
+}
+
+/** Áudios de oferta já processados (para a duração do áudio recém-enviado, antes de salvar a oferta). */
+export function useOfferAudio() {
+  return useQuery({
+    queryKey: keys.offerAudio,
+    queryFn: () => call(api.GET('/api/tracks', { params: { query: { kind: 'offer' } } })),
+  });
+}
+
+/** Ofertas que valem agora na configuração aplicada da loja, para "tocar oferta agora" (D26 g). */
+export function useStoreOffers(id: number, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.storeOffers(id),
+    queryFn: () => call(api.GET('/api/stores/{id}/offers', { params: { path: { id } } })),
+    enabled,
   });
 }
 
@@ -163,15 +201,25 @@ export function useRevokeToken(id: number) {
 export type StoreCommand =
   | { command: 'play' | 'pause' | 'next' | 'reconnectBluetooth' | 'restartAgent' }
   | { command: 'setVolume'; volume: number }
-  | { command: 'playNow'; hash: string };
+  | { command: 'playNow'; hash: string }
+  | { command: 'playOffer'; offerKey: string };
+
+function commandArgs(command: StoreCommand) {
+  switch (command.command) {
+    case 'setVolume':
+      return { volume: command.volume };
+    case 'playNow':
+      return { hash: command.hash };
+    case 'playOffer':
+      // O agente conhece a oferta pelo identificador do manifesto (of-12).
+      return { offerId: command.offerKey };
+    default:
+      return null;
+  }
+}
 
 export function sendCommand(id: number, command: StoreCommand): Promise<CommandOutcome> {
-  const args =
-    command.command === 'setVolume'
-      ? { volume: command.volume }
-      : command.command === 'playNow'
-        ? { hash: command.hash }
-        : null;
+  const args = commandArgs(command);
   return call(
     api.POST('/api/stores/{id}/commands', { params: { path: { id } }, body: { command: command.command, args } }),
   );
@@ -208,7 +256,11 @@ export function useCreatePlaylist() {
   });
 }
 
-/** Salvar = publicar (seção 7.1): renomeia/alterna aleatório se mudou e substitui a lista inteira. */
+/**
+ * Salvar = publicar (seção 7.1): renomeia/alterna aleatório se mudou e substitui a lista inteira. As âncoras de
+ * ofertas vão depois dos itens, já com os ids dos itens novos (D26 c): `anchors` recebe a playlist salva e devolve as
+ * âncoras a gravar, ou nulo para não mexer nelas.
+ */
 export function useSavePlaylist(id: number) {
   const client = useQueryClient();
   return useMutation({
@@ -217,21 +269,28 @@ export function useSavePlaylist(id: number) {
       shuffle,
       items,
       changedSettings,
+      anchors,
     }: {
       name: string;
       shuffle: boolean;
       items: ItemInput[];
       changedSettings: boolean;
+      anchors?: (saved: PlaylistDetail) => AnchorInput[] | null;
     }): Promise<PlaylistDetail> => {
       if (changedSettings) {
         await call(api.PATCH('/api/playlists/{id}', { params: { path: { id } }, body: { name, shuffle } }));
       }
-      return call(api.PUT('/api/playlists/{id}/items', { params: { path: { id } }, body: items }));
+      const saved = await call(api.PUT('/api/playlists/{id}/items', { params: { path: { id } }, body: items }));
+      const body = anchors?.(saved);
+      if (!body) return saved;
+      return call(api.PUT('/api/playlists/{id}/anchors', { params: { path: { id } }, body }));
     },
     onSuccess: (playlist) => {
       client.setQueryData(keys.playlist(id), playlist);
       void client.invalidateQueries({ queryKey: keys.playlists });
       void client.invalidateQueries({ queryKey: keys.tracks });
+      void client.invalidateQueries({ queryKey: keys.offers });
+      void client.invalidateQueries({ queryKey: ['offer'] });
     },
   });
 }
@@ -244,6 +303,46 @@ export function useDeletePlaylist() {
       client.removeQueries({ queryKey: keys.playlist(id) });
       void client.invalidateQueries({ queryKey: keys.playlists });
       void client.invalidateQueries({ queryKey: keys.tracks });
+    },
+  });
+}
+
+/** Grava a oferta devolvida pelo Hub no cache do detalhe e da lista. */
+function offerSaved(client: ReturnType<typeof useQueryClient>, detail: OfferDetail) {
+  client.setQueryData(keys.offer(detail.offer.id), detail);
+  client.setQueryData<OfferSummary[]>(keys.offers, (list) =>
+    list?.some((o) => o.id === detail.offer.id)
+      ? list.map((o) => (o.id === detail.offer.id ? detail.offer : o))
+      : list && [detail.offer, ...list],
+  );
+  void client.invalidateQueries({ queryKey: keys.offers });
+}
+
+export function useCreateOffer() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: OfferInput) => call(api.POST('/api/offers', { body: input })),
+    onSuccess: (detail) => offerSaved(client, detail),
+  });
+}
+
+export function useUpdateOffer(id: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: OfferInput) => call(api.PATCH('/api/offers/{id}', { params: { path: { id } }, body: input })),
+    onSuccess: (detail) => offerSaved(client, detail),
+  });
+}
+
+export function useDeleteOffer() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => call(api.DELETE('/api/offers/{id}', { params: { path: { id } } })),
+    onSuccess: (_, id) => {
+      client.removeQueries({ queryKey: keys.offer(id) });
+      client.setQueryData<OfferSummary[]>(keys.offers, (list) => list?.filter((o) => o.id !== id));
+      void client.invalidateQueries({ queryKey: keys.offers });
+      void client.invalidateQueries({ queryKey: ['playlist'] });
     },
   });
 }

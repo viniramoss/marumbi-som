@@ -61,6 +61,23 @@ public sealed class OffersTests
     }
 
     [Fact]
+    public async Task Biblioteca_lista_musicas_e_audios_de_oferta_separados()
+    {
+        await using var hub = await HubHarness.StartAsync(Now);
+        var admin = await hub.AdminClientAsync();
+        var music = await hub.SeedTrackAsync("Música");
+        var audio = await hub.SeedTrackAsync("Picanha", 12_000, TrackKind.Offer);
+
+        async Task<List<string?>> HashesAsync(string url) =>
+            (await HubHarness.JsonAsync(await admin.GetAsync(url))).EnumerateArray().Select(t => t.GetProperty("hash").GetString()).ToList();
+
+        // O painel manda o valor como no JSON ("offer"), que o enum na query recusava com 400.
+        Assert.Equal([audio], await HashesAsync("/api/tracks?kind=offer"));
+        Assert.Equal([music], await HashesAsync("/api/tracks"));
+        Assert.Equal([music], await HashesAsync("/api/tracks?kind=music"));
+    }
+
+    [Fact]
     public async Task Oferta_invalida_e_recusada_com_motivo()
     {
         await using var hub = await HubHarness.StartAsync(Now);
@@ -80,11 +97,19 @@ public sealed class OffersTests
         Assert.Contains("Áudio da oferta", await RejectAsync(new { name = "X", audioHash = music, validFrom = Now, validUntil = Now.AddDays(1) }), StringComparison.Ordinal);
         Assert.Contains("dia da semana", await RejectAsync(new
         {
-            name = "X", audioHash = audio, validFrom = Now, validUntil = Now.AddDays(1), rules = new[] { new { kind = "clock", time = "10:00", days = Array.Empty<int>() } },
+            name = "X",
+            audioHash = audio,
+            validFrom = Now,
+            validUntil = Now.AddDays(1),
+            rules = new[] { new { kind = "clock", time = "10:00", days = Array.Empty<int>() } },
         }), StringComparison.Ordinal);
         Assert.Contains("1 a 1440", await RejectAsync(new
         {
-            name = "X", audioHash = audio, validFrom = Now, validUntil = Now.AddDays(1), rules = new[] { new { kind = "everyMinutes", minutes = 0 } },
+            name = "X",
+            audioHash = audio,
+            validFrom = Now,
+            validUntil = Now.AddDays(1),
+            rules = new[] { new { kind = "everyMinutes", minutes = 0 } },
         }), StringComparison.Ordinal);
         Assert.Empty(await hub.WithDbAsync(db => db.Offers.ToListAsync()));
     }
@@ -166,7 +191,11 @@ public sealed class OffersTests
         var audio = await hub.SeedTrackAsync("Picanha", 12_000, TrackKind.Offer);
         var offerId = (await HubHarness.JsonAsync(await admin.PostAsJsonAsync("/api/offers", new
         {
-            name = "Picanha", audioHash = audio, validFrom = Now, validUntil = Now.AddDays(3), rules = new[] { new { kind = "everyMinutes", minutes = 15 } },
+            name = "Picanha",
+            audioHash = audio,
+            validFrom = Now,
+            validUntil = Now.AddDays(3),
+            rules = new[] { new { kind = "everyMinutes", minutes = 15 } },
         }))).GetProperty("offer").GetProperty("id").GetInt32();
         await hub.WithDbAsync(db =>
         {

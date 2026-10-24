@@ -108,11 +108,7 @@ export function StoreSettingsTab({ detail }: { detail: StoreDetail }) {
             </Field>
             <Field
               label="Intervalo mínimo entre ofertas"
-              hint={
-                <span className="inline-flex items-center gap-1.5">
-                  Padrão 5 min. Passa a valer com as ofertas <SoonTag stage={5} />
-                </span>
-              }
+              hint='Padrão 5 min. Vale para as regras de tempo; ofertas presas a músicas e o "tocar oferta agora" não esperam.'
             >
               <NumberInput
                 value={form.minOfferGapMin}

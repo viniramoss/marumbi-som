@@ -193,7 +193,7 @@ export interface paths {
       parameters: {
         query?: {
           q?: string;
-          kind?: components['schemas']['TrackKind'];
+          kind?: string;
         };
         header?: never;
         path?: never;
@@ -1830,7 +1830,7 @@ export interface components {
       /** Format: int32 */
       minutes: null | number;
       /** @example 07:30 */
-      time: string;
+      time: null | string;
       days: null | number[];
       /** Format: int32 */
       n: null | number;

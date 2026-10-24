@@ -17,31 +17,56 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowLeft, GripVertical, ListPlus, Megaphone, Pause, Play, Save, Shuffle, Trash2, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  GripVertical,
+  ListPlus,
+  Lock,
+  Megaphone,
+  Pause,
+  Play,
+  Plus,
+  Save,
+  Shuffle,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { errorMessage } from '../../api/client';
-import { useDeletePlaylist, usePlaylist, useSavePlaylist } from '../../api/queries';
-import type { PlaylistDetail } from '../../api/types';
+import { useDeletePlaylist, useOffers, usePlaylist, useSavePlaylist } from '../../api/queries';
+import type { OfferSummary, PlaylistDetail } from '../../api/types';
 import { AppliedStatus } from '../../components/AppliedStatus';
 import { ConfirmDialog } from '../../components/Modal';
 import { useToast } from '../../components/Toasts';
-import { Button, Card, CardHeader, EmptyState, ErrorNote, IconButton, SoonTag, Spinner } from '../../components/ui';
+import { Badge, Button, Card, CardHeader, EmptyState, ErrorNote, IconButton, Spinner } from '../../components/ui';
 import { usePreview } from '../../hooks/usePreview';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { formatDuration, formatLongDuration } from '../../lib/format';
+import { offerStatus } from '../offers/offerDraft';
 import { AddTracksDialog } from './AddTracksDialog';
+import { AnchorDialog, type AnchorChoice } from './AnchorDialog';
 import {
   addTracks,
+  anchorsChanged,
+  anchorsOf,
   draftFrom,
   isDirty,
   moveItem,
+  putAnchor,
+  removeAnchor,
   removeItem,
+  setShuffle,
   settingsChanged,
   startTimes,
+  toAnchorsInput,
   toItemsInput,
   totalDuration,
   type Draft,
+  type DraftAnchor,
   type DraftItem,
 } from './playlistDraft';
+
+/** Tipo do arrastar de uma oferta da coluna da direita para cima de uma música. */
+const OfferDrag = 'application/x-marumbi-oferta';
 import { usageText } from './usage';
 
 export function PlaylistEditorPage() {
@@ -57,6 +82,10 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
   const [draft, setDraft] = useState<Draft>(() => draftFrom(saved));
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [anchoring, setAnchoring] = useState<(Partial<AnchorChoice> & { itemKey: string }) | null>(null);
+  const [removing, setRemoving] = useState<DraftItem | null>(null);
+  const [shuffling, setShuffling] = useState(false);
+  const offers = useOffers();
   const save = useSavePlaylist(saved.id);
   const remove = useDeletePlaylist();
   const toast = useToast();
@@ -88,11 +117,14 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
       return;
     }
     try {
+      // Com aleatório o Hub solta as âncoras sozinho; senão as âncoras vão depois dos itens, com os ids novos.
+      const sendAnchors = !draft.shuffle && anchorsChanged(draft, saved);
       const result = await save.mutateAsync({
         name: draft.name.trim(),
         shuffle: draft.shuffle,
         items: toItemsInput(draft),
         changedSettings: settingsChanged(draft, saved),
+        anchors: sendAnchors ? (playlist) => toAnchorsInput(draft, playlist.items) : undefined,
       });
       setDraft(draftFrom(result));
       toast.success(
@@ -146,7 +178,11 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
             <input
               type="checkbox"
               checked={draft.shuffle}
-              onChange={(e) => setDraft((d) => ({ ...d, shuffle: e.target.checked }))}
+              onChange={(e) => {
+                // Ligar o aleatório solta as ofertas presas: pergunta antes.
+                if (e.target.checked && draft.anchors.length > 0) setShuffling(true);
+                else setDraft((d) => setShuffle(d, e.target.checked));
+              }}
               className="size-4 accent-brand-700"
             />
             <Shuffle className="size-4 text-stone-500" aria-hidden /> Aleatório
@@ -194,8 +230,23 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
                       index={index}
                       start={starts[index]!}
                       playing={preview.playing === item.hash}
+                      anchors={anchorsOf(draft, item.key)}
+                      canAnchor={!draft.shuffle}
                       onPreview={() => preview.toggle(item.hash)}
-                      onRemove={() => setDraft((d) => removeItem(d, item.key))}
+                      onRemove={() =>
+                        anchorsOf(draft, item.key).length > 0
+                          ? setRemoving(item)
+                          : setDraft((d) => removeItem(d, item.key))
+                      }
+                      onAnchor={(offerId) => setAnchoring({ itemKey: item.key, offerId })}
+                      onEditAnchor={(anchor) =>
+                        setAnchoring({
+                          key: anchor.key,
+                          offerId: anchor.offerId,
+                          itemKey: anchor.itemKey,
+                          offsetMs: anchor.offsetMs ?? 0,
+                        })
+                      }
                     />
                   ))}
                 </ol>
@@ -220,20 +271,14 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
               )}
             </div>
           </Card>
-          <Card>
-            <CardHeader
-              title={
-                <span className="inline-flex items-center gap-2">
-                  <Megaphone className="size-4 text-stone-400" /> Ofertas
-                </span>
-              }
-              actions={<SoonTag stage={5} />}
-            />
-            <p className="px-5 py-4 text-sm text-stone-500">
-              Esta coluna vai receber as ofertas: arrastar para o espaço entre duas músicas ou para cima de uma música
-              (em um tempo marcado). Chega com a tela de Ofertas.
-            </p>
-          </Card>
+          <OffersColumn
+            offers={offers.data ?? []}
+            loading={offers.isPending}
+            shuffle={draft.shuffle}
+            anchorCount={draft.anchors.length}
+            canAnchor={draft.items.length > 0}
+            onPick={(offerId) => setAnchoring({ itemKey: draft.items[0]!.key, offerId })}
+          />
         </div>
       </div>
 
@@ -246,6 +291,66 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
             setAdding(false);
           }}
         />
+      )}
+      {anchoring && (
+        <AnchorDialog
+          offers={offers.data ?? []}
+          items={draft.items}
+          initial={anchoring}
+          onClose={() => setAnchoring(null)}
+          onSave={(anchor) => {
+            setDraft((d) => putAnchor(d, anchor));
+            setAnchoring(null);
+          }}
+          onRemove={
+            anchoring.key
+              ? () => {
+                  setDraft((d) => removeAnchor(d, anchoring.key!));
+                  setAnchoring(null);
+                }
+              : undefined
+          }
+        />
+      )}
+      {removing && (
+        <ConfirmDialog
+          title="Tirar a música com oferta presa?"
+          confirmLabel="Tirar e soltar a oferta"
+          onCancel={() => setRemoving(null)}
+          onConfirm={() => {
+            setDraft((d) => removeItem(d, removing.key));
+            setRemoving(null);
+          }}
+        >
+          <p>
+            "{removing.title}" tem{' '}
+            {anchorsOf(draft, removing.key)
+              .map((a) => `a oferta "${a.offerName}"`)
+              .join(' e ')}{' '}
+            presa. Ao tirar a música, a oferta deixa de tocar nesse ponto da playlist.
+          </p>
+          <p>Nada muda nas lojas antes de "Salvar e publicar".</p>
+        </ConfirmDialog>
+      )}
+      {shuffling && (
+        <ConfirmDialog
+          title="Ligar o aleatório?"
+          confirmLabel="Ligar e soltar as ofertas"
+          onCancel={() => setShuffling(false)}
+          onConfirm={() => {
+            setDraft((d) => setShuffle(d, true));
+            setShuffling(false);
+          }}
+        >
+          <p>
+            No aleatório a ordem muda a cada ciclo, então não dá para prender oferta em música. As{' '}
+            {draft.anchors.length === 1
+              ? 'oferta presa será solta'
+              : `${draft.anchors.length} ofertas presas serão soltas`}
+            .
+          </p>
+          <p>As regras de tempo das ofertas (a cada X minutos, horário fixo) continuam valendo.</p>
+        </ConfirmDialog>
       )}
       {deleting && (
         <ConfirmDialog
@@ -276,24 +381,53 @@ function SortableRow({
   index,
   start,
   playing,
+  anchors,
+  canAnchor,
   onPreview,
   onRemove,
+  onAnchor,
+  onEditAnchor,
 }: {
   item: DraftItem;
   index: number;
   start: number;
   playing: boolean;
+  anchors: DraftAnchor[];
+  canAnchor: boolean;
   onPreview: () => void;
   onRemove: () => void;
+  onAnchor: (offerId?: number) => void;
+  onEditAnchor: (anchor: DraftAnchor) => void;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: item.key,
   });
+  const [dropping, setDropping] = useState(false);
   return (
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`flex items-center gap-2 bg-white px-3 py-2 text-sm sm:gap-3 sm:px-5 ${isDragging ? 'relative z-10 shadow-lg ring-1 ring-stone-200' : ''}`}
+      onDragOver={(event) => {
+        if (!canAnchor || !event.dataTransfer.types.includes(OfferDrag)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+        setDropping(true);
+      }}
+      onDragLeave={(event) => {
+        if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) {
+          setDropping(false);
+        }
+      }}
+      onDrop={(event) => {
+        setDropping(false);
+        const offerId = Number(event.dataTransfer.getData(OfferDrag));
+        if (!canAnchor || !offerId) return;
+        event.preventDefault();
+        onAnchor(offerId);
+      }}
+      className={`flex items-center gap-2 px-3 py-2 text-sm sm:gap-3 sm:px-5 ${
+        dropping ? 'bg-brand-50 ring-2 ring-brand-400 ring-inset' : 'bg-white'
+      } ${isDragging ? 'relative z-10 shadow-lg ring-1 ring-stone-200' : ''}`}
     >
       <button
         ref={setActivatorNodeRef}
@@ -315,14 +449,124 @@ function SortableRow({
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium text-stone-900">{item.title}</p>
         <p className="truncate text-xs text-stone-500">{item.artist ?? 'Artista desconhecido'}</p>
+        {anchors.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {anchors.map((anchor) => (
+              <button
+                key={anchor.key}
+                type="button"
+                onClick={() => onEditAnchor(anchor)}
+                title="Ajustar ou soltar a oferta"
+                className="inline-flex max-w-full items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100"
+              >
+                <Megaphone className="size-3 shrink-0" aria-hidden />
+                <span className="truncate">{anchor.offerName}</span>
+                <span className="shrink-0 tabular-nums">
+                  {anchor.offsetMs === null ? 'entre músicas' : `aos ${formatDuration(anchor.offsetMs)}`}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       {item.id === null && (
         <span className="rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700">nova</span>
       )}
       <span className="w-12 text-right text-stone-600 tabular-nums">{formatDuration(item.durationMs)}</span>
+      {canAnchor && (
+        <IconButton label={`Prender oferta em ${item.title}`} onClick={() => onAnchor()} className="size-8">
+          <Megaphone className="size-4" />
+        </IconButton>
+      )}
       <IconButton label={`Tirar ${item.title} da playlist`} onClick={onRemove} className="size-8">
         <X className="size-4" />
       </IconButton>
     </li>
+  );
+}
+
+/** Coluna de ofertas (seção 7.2): arrastar uma oferta para cima de uma música a prende ali (âncora "durante"). */
+function OffersColumn({
+  offers,
+  loading,
+  shuffle,
+  anchorCount,
+  canAnchor,
+  onPick,
+}: {
+  offers: OfferSummary[];
+  loading: boolean;
+  shuffle: boolean;
+  anchorCount: number;
+  canAnchor: boolean;
+  onPick: (offerId: number) => void;
+}) {
+  const usable = offers.filter((o) => o.status !== 'expired');
+  return (
+    <Card>
+      <CardHeader
+        title={
+          <span className="inline-flex items-center gap-2">
+            <Megaphone className="size-4 text-stone-400" /> Ofertas
+          </span>
+        }
+        subtitle={
+          shuffle
+            ? undefined
+            : anchorCount === 0
+              ? 'Arraste uma oferta para cima de uma música.'
+              : `${anchorCount} ${anchorCount === 1 ? 'oferta presa' : 'ofertas presas'} nesta playlist.`
+        }
+      />
+      {shuffle ? (
+        <p className="flex items-start gap-2 px-5 py-4 text-sm text-stone-600">
+          <Lock className="mt-0.5 size-4 shrink-0 text-stone-400" aria-hidden />
+          Com o aleatório ligado não dá para prender oferta em música, porque a ordem muda a cada ciclo. As regras de
+          tempo das ofertas continuam valendo.
+        </p>
+      ) : loading ? (
+        <Spinner />
+      ) : usable.length === 0 ? (
+        <EmptyState title="Nenhuma oferta valendo">
+          <Link to="/ofertas/nova" className="font-medium text-brand-800 hover:underline">
+            Criar uma oferta
+          </Link>
+        </EmptyState>
+      ) : (
+        <ul className="space-y-2 px-5 py-4">
+          {usable.map((offer) => {
+            const status = offerStatus(offer);
+            return (
+              <li
+                key={offer.id}
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.setData(OfferDrag, String(offer.id));
+                  event.dataTransfer.effectAllowed = 'copy';
+                }}
+                className="flex cursor-grab items-center gap-2 rounded-lg bg-white px-2.5 py-2 text-sm shadow-sm ring-1 ring-stone-200 active:cursor-grabbing"
+              >
+                <GripVertical className="size-4 shrink-0 text-stone-400" aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-stone-900">{offer.name}</span>
+                  <span className="flex items-center gap-1.5 text-xs text-stone-500">
+                    <Badge tone={status.tone}>{status.label}</Badge>
+                    <span className="tabular-nums">{formatDuration(offer.durationMs)}</span>
+                  </span>
+                </span>
+                <IconButton
+                  label={`Prender ${offer.name} numa música`}
+                  disabled={!canAnchor}
+                  onClick={() => onPick(offer.id)}
+                  className="size-8"
+                >
+                  <Plus className="size-4" />
+                </IconButton>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
   );
 }

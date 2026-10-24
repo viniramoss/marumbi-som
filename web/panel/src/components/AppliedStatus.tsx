@@ -5,10 +5,16 @@ import { SyncProgress } from './SyncProgress';
 import { Badge } from './ui';
 
 /** Mostra se cada loja afetada já aplicou a última alteração (seção 7.1). */
-export function AppliedStatus({ storeIds }: { storeIds: number[] }) {
+export function AppliedStatus({
+  storeIds,
+  emptyText = 'Nenhuma loja toca esta playlist ainda.',
+}: {
+  storeIds: number[];
+  emptyText?: string;
+}) {
   const stores = useStores();
   const affected = (stores.data ?? []).filter((s) => storeIds.includes(s.id));
-  if (affected.length === 0) return <p className="text-sm text-stone-500">Nenhuma loja toca esta playlist ainda.</p>;
+  if (affected.length === 0) return <p className="text-sm text-stone-500">{emptyText}</p>;
   return (
     <ul className="space-y-1.5">
       {affected.map((store) => {
