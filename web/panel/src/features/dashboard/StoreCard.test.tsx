@@ -75,4 +75,41 @@ describe('StoreCard', () => {
 
     expect(screen.queryByText('Próxima oferta:')).not.toBeInTheDocument();
   });
+
+  it('mostra o andamento e o resultado da atualização do agente', () => {
+    const downloading = storeSummary({
+      update: {
+        version: '0.6.12',
+        stage: 'downloading',
+        doneBytes: 35 * 1024 * 1024,
+        totalBytes: 70 * 1024 * 1024,
+        error: null,
+        at: '2026-10-24T10:00:00Z',
+      },
+    });
+    const { unmount } = renderScreen(<StoreCard store={downloading} />);
+    expect(screen.getByText(/Baixando o agente 0.6.12… 35 MB de 70 MB/)).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Baixando o agente 0.6.12' })).toHaveAttribute(
+      'aria-valuenow',
+      '36700160',
+    );
+    unmount();
+
+    renderScreen(
+      <StoreCard
+        store={storeSummary({
+          update: {
+            version: '0.6.12',
+            stage: 'rolledBack',
+            doneBytes: null,
+            totalBytes: null,
+            error: 'A versão nova não confirmou em 2 minutos.',
+            at: '2026-10-24T10:00:00Z',
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText('Versão 0.6.12 revertida')).toBeInTheDocument();
+    expect(screen.getByText('A versão nova não confirmou em 2 minutos.')).toBeInTheDocument();
+  });
 });

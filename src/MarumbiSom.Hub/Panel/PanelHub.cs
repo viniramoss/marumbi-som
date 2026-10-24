@@ -159,7 +159,10 @@ public sealed class PanelHub(
         StoreChanged(e.StoreId);
         string[] topics = e.Message switch
         {
+            // A contagem de lojas por versão do agente (Configurações) muda quando uma loja sobe noutra versão.
+            AgentEventMessage { Event: AgentEvents.UpdateDone or AgentEvents.UpdateRolledBack } => [$"events:{e.StoreId}", "releases"],
             AgentEventMessage => [$"events:{e.StoreId}"],
+            HelloMessage => ["releases"],
             TrackStartedMessage => [$"history:{e.StoreId}"],
             // Execuções de oferta aparecem no histórico da loja e nas contagens da tela de Ofertas (D26 f).
             SpotStartedMessage or SpotFinishedMessage or SpotSkippedMessage => [$"history:{e.StoreId}", "offers"],

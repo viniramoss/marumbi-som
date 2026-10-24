@@ -12,6 +12,7 @@ const done: Record<StoreCommand['command'], string> = {
   playOffer: 'A oferta entra agora, por cima da música.',
   reconnectBluetooth: 'Pedido de reconexão da caixa enviado.',
   restartAgent: 'O agente da loja está reiniciando.',
+  updateAgent: 'A loja começou a baixar a versão nova do agente.',
 };
 
 /**

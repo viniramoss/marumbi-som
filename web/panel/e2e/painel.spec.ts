@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
-// Aceite das Etapas 4 e 5 (seção 15): do upload à loja tocando, e a oferta do cadastro ao histórico, com o Hub real e
-// um agente simulado conectado de verdade.
+// Aceite das Etapas 4, 5 e 6 (seção 15): do upload à loja tocando, a oferta do cadastro ao histórico e a atualização
+// assinada do agente, com o Hub real e um agente simulado conectado de verdade.
 interface Stack {
   hubPort: number;
   agentPort: number;
@@ -11,6 +11,7 @@ interface Stack {
   localPassword: string;
   tracks: string[];
   offerAudio: string;
+  release: { version: string; zip: string; sig: string };
 }
 
 // Escrito pelo e2e/stack.mjs, que o Playwright sobe depois de carregar este arquivo.
@@ -208,6 +209,30 @@ test('toca a oferta agora pela loja e ela entra no histórico', async () => {
   await page.getByRole('tab', { name: 'Histórico' }).click();
   await expect(page.getByLabel('Oferta').first()).toBeVisible();
   await expect(page.getByText('Picanha R$ 69,90').first()).toBeVisible();
+});
+
+test('envia uma versão assinada do agente e atualiza a loja', async () => {
+  await page.getByRole('link', { name: 'Configurações' }).first().click();
+  await page.getByTestId('release-input').setInputFiles(
+    [stack.release.zip, stack.release.sig].map((path) => ({
+      name: basename(path),
+      mimeType: path.endsWith('.zip') ? 'application/zip' : 'application/json',
+      buffer: readFileSync(path),
+    })),
+  );
+  await expect(page.getByText(`Versão ${stack.release.version} recebida e marcada para distribuição.`)).toBeVisible();
+  await expect(page.getByText('Para distribuição', { exact: true })).toBeVisible();
+  await expect(page.getByText(`1 loja conectada está numa versão anterior à ${stack.release.version}.`)).toBeVisible();
+
+  await page.getByRole('link', { name: 'Lojas' }).first().click();
+  await page.getByRole('link', { name: 'Marumbi Teste' }).click();
+  await page.getByRole('tab', { name: 'Ajustes' }).click();
+  await expect(page.getByText(`Para distribuição: ${stack.release.version}.`)).toBeVisible();
+  await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Atualizar' }).click();
+  await expect(page.getByText('A loja começou a baixar a versão nova do agente.')).toBeVisible();
+  // O agente confere a assinatura com a chave de teste; no modo simulado o Updater só registra o resultado.
+  await expect(page.getByText(`Agente atualizado para ${stack.release.version}`)).toBeVisible({ timeout: 30_000 });
 });
 
 test('nenhum erro no console do navegador', () => {

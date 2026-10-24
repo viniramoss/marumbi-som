@@ -2,10 +2,12 @@
 // modo simulado (mpv e Bluetooth falsos), cada um com uma pasta de dados temporária. Usado pelo webServer do
 // playwright.config.ts; termina os dois processos quando o Playwright encerra.
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { crc32 } from 'node:zlib';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '../../..');
@@ -74,6 +76,71 @@ for (const [name, source] of [...tracks, offerAudio]) {
     ]);
 }
 
+// Versão do agente assinada para o teste da atualização (D27): par Ed25519 de teste, .zip com o que o Hub exige e o
+// .sig.json no formato do sign-release. O agente simulado confia nesta chave pública (Updates:PublicKeyFile).
+const releaseVersion = '0.6.900';
+const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+const publicKeyFile = join(root, 'release-public-key.txt');
+writeFileSync(publicKeyFile, Buffer.from(publicKey.export({ format: 'jwk' }).x, 'base64url').toString('base64'));
+const releaseZip = join(audio, `MarumbiSom.Agent-${releaseVersion}.zip`);
+const releaseSig = join(audio, `MarumbiSom.Agent-${releaseVersion}.sig.json`);
+const zipBytes = storedZip([
+    ['MarumbiSom.Agent.exe', 'agente de teste'],
+    ['MarumbiSom.Updater.exe', 'atualizador de teste'],
+    ['release-public-key.txt', 'chave'],
+]);
+const sha256 = createHash('sha256').update(zipBytes).digest('hex');
+writeFileSync(releaseZip, zipBytes);
+writeFileSync(
+    releaseSig,
+    JSON.stringify({
+        version: releaseVersion,
+        sha256,
+        signature: sign(null, Buffer.from(`marumbi-som-agent|${releaseVersion}|${sha256}`), privateKey).toString(
+            'base64',
+        ),
+    }),
+);
+
+/** .zip mínimo sem compressão (o Node não traz um gerador de zip). */
+function storedZip(files) {
+    const locals = [];
+    const centrals = [];
+    let offset = 0;
+    for (const [name, content] of files) {
+        const nameBytes = Buffer.from(name);
+        const data = Buffer.from(content);
+        const crc = crc32(data);
+        const local = Buffer.alloc(30);
+        local.writeUInt32LE(0x04034b50, 0);
+        local.writeUInt16LE(20, 4);
+        local.writeUInt32LE(crc, 14);
+        local.writeUInt32LE(data.length, 18);
+        local.writeUInt32LE(data.length, 22);
+        local.writeUInt16LE(nameBytes.length, 26);
+        const central = Buffer.alloc(46);
+        central.writeUInt32LE(0x02014b50, 0);
+        central.writeUInt16LE(20, 4);
+        central.writeUInt16LE(20, 6);
+        central.writeUInt32LE(crc, 16);
+        central.writeUInt32LE(data.length, 20);
+        central.writeUInt32LE(data.length, 24);
+        central.writeUInt16LE(nameBytes.length, 28);
+        central.writeUInt32LE(offset, 42);
+        locals.push(local, nameBytes, data);
+        centrals.push(central, nameBytes);
+        offset += local.length + nameBytes.length + data.length;
+    }
+    const centralSize = centrals.reduce((sum, b) => sum + b.length, 0);
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0);
+    end.writeUInt16LE(files.length, 8);
+    end.writeUInt16LE(files.length, 10);
+    end.writeUInt32LE(centralSize, 12);
+    end.writeUInt32LE(offset, 16);
+    return Buffer.concat([...locals, ...centrals, end]);
+}
+
 run('dotnet', [hubDll, '--create-admin', 'admin', `--Hub:DataDirectory=${hubData}`], `${stack.adminPassword}\n`);
 run('dotnet', [agentDll, '--set-local-password', `--Agent:DataDirectory=${agentData}`], `${stack.localPassword}\n`);
 
@@ -86,6 +153,7 @@ writeFileSync(
             audio,
             tracks: tracks.map(([name]) => join(audio, name)),
             offerAudio: join(audio, offerAudio[0]),
+            release: { version: releaseVersion, zip: releaseZip, sig: releaseSig },
         },
         null,
         2,
@@ -108,6 +176,7 @@ const children = [
             `--Agent:DataDirectory=${agentData}`,
             `--LocalConfig:Port=${stack.agentPort}`,
             '--Bluetooth:SpeakerAddress=00:11:22:33:44:55',
+            `--Updates:PublicKeyFile=${publicKeyFile}`,
         ],
         { stdio: 'inherit' },
     ),

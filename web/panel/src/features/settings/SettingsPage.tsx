@@ -1,22 +1,12 @@
 import { useState, type ReactNode } from 'react';
-import { Download, HardDrive, KeyRound, Server } from 'lucide-react';
+import { HardDrive, KeyRound, Server } from 'lucide-react';
 import { errorMessage } from '../../api/client';
 import { useChangePassword, useSession, useSettings } from '../../api/queries';
 import { useToast } from '../../components/Toasts';
-import {
-  Badge,
-  Button,
-  Card,
-  CardHeader,
-  ErrorNote,
-  Field,
-  Input,
-  PageHeader,
-  SoonTag,
-  Spinner,
-} from '../../components/ui';
+import { Badge, Button, Card, CardHeader, ErrorNote, Field, Input, PageHeader, Spinner } from '../../components/ui';
 import { useNow } from '../../hooks/useNow';
 import { formatAgo, formatBytes, formatDateTime, formatMegabytes } from '../../lib/format';
+import { ReleasesCard } from './ReleasesCard';
 
 /** Mesma regra do Hub (PanelAuth.MinPasswordLength). */
 export const MinPasswordLength = 10;
@@ -30,20 +20,7 @@ export function SettingsPage() {
         <PasswordCard />
         <div className="space-y-6">
           <HubCard />
-          <Card>
-            <CardHeader
-              title={
-                <span className="inline-flex items-center gap-2">
-                  <Download className="size-4 text-stone-400" /> Versão do agente para distribuição
-                </span>
-              }
-              actions={<SoonTag stage={6} />}
-            />
-            <p className="px-5 py-4 text-sm text-stone-500">
-              Enviar uma versão nova do agente e atualizar as lojas pelo painel chega na Etapa 6. Até lá, a atualização
-              é feita no PC da loja com o instalador.
-            </p>
-          </Card>
+          <ReleasesCard />
         </div>
       </div>
     </>

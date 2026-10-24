@@ -179,8 +179,8 @@ public sealed class AgentUpdater : BackgroundService
                     _ => AgentEvents.UpdateFailed,
                 };
                 _logger.Log(
-                    type == AgentEvents.UpdateDone ? LogLevel.Information : LogLevel.Error, "Atualização para a versão {Version}: {Outcome} {Error}",
-                    result.Version, result.Outcome, result.Error);
+                    type == AgentEvents.UpdateDone ? LogLevel.Information : LogLevel.Error, "Atualização para a versão {Version}: {Outcome}{Error}",
+                    result.Version, result.Outcome, result.Error is null ? string.Empty : $" ({result.Error})");
                 Finish(type, result.Version, result.Error, result.PreviousVersion);
                 return;
             }

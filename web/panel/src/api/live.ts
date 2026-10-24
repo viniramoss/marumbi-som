@@ -27,6 +27,8 @@ export function topicKeys(topic: string): QueryKey[] {
       return numeric === undefined ? [['events']] : [keys.events(numeric)];
     case 'history':
       return numeric === undefined ? [['history']] : [['history', numeric]];
+    case 'releases':
+      return [keys.releases];
     default:
       return [];
   }

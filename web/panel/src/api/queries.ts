@@ -8,6 +8,7 @@ import type {
   OfferInput,
   OfferSummary,
   PlaylistDetail,
+  ReleaseInfo,
   ScheduleInput,
   StoreDetail,
   StoreInput,
@@ -32,6 +33,7 @@ export const keys = {
   offer: (id: number) => ['offer', id] as const,
   offerAudio: ['offerAudio'] as const,
   storeOffers: (id: number) => ['storeOffers', id] as const,
+  releases: ['releases'] as const,
 };
 
 export function useSession() {
@@ -202,7 +204,9 @@ export type StoreCommand =
   | { command: 'play' | 'pause' | 'next' | 'reconnectBluetooth' | 'restartAgent' }
   | { command: 'setVolume'; volume: number }
   | { command: 'playNow'; hash: string }
-  | { command: 'playOffer'; offerKey: string };
+  | { command: 'playOffer'; offerKey: string }
+  // Sem versão, o Hub manda a versão para distribuição (D27 d).
+  | { command: 'updateAgent'; version?: string };
 
 function commandArgs(command: StoreCommand) {
   switch (command.command) {
@@ -213,6 +217,8 @@ function commandArgs(command: StoreCommand) {
     case 'playOffer':
       // O agente conhece a oferta pelo identificador do manifesto (of-12).
       return { offerId: command.offerKey };
+    case 'updateAgent':
+      return command.version ? { version: command.version } : null;
     default:
       return null;
   }
@@ -343,6 +349,29 @@ export function useDeleteOffer() {
       client.setQueryData<OfferSummary[]>(keys.offers, (list) => list?.filter((o) => o.id !== id));
       void client.invalidateQueries({ queryKey: keys.offers });
       void client.invalidateQueries({ queryKey: ['playlist'] });
+    },
+  });
+}
+
+export function useReleases() {
+  return useQuery({ queryKey: keys.releases, queryFn: () => call(api.GET('/api/releases')) });
+}
+
+export function useSetCurrentRelease() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (version: string) => call(api.PUT('/api/releases/current', { body: { version } })),
+    onSuccess: () => void client.invalidateQueries({ queryKey: keys.releases }),
+  });
+}
+
+export function useDeleteRelease() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (version: string) => call(api.DELETE('/api/releases/{version}', { params: { path: { version } } })),
+    onSuccess: (_, version) => {
+      client.setQueryData<ReleaseInfo[]>(keys.releases, (list) => list?.filter((r) => r.version !== version));
+      void client.invalidateQueries({ queryKey: keys.releases });
     },
   });
 }

@@ -1,5 +1,5 @@
 import { api, call, statusMessage } from './client';
-import type { IngestionJob } from './types';
+import type { IngestionJob, ReleaseInfo } from './types';
 
 export const acceptedAudio = ['.mp3', '.m4a', '.aac', '.flac', '.wav', '.ogg', '.opus', '.wma'];
 
@@ -55,4 +55,48 @@ export async function waitForIngestion(jobId: string, onUpdate: (job: IngestionJ
     if (job.status !== 'queued' && job.status !== 'processing') return job;
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
+}
+
+/**
+ * Envia uma versão do agente (o .zip e o .sig.json gerados pelo sign-release, D27 d) com andamento. O Hub confere o
+ * SHA-256 e o conteúdo antes de aceitar.
+ */
+export function uploadRelease(
+  packageFile: File,
+  signatureFile: File,
+  onProgress: (fraction: number) => void,
+): Promise<ReleaseInfo> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('POST', '/api/releases');
+    request.setRequestHeader('X-MarumbiSom', '1');
+    request.responseType = 'json';
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded / event.total);
+    };
+    request.onload = () => {
+      if (request.status === 201) {
+        onProgress(1);
+        resolve(request.response as ReleaseInfo);
+        return;
+      }
+      const body = request.response as { error?: string } | null;
+      reject(new Error(body?.error ?? statusMessage(request.status)));
+    };
+    request.onerror = () => reject(new Error('Sem conexão com o Hub.'));
+    const form = new FormData();
+    form.append('signature', signatureFile, signatureFile.name);
+    form.append('package', packageFile, packageFile.name);
+    request.send(form);
+  });
+}
+
+/** Separa o .zip e o .sig.json escolhidos juntos; devolve o problema se faltar um dos dois. */
+export function pickReleaseFiles(files: File[]): { packageFile: File; signatureFile: File } | string {
+  const packageFile = files.find((f) => f.name.toLowerCase().endsWith('.zip'));
+  const signatureFile = files.find((f) => f.name.toLowerCase().endsWith('.sig.json'));
+  if (!packageFile || !signatureFile) {
+    return 'Escolha os dois arquivos gerados pelo sign-release: o pacote .zip e a assinatura .sig.json.';
+  }
+  return { packageFile, signatureFile };
 }
