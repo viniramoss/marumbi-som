@@ -25,7 +25,7 @@ public sealed class LocalConfigHubTests
         auth.SetPassword(Password);
         using var live = new HubClient(
             h.Link, h.Transport, h.Player.Manifests, h.Engine, h.Player.Engine, h.Player.Bluetooth, h.Player.Events, h.Player.Paths,
-            new NoLifetime(), h.AgentTime, NullLogger<HubClient>.Instance);
+            new AgentRestart(new NoLifetime()), h.AgentTime, NullLogger<HubClient>.Instance);
         var windows = new SimulatedWindowsEnvironment(BluetoothAddress.Parse("AA:BB:CC:DD:EE:FF"));
         var context = new LocalConfigContext(
             auth, h.Config, h.Player.Engine, h.Player.Bluetooth, new NoSpeaker(), windows, h.Player.Manifests, h.Player.Paths.LogsDirectory,

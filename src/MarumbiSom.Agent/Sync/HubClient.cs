@@ -31,7 +31,7 @@ public sealed class HubClient : BackgroundService
     private readonly PlayerEngine _player;
     private readonly IBluetoothConnection _bluetooth;
     private readonly AgentDataPaths _paths;
-    private readonly IHostApplicationLifetime _lifetime;
+    private readonly AgentRestart _restart;
     private readonly TimeProvider _time;
     private readonly ILogger<HubClient> _logger;
     private readonly Channel<AgentMessage> _outbox = Channel.CreateBounded<AgentMessage>(
@@ -41,7 +41,7 @@ public sealed class HubClient : BackgroundService
 
     public HubClient(
         HubLink link, IHubTransport transport, ManifestStore manifests, SyncEngine sync, PlayerEngine player, IBluetoothConnection bluetooth,
-        IPlaybackEvents events, AgentDataPaths paths, IHostApplicationLifetime lifetime, TimeProvider time, ILogger<HubClient> logger)
+        IPlaybackEvents events, AgentDataPaths paths, AgentRestart restart, TimeProvider time, ILogger<HubClient> logger)
     {
         ArgumentNullException.ThrowIfNull(events);
         _link = link;
@@ -51,7 +51,7 @@ public sealed class HubClient : BackgroundService
         _player = player;
         _bluetooth = bluetooth;
         _paths = paths;
-        _lifetime = lifetime;
+        _restart = restart;
         _time = time;
         _logger = logger;
         _startedAt = time.GetTimestamp();
@@ -297,9 +297,7 @@ public sealed class HubClient : BackgroundService
                     Enqueue(new CommandResultMessage(command.Id, true));
                     _logger.LogWarning("Reiniciando o agente a pedido do Hub");
                     await Task.Delay(TimeSpan.FromSeconds(2), _time, cancellationToken);
-                    // Código de saída diferente de zero: a recuperação do serviço (seção 8.1) sobe o agente de novo.
-                    Environment.ExitCode = 1;
-                    _lifetime.StopApplication();
+                    _restart.Request();
                     return;
                 case CommandTypes.UpdateAgent:
                     result = PlayerCommandResult.Fail("Atualização remota ainda não disponível nesta versão.");

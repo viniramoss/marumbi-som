@@ -66,6 +66,7 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<IHubTransport, HttpHubTransport>();
         services.AddSingleton<HubLink>();
         services.AddSingleton<SyncEngine>();
+        services.AddSingleton<AgentRestart>();
         services.AddSingleton<HubClient>();
 
         services.AddSingleton(sp => new LocalConfigContext(
