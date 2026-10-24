@@ -9,6 +9,7 @@ using MarumbiSom.Contracts.Json;
 using MarumbiSom.Contracts.Messages;
 using MarumbiSom.Hub.Agents;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace MarumbiSom.Hub.Tests;
 
@@ -131,6 +132,32 @@ public sealed class AgentApiTests
         var history = await HubHarness.JsonAsync(await admin.GetAsync($"/api/stores/{storeId}/history"));
         Assert.Equal("A", Assert.Single(history.EnumerateArray()).GetProperty("title").GetString());
         Assert.Equal("ok", await hub.WithDbAsync(db => db.Commands.Select(c => c.Result).SingleAsync()));
+    }
+
+    [Fact]
+    public async Task Parar_o_Hub_fecha_a_conexao_da_loja_na_hora()
+    {
+        await using var hub = await HubHarness.StartAsync();
+        var (_, token) = await EnrolledStoreAsync(hub);
+        var storeId = await hub.WithDbAsync(db => db.Stores.Select(s => s.Id).SingleAsync());
+        var connections = hub.App.Services.GetRequiredService<AgentConnections>();
+        var client = hub.Server.CreateWebSocketClient();
+        client.ConfigureRequest = r => r.Headers.Authorization = $"Bearer {token}";
+        using var socket = await client.ConnectAsync(new Uri("wss://localhost/agent/ws"), CancellationToken.None);
+        await SendAsync(socket, new HelloMessage("loja-2-centro", "0.3.0", 0));
+        Assert.IsType<ManifestChangedMessage>(await ReceiveAsync(socket));
+        Assert.True(connections.IsOnline(storeId));
+
+        // No serviço do Windows, o Kestrel esperaria 30 s por uma conexão que não fecha sozinha.
+        hub.App.Lifetime.StopApplication();
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (connections.IsOnline(storeId) && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(20);
+        }
+
+        Assert.False(connections.IsOnline(storeId));
     }
 
     [Fact]

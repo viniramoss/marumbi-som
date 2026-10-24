@@ -69,6 +69,32 @@ public sealed class PanelTests
     }
 
     [Fact]
+    public async Task Parar_o_Hub_fecha_o_painel_ao_vivo_na_hora()
+    {
+        await using var hub = await HubHarness.StartAsync();
+        var panelHub = hub.App.Services.GetRequiredService<PanelHub>();
+        using var panel = await ConnectPanelAsync(hub, await hub.AdminCookieAsync());
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (panelHub.ClientCount == 0 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(20);
+        }
+
+        Assert.Equal(1, panelHub.ClientCount);
+
+        // No serviço do Windows, o Kestrel esperaria 30 s por uma conexão que não fecha sozinha.
+        hub.App.Lifetime.StopApplication();
+
+        deadline = DateTime.UtcNow.AddSeconds(5);
+        while (panelHub.ClientCount > 0 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(20);
+        }
+
+        Assert.Equal(0, panelHub.ClientCount);
+    }
+
+    [Fact]
     public async Task Detalhe_da_loja_mostra_fila_e_alerta_de_reinicios_do_agente()
     {
         await using var hub = await HubHarness.StartAsync();

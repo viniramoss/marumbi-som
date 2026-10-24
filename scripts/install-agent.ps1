@@ -54,14 +54,21 @@ if ($SpeakerAddress -and $SpeakerAddress -notmatch '^([0-9A-Fa-f]{2}[:-]){5}[0-9
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existing -and $existing.Status -ne 'Stopped') {
     Write-Step "Parando o serviço $ServiceName"
+    $servicePid = (Get-CimInstance Win32_Service -Filter "Name='$ServiceName'").ProcessId
     Stop-Service -Name $ServiceName -Force
-    (Get-Service $ServiceName).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
+    (Get-Service $ServiceName).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60))
+    # O Windows marca "Parado" antes de o processo terminar de sair; até lá os arquivos seguem em uso.
+    if ($servicePid) { Wait-Process -Id $servicePid -Timeout 30 -ErrorAction SilentlyContinue }
 }
+# mpv que tenha sobrado da pasta do programa também segura os arquivos.
+Get-Process -Name mpv -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -like (Join-Path $InstallDir '*') } |
+    Stop-Process -Force -ErrorAction SilentlyContinue
 
 Write-Step "Copiando binários para $InstallDir"
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 # /E copia subpastas; não usa /MIR para não apagar tools\ instalado separadamente.
-robocopy $SourceDir $InstallDir /E /NFL /NDL /NJH /NJS /NP /R:2 /W:2 | Out-Null
+robocopy $SourceDir $InstallDir /E /NFL /NDL /NJH /NJS /NP /R:10 /W:3 | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy falhou com código $LASTEXITCODE" }
 
 Write-Step "Preparando $DataDir (somente SYSTEM e Administradores)"

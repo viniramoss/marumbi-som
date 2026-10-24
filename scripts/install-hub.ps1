@@ -66,20 +66,27 @@ foreach ($tool in 'ffmpeg.exe', 'ffprobe.exe') {
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existing -and $existing.Status -ne 'Stopped') {
     Write-Step "Parando o serviço $ServiceName"
+    $servicePid = (Get-CimInstance Win32_Service -Filter "Name='$ServiceName'").ProcessId
     Stop-Service -Name $ServiceName -Force
-    (Get-Service $ServiceName).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
+    (Get-Service $ServiceName).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60))
+    # O Windows marca "Parado" antes de o processo terminar de sair; até lá os arquivos seguem em uso.
+    if ($servicePid) { Wait-Process -Id $servicePid -Timeout 30 -ErrorAction SilentlyContinue }
 }
+# ffmpeg/ffprobe que tenham sobrado de uma ingestão também seguram os arquivos.
+Get-Process -Name ffmpeg, ffprobe -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -like (Join-Path $AppDir '*') } |
+    Stop-Process -Force -ErrorAction SilentlyContinue
 
 Write-Step "Copiando binários para $AppDir"
 foreach ($dir in @($Root, $AppDir, $DataDir, $LogsDir)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 }
 # /E copia subpastas; não usa /MIR para não apagar tools\ instalado separadamente.
-robocopy $SourceDir $AppDir /E /NFL /NDL /NJH /NJS /NP /R:2 /W:2 | Out-Null
+robocopy $SourceDir $AppDir /E /NFL /NDL /NJH /NJS /NP /R:10 /W:3 | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy falhou com código $LASTEXITCODE" }
 # O painel (wwwroot, D23 f) é espelhado: arquivos de versões anteriores do painel saem.
 if (Test-Path (Join-Path $SourceDir 'wwwroot\index.html')) {
-    robocopy (Join-Path $SourceDir 'wwwroot') (Join-Path $AppDir 'wwwroot') /MIR /NFL /NDL /NJH /NJS /NP /R:2 /W:2 | Out-Null
+    robocopy (Join-Path $SourceDir 'wwwroot') (Join-Path $AppDir 'wwwroot') /MIR /NFL /NDL /NJH /NJS /NP /R:10 /W:3 | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "robocopy do painel falhou com código $LASTEXITCODE" }
 } else {
     Write-Warning "Pacote sem o painel (wwwroot\index.html). Use o pacote do CI ou rode 'npm ci; npm run build' em web\panel e copie dist para wwwroot."
