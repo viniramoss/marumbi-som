@@ -12,12 +12,13 @@ sem Hub e sem painel.
 |---|---|
 | Painel | `https://<hub>.<tailnet>.ts.net` (usuário `admin`) |
 | Hub (PC do escritório) | serviço `MarumbiSom.Hub`; programa em `C:\MarumbiSom\Hub\app`, dados em `C:\MarumbiSom\Hub\data`, logs em `C:\MarumbiSom\Hub\logs\hub-AAAAMMDD.log` |
+| Atualizações do Hub | tarefa agendada **MarumbiSom Hub - atualizador**; log em `C:\MarumbiSom\Hub\updater\hub-updater.log`, cópias do banco de antes de cada troca em `data\updates\banco-antes` (D32) |
 | Backups do banco | `C:\MarumbiSom\Hub\data\backups\marumbi-AAAA-MM-DD.db` (todo dia às 02:00, 30 dias) |
 | Agente (PC da loja) | serviço `MarumbiSom.Agent` ("Marumbi Som - Agente da loja"); programa em `C:\Program Files\MarumbiSom`, dados em `C:\ProgramData\MarumbiSom` |
 | Logs da loja | `C:\ProgramData\MarumbiSom\logs\agent-AAAAMMDD.log` ou atalho **Configurar Som** → Últimos registros |
 | Atualizações da loja | `C:\ProgramData\MarumbiSom\updates\updater.log` e `result.json` |
 | Chave privada de assinatura | no PC do administrador (`Documentos\MarumbiSom\chave-assinatura-atualizacoes.txt`), no pendrive de cópia e no secret `MARUMBI_SIGNING_KEY` do repositório (D29) |
-| Versões publicadas | GitHub → *Releases* → **Agente 0.6.N**: pacote assinado do agente (o Hub baixa sozinho), instalador `MarumbiSom.Agent-Setup-0.6.N.exe` e `MarumbiSom.Hub-0.6.N.zip` |
+| Versões publicadas | GitHub → *Releases* → **Agente 0.6.N**: pacotes assinados do agente e do Hub (o Hub baixa os dois sozinho), instalador `MarumbiSom.Agent-Setup-0.6.N.exe` |
 | Pacotes do CI | GitHub → Actions → execução → artefatos `MarumbiSom.Hub-win-x64`, `MarumbiSom.Agent-win-x64`, `MarumbiSom.Agent-Setup`, `MarumbiSom.Release-win-x64` (guardados por 30 dias) |
 
 Pastas de pacotes baixados da internet: antes de rodar scripts, no PowerShell
@@ -130,6 +131,22 @@ cd C:\MarumbiSom-release
 
 ## Atualizar o Hub
 
+O Hub se atualiza sozinho (D32): a Release do GitHub traz o pacote do Hub assinado, o Hub baixa junto com o do agente
+e, com **Atualizar sozinho de madrugada** ligado (padrão), instala às 03:00. Para instalar antes: Configurações →
+**Atualização do Hub** → **Atualizar o Hub agora**. O painel sai do ar por cerca de 1 minuto e volta pedindo para
+recarregar a página; as lojas continuam tocando e reconectam sozinhas. Os dados ficam, e o banco é copiado antes da
+troca. Detalhes em [atualizacao-do-hub.md](atualizacao-do-hub.md).
+
+Se a versão nova não subir em 2 minutos, a tarefa volta sozinha para a anterior, com o banco como estava, e o cartão
+mostra "a versão X não subiu e o Hub voltou sozinho". Ela não é tentada de novo às 03:00; leve o
+`updater\hub-updater.log` e o log do Hub do dia para quem cuida do código. "A atualização … não foi feita" mostra o
+motivo (assinatura, pacote, serviço); o Hub segue na versão anterior.
+
+Se o cartão avisar que **o atualizador ainda não pegou o pedido**, a tarefa não existe ou está desligada: confira
+**MarumbiSom Hub - atualizador** no Agendador de Tarefas e, se faltar, instale à mão (abaixo).
+
+### Instalar à mão (primeira vez, Hub sem a tarefa ou sem o GitHub)
+
 1. Baixe o `MarumbiSom.Hub-<versão>.zip` da Release mais nova no GitHub (*Releases*, no repositório) ou o artefato
    **MarumbiSom.Hub-win-x64** de uma execução do CI, e extraia (ex.: `C:\MarumbiSom-hub-pacote`).
 2. PowerShell **como administrador**:
@@ -140,8 +157,12 @@ cd C:\MarumbiSom-hub-pacote
 .\scripts\install-hub.ps1 -SourceDir . -TailscaleServe
 ```
 
-O serviço para por alguns segundos; as lojas continuam tocando e reconectam sozinhas. Os dados ficam. A versão
-nova aparece em Configurações → Versão do Hub.
+O serviço para por alguns segundos; as lojas continuam tocando e reconectam sozinhas. Os dados ficam. O script
+também cria (ou recria) a tarefa do atualizador e cancela uma atualização pedida pelo painel que ainda não rodou. A
+versão nova aparece em Configurações → Versão do Hub.
+
+Sem o GitHub, também dá para gerar o pacote assinado do Hub (`sign-release.ps1 -HubDir <pasta do artefato>`, como
+o do agente em "Sem o GitHub") e enviar em Configurações → Atualização do Hub → **Enviar pacote…**.
 
 ## Trocar a caixa de som
 
@@ -190,13 +211,15 @@ sincronizada com a nuvem:
 
 ```powershell
 $destino = 'C:\Users\<você>\Meu Drive\MarumbiSom-backup'
-$copia = New-ScheduledTaskAction -Execute 'robocopy.exe' -Argument "`"C:\MarumbiSom\Hub\data`" `"$destino`" /MIR /XD work incoming keys /XF marumbi.db marumbi.db-wal marumbi.db-shm /R:2 /W:5 /NP /LOG:C:\MarumbiSom\Hub\logs\copia-backup.log"
+$copia = New-ScheduledTaskAction -Execute 'robocopy.exe' -Argument "`"C:\MarumbiSom\Hub\data`" `"$destino`" /MIR /XD work incoming keys updates /XF marumbi.db marumbi.db-wal marumbi.db-shm /R:2 /W:5 /NP /LOG:C:\MarumbiSom\Hub\logs\copia-backup.log"
 Register-ScheduledTask -TaskName 'MarumbiSom - copia do backup' -Action $copia -Trigger (New-ScheduledTaskTrigger -Daily -At 3am) -User 'SYSTEM' -RunLevel Highest
 Start-ScheduledTask -TaskName 'MarumbiSom - copia do backup'
 ```
 
 3. Confira que `MarumbiSom-backup\backups` aparece no Drive. A cópia leva os backups do banco, a biblioteca, os
-   originais e as versões do agente; o banco em uso e as chaves de sessão do painel ficam de fora.
+   originais e as versões do agente; o banco em uso, as chaves de sessão do painel e os pacotes e cópias da atualização
+   do Hub (`updates`) ficam de fora. Se a tarefa já existe, rode de novo o `Register-ScheduledTask` acima com `-Force`
+   para tirar a pasta `updates` da cópia.
 
 ## Restaurar o Hub (PC do escritório perdido ou banco estragado)
 
