@@ -224,7 +224,7 @@ function PlayNowDialog({ store, onClose }: { store: StoreSummary; onClose: () =>
             <li key={track.hash} className="flex items-center gap-3 px-3 py-2 text-sm">
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium text-stone-900">{track.title}</span>
-                <span className="block truncate text-xs text-stone-500">{track.artist ?? 'Artista desconhecido'}</span>
+                {track.artist && <span className="block truncate text-xs text-stone-500">{track.artist}</span>}
               </span>
               <span className="w-12 text-right text-stone-600 tabular-nums">{formatDuration(track.durationMs)}</span>
               <Button
@@ -320,7 +320,7 @@ function QueueCard({ detail }: { detail: StoreDetail }) {
               <span className="w-5 text-right text-xs text-stone-400 tabular-nums">{index + 1}</span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium text-stone-900">{track.title}</span>
-                <span className="block truncate text-xs text-stone-500">{track.artist ?? 'Artista desconhecido'}</span>
+                {track.artist && <span className="block truncate text-xs text-stone-500">{track.artist}</span>}
               </span>
               <span className="text-stone-500 tabular-nums">{formatDuration(track.durationMs)}</span>
             </li>

@@ -39,8 +39,9 @@ public sealed class IngestionTests : IAsyncLifetime
 
         Assert.Equal(IngestionStatus.Done, job.Status);
         var track = await _hub.WithDbAsync(db => db.Tracks.SingleAsync(t => t.Hash == job.Hash));
-        Assert.Equal("Corte Seco", track.Title);
-        Assert.Equal("Banda X", track.Artist);
+        // D31: o título é o número de importação; o nome do arquivo fica guardado.
+        Assert.Equal((1, "001", null), (track.Number, track.Title, track.Artist));
+        Assert.Equal("01 - Banda X - Corte Seco.mp3", track.OriginalName);
         Assert.InRange(track.DurationMs, 39_500, 40_500);
         var output = _hub.Paths.LibraryFile(track.Hash);
         Assert.True(File.Exists(output));
@@ -75,7 +76,8 @@ public sealed class IngestionTests : IAsyncLifetime
         }
 
         var tracks = await _hub.WithDbAsync(db => db.Tracks.ToListAsync());
-        Assert.Contains(tracks, t => t.Title == "Meio" && t.Artist == "Artista Y");
+        Assert.Equal(["001", "002", "003"], tracks.OrderBy(t => t.Number).Select(t => t.Title));
+        Assert.Equal("Artista Y - Meio.flac", tracks.Single(t => t.Number == 3).OriginalName);
         Assert.True(tracks.Single(t => t.OriginalName == "baixinho.wav").LoudnessLufs < tracks.Single(t => t.OriginalName == "altao.ogg").LoudnessLufs);
     }
 

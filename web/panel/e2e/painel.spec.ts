@@ -56,10 +56,18 @@ test('envia músicas e acompanha o processamento', async () => {
     .setInputFiles(
       stack.tracks.map((path) => ({ name: basename(path), mimeType: 'audio/mpeg', buffer: readFileSync(path) })),
     );
+  // D31: cada música ganha o próximo número como título; o nome do arquivo aparece embaixo, em letra menor.
   const table = page.getByRole('table');
-  await expect(table.getByText('Abertura do Açougue')).toBeVisible({ timeout: 60_000 });
-  await expect(table.getByText('Fim de Tarde')).toBeVisible({ timeout: 60_000 });
-  await expect(table.getByText('Trio Marumbi')).toBeVisible();
+  await expect(table.getByText('001', { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(table.getByText('002', { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(table.getByText('Trio Marumbi - Abertura do Açougue.mp3')).toBeVisible();
+
+  // E renomeia pela Biblioteca quando quiser.
+  const row = table.getByRole('row').filter({ hasText: 'Banda da Picanha - Fim de Tarde.mp3' });
+  await row.getByRole('button', { name: 'Renomear' }).click();
+  await row.getByLabel('Título').fill('Fim de Tarde');
+  await row.getByRole('button', { name: 'Salvar' }).click();
+  await expect(row.getByText('Fim de Tarde', { exact: true })).toBeVisible();
 });
 
 test('monta e publica uma playlist', async () => {
@@ -128,7 +136,7 @@ test('a loja aparece tocando ao vivo, sem recarregar a página', async () => {
   // Baixar, conferir e aplicar o manifesto leva alguns segundos no agente.
   await expect(page.getByText('Tocando', { exact: true }).first()).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText('Aplicado', { exact: true })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(/Abertura do Açougue|Fim de Tarde/).first()).toBeVisible();
+  await expect(page.getByText(/^(001|Fim de Tarde)$/).first()).toBeVisible();
 });
 
 test('comando ao vivo chega e volta em até 2 segundos', async () => {
@@ -150,7 +158,7 @@ test('o início mostra o cartão da loja e o histórico registra o que tocou', a
   await page.getByText('Sincronizado ✅').click();
   await expect(page.getByRole('heading', { name: 'Marumbi Teste' })).toBeVisible();
   await page.getByRole('tab', { name: 'Histórico' }).click();
-  await expect(page.getByText(/Abertura do Açougue|Fim de Tarde/).first()).toBeVisible();
+  await expect(page.getByText(/^(001|Fim de Tarde)$/).first()).toBeVisible();
 });
 
 test('cadastra uma oferta com o áudio enviado na hora', async () => {
@@ -187,10 +195,26 @@ test('prende a oferta numa música da playlist', async () => {
   await dialog.getByRole('button', { name: 'Prender' }).click();
   await expect(page.getByRole('button', { name: /Picanha R\$ 69,90\s*aos 0:10/ })).toBeVisible();
 
+  // Linha do tempo (D30): o bloco aparece no ponto, as setas ajustam o segundo e soltar a oferta cria outra âncora.
+  const block = page.getByRole('button', { name: /^Picanha R\$ 69,90: entra aos 0:10 de / });
+  await block.focus();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('button', { name: /Picanha R\$ 69,90\s*aos 0:12/ })).toBeVisible();
+  // As músicas têm 40 s e 45 s; com o zoom inicial 1 px é 1 s, depois da margem de 12 px: 60 s cai na segunda música.
+  await page
+    .locator('li[draggable="true"]')
+    .filter({ hasText: 'Picanha R$ 69,90' })
+    .dragTo(page.getByTestId('timeline').locator('> div'), { targetPosition: { x: 72, y: 100 } });
+  await expect(page.getByRole('button', { name: /^Picanha R\$ 69,90: entra aos / })).toHaveCount(2);
+
   await page.getByRole('button', { name: 'Salvar e publicar' }).click();
   await expect(page.getByText('Salva e publicada. As lojas trocam no fim da música atual.')).toBeVisible();
   await expect(page.getByText('alterações não salvas')).toHaveCount(0);
-  await expect(page.getByText('1 oferta presa nesta playlist.')).toBeVisible();
+  await expect(page.getByText('2 ofertas presas nesta playlist.')).toBeVisible();
+  // D31 e: a música que a loja está tocando fica marcada na lista e na linha do tempo.
+  await expect(page.getByText(/^Tocando agora em Marumbi Teste/)).toBeVisible();
+  await expect(page.getByTestId('timeline').getByText('Marumbi Teste')).toBeVisible();
 });
 
 test('toca a oferta agora pela loja e ela entra no histórico', async () => {

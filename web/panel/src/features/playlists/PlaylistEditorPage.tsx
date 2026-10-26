@@ -29,21 +29,25 @@ import {
   Save,
   Shuffle,
   Trash2,
+  Volume2,
   X,
 } from 'lucide-react';
 import { errorMessage } from '../../api/client';
-import { useDeletePlaylist, useOffers, usePlaylist, useSavePlaylist } from '../../api/queries';
+import { useDeletePlaylist, useOffers, usePlaylist, useSavePlaylist, useStores } from '../../api/queries';
 import type { OfferSummary, PlaylistDetail } from '../../api/types';
 import { AppliedStatus } from '../../components/AppliedStatus';
 import { ConfirmDialog } from '../../components/Modal';
 import { useToast } from '../../components/Toasts';
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorNote, IconButton, Spinner } from '../../components/ui';
+import { useNow } from '../../hooks/useNow';
 import { usePreview } from '../../hooks/usePreview';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { formatDuration, formatLongDuration } from '../../lib/format';
+import { currentPositionMs } from '../../lib/position';
 import { offerStatus } from '../offers/offerDraft';
 import { AddTracksDialog } from './AddTracksDialog';
 import { AnchorDialog, type AnchorChoice } from './AnchorDialog';
+import { OfferDrag, PlaylistTimeline, type PlayingNow } from './PlaylistTimeline';
 import {
   addTracks,
   anchorsChanged,
@@ -64,9 +68,6 @@ import {
   type DraftAnchor,
   type DraftItem,
 } from './playlistDraft';
-
-/** Tipo do arrastar de uma oferta da coluna da direita para cima de uma música. */
-const OfferDrag = 'application/x-marumbi-oferta';
 import { usageText } from './usage';
 
 export function PlaylistEditorPage() {
@@ -86,6 +87,8 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
   const [removing, setRemoving] = useState<DraftItem | null>(null);
   const [shuffling, setShuffling] = useState(false);
   const offers = useOffers();
+  const stores = useStores();
+  const now = useNow();
   const save = useSavePlaylist(saved.id);
   const remove = useDeletePlaylist();
   const toast = useToast();
@@ -94,6 +97,20 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
   const dirty = isDirty(draft, saved);
   const starts = useMemo(() => startTimes(draft.items), [draft.items]);
   const storeIds = [...new Set(saved.usage.map((u) => u.storeId))];
+  // Lojas tocando esta playlist agora (D31 e): a música delas fica marcada na lista e na linha do tempo.
+  const playing: PlayingNow[] = (stores.data ?? []).flatMap((store) =>
+    store.online && store.playlistId === `p${saved.id}` && store.nowPlaying
+      ? [
+          {
+            storeName: store.name,
+            hash: store.nowPlaying.hash,
+            positionMs: currentPositionMs(store.nowPlaying, store.player, now),
+          },
+        ]
+      : [],
+  );
+  const playingAt = (hash: string, index: number) =>
+    draft.items.findIndex((i) => i.hash === hash) === index ? playing.filter((p) => p.hash === hash) : [];
 
   // Nada vai para as lojas sem "Salvar e publicar".
   const leaveDialog = useUnsavedChanges(
@@ -203,6 +220,28 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
       </div>
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0 xl:col-span-2">
+          <PlaylistTimeline
+            items={draft.items}
+            anchors={draft.anchors}
+            offers={offers.data ?? []}
+            shuffle={draft.shuffle}
+            playing={playing}
+            onMove={(anchor, to) => setDraft((d) => putAnchor(d, { ...anchor, ...to }))}
+            onDropOffer={(offerId, to) => {
+              const offer = offers.data?.find((o) => o.id === offerId);
+              if (offer) setDraft((d) => putAnchor(d, { offerId, offerName: offer.name, ...to }));
+            }}
+            onEdit={(anchor) =>
+              setAnchoring({
+                key: anchor.key,
+                offerId: anchor.offerId,
+                itemKey: anchor.itemKey,
+                offsetMs: anchor.offsetMs ?? 0,
+              })
+            }
+          />
+        </div>
         <Card>
           <CardHeader
             title="Músicas"
@@ -230,6 +269,7 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
                       index={index}
                       start={starts[index]!}
                       playing={preview.playing === item.hash}
+                      live={playingAt(item.hash, index)}
                       anchors={anchorsOf(draft, item.key)}
                       canAnchor={!draft.shuffle}
                       onPreview={() => preview.toggle(item.hash)}
@@ -381,6 +421,7 @@ function SortableRow({
   index,
   start,
   playing,
+  live,
   anchors,
   canAnchor,
   onPreview,
@@ -392,6 +433,8 @@ function SortableRow({
   index: number;
   start: number;
   playing: boolean;
+  /** Lojas tocando esta música agora. */
+  live: PlayingNow[];
   anchors: DraftAnchor[];
   canAnchor: boolean;
   onPreview: () => void;
@@ -426,7 +469,11 @@ function SortableRow({
         onAnchor(offerId);
       }}
       className={`flex items-center gap-2 px-3 py-2 text-sm sm:gap-3 sm:px-5 ${
-        dropping ? 'bg-brand-50 ring-2 ring-brand-400 ring-inset' : 'bg-white'
+        dropping
+          ? 'bg-brand-50 ring-2 ring-brand-400 ring-inset'
+          : live.length > 0
+            ? 'bg-brand-50/60 shadow-[inset_3px_0_0_var(--color-brand-600)]'
+            : 'bg-white'
       } ${isDragging ? 'relative z-10 shadow-lg ring-1 ring-stone-200' : ''}`}
     >
       <button
@@ -448,7 +495,18 @@ function SortableRow({
       </IconButton>
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium text-stone-900">{item.title}</p>
-        <p className="truncate text-xs text-stone-500">{item.artist ?? 'Artista desconhecido'}</p>
+        {item.artist && <p className="truncate text-xs text-stone-500">{item.artist}</p>}
+        {live.map((p) => (
+          <p key={p.storeName} className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-brand-800">
+            <Volume2 className="size-3.5 shrink-0" aria-hidden />
+            Tocando agora em {p.storeName}
+            {p.positionMs !== null && (
+              <span className="font-normal text-brand-700 tabular-nums">
+                {formatDuration(p.positionMs)} de {formatDuration(item.durationMs)}
+              </span>
+            )}
+          </p>
+        ))}
         {anchors.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1">
             {anchors.map((anchor) => (
@@ -514,7 +572,7 @@ function OffersColumn({
           shuffle
             ? undefined
             : anchorCount === 0
-              ? 'Arraste uma oferta para cima de uma música.'
+              ? 'Arraste uma oferta para a linha do tempo ou para cima de uma música.'
               : `${anchorCount} ${anchorCount === 1 ? 'oferta presa' : 'ofertas presas'} nesta playlist.`
         }
       />
