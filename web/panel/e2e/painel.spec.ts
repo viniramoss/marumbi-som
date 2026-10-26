@@ -143,7 +143,7 @@ test('comando ao vivo chega e volta em até 2 segundos', async () => {
 
 test('o início mostra o cartão da loja e o histórico registra o que tocou', async () => {
   await page.getByRole('link', { name: 'Início' }).first().click();
-  await expect(page.getByRole('link', { name: 'Marumbi Teste' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Marumbi Teste', exact: true })).toBeVisible();
   await expect(page.getByText('Sincronizado ✅')).toBeVisible();
 
   // O card inteiro abre a loja, não só o nome.
@@ -195,7 +195,7 @@ test('prende a oferta numa música da playlist', async () => {
 
 test('toca a oferta agora pela loja e ela entra no histórico', async () => {
   await page.getByRole('link', { name: 'Lojas' }).first().click();
-  await page.getByRole('link', { name: 'Marumbi Teste' }).click();
+  await page.getByRole('link', { name: 'Marumbi Teste', exact: true }).click();
   await expect(page.getByText('Aplicado', { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText('Tocando', { exact: true }).first()).toBeVisible({ timeout: 30_000 });
 
@@ -231,7 +231,7 @@ test('envia uma versão assinada do agente e atualiza a loja', async () => {
   ).toBeVisible();
 
   await page.getByRole('link', { name: 'Lojas' }).first().click();
-  await page.getByRole('link', { name: 'Marumbi Teste' }).click();
+  await page.getByRole('link', { name: 'Marumbi Teste', exact: true }).click();
   await page.getByRole('tab', { name: 'Ajustes' }).click();
   await expect(page.getByText(`Para distribuição: ${stack.release.version}.`)).toBeVisible();
   await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
