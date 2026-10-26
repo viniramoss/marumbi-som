@@ -1,8 +1,23 @@
 import { maxAnchorOffset, startTimes, type DraftAnchor, type DraftItem } from './playlistDraft';
 
-/** Zoom da linha do tempo, em pixels por minuto (D30). */
-export const zoomLevels = [15, 30, 60, 120, 240] as const;
+/** Zoom da linha do tempo, em pixels por minuto (D30). A linha abre ajustada para mostrar a playlist inteira. */
+export const zoomLevels = [15, 30, 60, 120, 240, 480] as const;
+/** Usado quando ainda não dá para medir a largura da tela. */
 export const defaultZoom = 60;
+const minZoom = 2;
+
+/** Zoom que faz a playlist inteira caber na largura disponível. */
+export function fitZoom(totalMs: number, widthPx: number): number {
+  if (widthPx <= 0 || totalMs <= 0) return defaultZoom;
+  return Math.max(minZoom, widthPx / (totalMs / 60_000));
+}
+
+/** Próximo zoom ao aproximar (+) ou afastar (−); afastar além da playlist inteira volta para ela (nulo). */
+export function nextZoom(current: number, direction: 1 | -1, fit: number): number | null {
+  if (direction > 0) return zoomLevels.find((level) => level > current * 1.15) ?? null;
+  const lower = [...zoomLevels].reverse().find((level) => level < current / 1.15);
+  return lower === undefined || lower <= fit ? null : lower;
+}
 
 /** Intervalos possíveis entre as marcas da régua; a régua usa o menor que deixe espaço para o rótulo. */
 const tickSteps = [10_000, 30_000, 60_000, 120_000, 300_000, 600_000, 900_000, 1_800_000, 3_600_000];
@@ -17,10 +32,30 @@ export function tickStep(pxPerMinute: number): number {
 
 /** Marcas da régua de 0 até o fim da playlist. */
 export function ticks(totalMs: number, pxPerMinute: number): number[] {
+  return marks(totalMs, tickStep(pxPerMinute));
+}
+
+const minorSteps = [5_000, 10_000, 15_000, 30_000, 60_000, 120_000, 300_000, 600_000];
+
+/** Tracinhos menores entre as marcas, em intervalos redondos e com pelo menos 20 px entre eles. */
+export function minorTicks(totalMs: number, pxPerMinute: number): number[] {
   const step = tickStep(pxPerMinute);
-  const marks: number[] = [];
-  for (let at = 0; at <= totalMs; at += step) marks.push(at);
-  return marks;
+  const scale = pxPerMs(pxPerMinute);
+  const minor = minorSteps.find((m) => m < step && step % m === 0 && m * scale >= 20);
+  return minor ? marks(totalMs, minor).filter((at) => at % step !== 0) : [];
+}
+
+function marks(totalMs: number, step: number): number[] {
+  const list: number[] = [];
+  for (let at = 0; at <= totalMs; at += step) list.push(at);
+  return list;
+}
+
+/** Perto do começo de uma música (até `snapPx` na tela), a oferta encaixa no 0:00 dela. */
+export function snapToStart(items: readonly DraftItem[], timeMs: number, pxPerMinute: number, snapPx = 8): number {
+  const limit = snapPx / pxPerMs(pxPerMinute);
+  const near = startTimes(items).find((start) => Math.abs(start - timeMs) <= limit);
+  return near ?? timeMs;
 }
 
 /** Onde a oferta entra, em tempo desde o começo da playlist; nulo se a música dela não está mais na lista. */

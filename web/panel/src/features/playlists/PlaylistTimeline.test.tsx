@@ -4,8 +4,9 @@ import type { OfferSummary } from '../../api/types';
 import type { DraftAnchor, DraftItem } from './playlistDraft';
 import { OfferDrag, PlaylistTimeline, type PlayingNow } from './PlaylistTimeline';
 
-// No jsdom a faixa começa em x = 0 sem rolagem; com o zoom inicial (60 px por minuto) 1 px é 1 s, depois da margem de 12 px.
-const at = (seconds: number) => 12 + seconds;
+// No jsdom a faixa começa em x = 0, sem rolagem e sem largura para medir: o zoom fica em 60 px por minuto (1 px = 1 s),
+// depois da margem de 14 px.
+const at = (seconds: number) => 14 + seconds;
 
 const items: DraftItem[] = [
   { key: 'a', id: 'a', hash: 'h-a', title: '001', artist: null, durationMs: 180_000 },
@@ -61,7 +62,7 @@ describe('PlaylistTimeline', () => {
     const track = screen.getByTestId('timeline').firstElementChild!;
 
     fireAt(track, 'dragOver', at(200), { dataTransfer: offerTransfer('5') });
-    expect(screen.getByText('002 · aos 0:20')).toBeInTheDocument();
+    expect(screen.getByText('3:20 · 002 aos 0:20')).toBeInTheDocument();
     fireAt(track, 'drop', at(200), { dataTransfer: offerTransfer('5') });
 
     expect(onDropOffer).toHaveBeenCalledWith(5, { itemKey: 'b', offsetMs: 20_000 });
@@ -73,7 +74,7 @@ describe('PlaylistTimeline', () => {
 
     fireAt(block, 'pointerDown', 100, { button: 0, pointerId: 1 });
     fireAt(block, 'pointerMove', 130, { pointerId: 1 });
-    expect(screen.getByText('001 · aos 1:00')).toBeInTheDocument();
+    expect(screen.getByText('1:00 · 001 aos 1:00')).toBeInTheDocument();
     fireAt(block, 'pointerUp', 130, { pointerId: 1 });
     fireEvent.click(block);
 

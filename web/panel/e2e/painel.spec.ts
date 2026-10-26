@@ -201,11 +201,13 @@ test('prende a oferta numa música da playlist', async () => {
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('button', { name: /Picanha R\$ 69,90\s*aos 0:12/ })).toBeVisible();
-  // As músicas têm 40 s e 45 s; com o zoom inicial 1 px é 1 s, depois da margem de 12 px: 60 s cai na segunda música.
+  // A linha abre com a playlist inteira (40 s + 45 s); três quartos da largura caem no meio da segunda música.
+  const track = page.getByTestId('timeline').locator('> div');
+  const box = (await track.boundingBox())!;
   await page
     .locator('li[draggable="true"]')
     .filter({ hasText: 'Picanha R$ 69,90' })
-    .dragTo(page.getByTestId('timeline').locator('> div'), { targetPosition: { x: 72, y: 100 } });
+    .dragTo(track, { targetPosition: { x: box.width * 0.75, y: 100 } });
   await expect(page.getByRole('button', { name: /^Picanha R\$ 69,90: entra aos / })).toHaveCount(2);
 
   await page.getByRole('button', { name: 'Salvar e publicar' }).click();
