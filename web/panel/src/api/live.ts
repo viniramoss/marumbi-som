@@ -34,6 +34,7 @@ export function topicKeys(topic: string): QueryKey[] {
 export function applyLiveMessage(client: QueryClient, message: PanelMessage) {
   if (message.type === 'store') {
     const store = message.store;
+    const previous = client.getQueryData<StoreDetail>(keys.store(store.id));
     let known = false;
     client.setQueryData<StoreSummary[]>(keys.stores, (list) =>
       list?.map((s) => {
@@ -48,11 +49,11 @@ export function applyLiveMessage(client: QueryClient, message: PanelMessage) {
     if (!known && client.getQueryData(keys.stores) !== undefined) {
       void client.invalidateQueries({ queryKey: keys.stores });
     }
-    // A fila e as músicas do manifesto vêm só no detalhe; ele é recarregado quando a música ou a versão muda.
-    const detail = client.getQueryData<StoreDetail>(keys.store(store.id));
+    // A fila e as músicas do manifesto vêm só no detalhe; ele é recarregado quando a música ou a versão muda (o Hub
+    // também avisa "store:{id}" quando a fila muda). A comparação usa o detalhe de antes da troca do resumo.
     if (
-      detail &&
-      (detail.queue[0]?.hash === store.nowPlaying?.hash || detail.status.appliedVersion !== store.appliedVersion)
+      previous &&
+      (previous.queue[0]?.hash === store.nowPlaying?.hash || previous.status.appliedVersion !== store.appliedVersion)
     ) {
       void client.invalidateQueries({ queryKey: keys.store(store.id) });
     }

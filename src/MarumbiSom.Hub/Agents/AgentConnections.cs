@@ -34,6 +34,9 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
     /// <summary>Disparado quando uma loja conecta ou desconecta.</summary>
     public event EventHandler<int>? ConnectionChanged;
 
+    /// <summary>A fila informada pela loja mudou (ex.: músicas novas na playlist); o detalhe da loja no painel é relido.</summary>
+    public event EventHandler<int>? QueueChanged;
+
     public bool IsOnline(int storeId) => _connections.ContainsKey(storeId);
 
     public async Task RunAsync(int storeId, string slug, WebSocket socket, CancellationToken cancellationToken)
@@ -183,6 +186,7 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
     {
         var now = time.GetUtcNow();
         long? announceVersion = null;
+        var queueChanged = false;
         await using (var scope = scopes.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<HubDb>();
@@ -240,7 +244,9 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
                     state.DiskFreeMb = status.DiskFreeMb;
                     state.UptimeS = status.UptimeS;
                     state.PlaylistKey = status.PlaylistId;
-                    state.QueueJson = status.Queue is null ? null : JsonSerializer.Serialize(status.Queue.Take(10));
+                    var queue = status.Queue is null ? null : JsonSerializer.Serialize(status.Queue.Take(10));
+                    queueChanged = !string.Equals(queue, state.QueueJson, StringComparison.Ordinal);
+                    state.QueueJson = queue;
                     break;
                 case CommandResultMessage result:
                     if (int.TryParse(result.Id, NumberStyles.None, CultureInfo.InvariantCulture, out var commandId)
@@ -317,6 +323,10 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
         }
 
         MessageHandled?.Invoke(this, (storeId, message));
+        if (queueChanged)
+        {
+            QueueChanged?.Invoke(this, storeId);
+        }
     }
 
     private static string Wire<T>(T value)

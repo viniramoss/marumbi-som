@@ -35,6 +35,8 @@ public sealed class PanelTests
         Assert.Equal(storeId, online.Id);
 
         await SendAsync(agent, Status(hash, BluetoothStatus.Connected) with { PlaylistId = "p1", Queue = [hash] });
+        // Fila nova (ex.: músicas adicionadas à playlist): o painel relê o detalhe da loja.
+        await ReceiveChangedAsync(panel, t => t.Contains($"store:{storeId}"));
         await SendAsync(agent, new TrackStartedMessage(hash, hub.Time.GetUtcNow()));
         var playing = await ReceiveStoreAsync(panel, s => s.NowPlaying?.Title == "A" && s.NowPlaying.PositionMs == 0);
         Assert.Equal("playing", playing.Player);
