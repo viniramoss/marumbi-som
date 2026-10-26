@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace MarumbiSom.Hub.Updates;
 
-/// <summary>Configurações → Hub (D32 f): versão instalada e disponível, atualizar agora, a madrugada e o envio à mão.</summary>
+/// <summary>Configurações → Atualização do Hub (D32 f): versão instalada e disponível, atualizar agora, a madrugada e o envio à mão.</summary>
 public static class HubUpdateEndpoints
 {
     public static void MapHubUpdate(this RouteGroupBuilder api)

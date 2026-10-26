@@ -1,5 +1,5 @@
 import { api, call, statusMessage } from './client';
-import type { IngestionJob, ReleaseInfo } from './types';
+import type { HubUpdateStatus, IngestionJob, ReleaseInfo } from './types';
 
 export const acceptedAudio = ['.mp3', '.m4a', '.aac', '.flac', '.wav', '.ogg', '.opus', '.wma'];
 
@@ -66,9 +66,30 @@ export function uploadRelease(
   signatureFile: File,
   onProgress: (fraction: number) => void,
 ): Promise<ReleaseInfo> {
+  return uploadPackage<ReleaseInfo>('/api/releases', packageFile, signatureFile, onProgress);
+}
+
+/**
+ * Envia um pacote do Hub (o .zip e o .sig.json do sign-release -HubDir, D32 f) com andamento. O Hub confere o SHA-256,
+ * a assinatura e o conteúdo antes de guardar; devolve a situação da atualização do Hub.
+ */
+export function uploadHubPackage(
+  packageFile: File,
+  signatureFile: File,
+  onProgress: (fraction: number) => void,
+): Promise<HubUpdateStatus> {
+  return uploadPackage<HubUpdateStatus>('/api/hub/update/package', packageFile, signatureFile, onProgress);
+}
+
+function uploadPackage<T>(
+  url: '/api/releases' | '/api/hub/update/package',
+  packageFile: File,
+  signatureFile: File,
+  onProgress: (fraction: number) => void,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
-    request.open('POST', '/api/releases');
+    request.open('POST', url);
     request.setRequestHeader('X-MarumbiSom', '1');
     request.responseType = 'json';
     request.upload.onprogress = (event) => {
@@ -77,7 +98,7 @@ export function uploadRelease(
     request.onload = () => {
       if (request.status === 201) {
         onProgress(1);
-        resolve(request.response as ReleaseInfo);
+        resolve(request.response as T);
         return;
       }
       const body = request.response as { error?: string } | null;

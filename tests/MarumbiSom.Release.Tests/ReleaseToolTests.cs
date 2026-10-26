@@ -146,13 +146,24 @@ public sealed class ReleaseToolTests : IDisposable
 
         Assert.Equal(0, Run("verify", "--zip", zip, "--sig", sig, "--public-key", publicKey, "--hub"));
         Assert.Equal(1, Run("verify", "--zip", zip, "--sig", sig, "--public-key", publicKey));
-        Assert.Contains("Configurações > Hub", _output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Configurações > Atualização do Hub", _output.ToString(), StringComparison.Ordinal);
 
-        Assert.Equal(0, Run("pack", "--key", Key, "--hub", hub, "--out", Out, "--test-broken", "--version", "0.9.1"));
-        using (var broken = ZipFile.OpenRead(Path.Combine(Out, "MarumbiSom.Hub-0.9.1-teste-quebrado.zip")))
-        using (var reader = new StreamReader(broken.GetEntry(ReleaseTool.HubDll)!.Open()))
+        // No Hub, o quebrado é o build de verdade (o atualizador confere a versão do .dll) com um endereço que derruba a
+        // partida depois de abrir o banco; os outros ajustes do appsettings.json ficam.
+        Assert.Equal(1, Run("pack", "--key", Key, "--hub", hub, "--out", Out, "--test-broken", "--version", "0.9.1"));
+        Assert.Contains("use um build mais novo que o instalado", _error.ToString(), StringComparison.Ordinal);
+        File.WriteAllText(Path.Combine(hub, ReleaseTool.HubSettingsFile), """{ "Hub": { "Port": 5080 } }""");
+        Assert.Equal(0, Run("pack", "--key", Key, "--hub", hub, "--out", Out, "--test-broken"));
+        using (var broken = ZipFile.OpenRead(Path.Combine(Out, $"MarumbiSom.Hub-{Version}-teste-quebrado.zip")))
         {
-            Assert.StartsWith("Pacote de teste quebrado", reader.ReadToEnd(), StringComparison.Ordinal);
+            using (var reader = new StreamReader(broken.GetEntry(ReleaseTool.HubSettingsFile)!.Open()))
+            {
+                var settings = System.Text.Json.Nodes.JsonNode.Parse(reader.ReadToEnd())!;
+                Assert.Equal("http://127.0.0.1:99999", (string?)settings["Kestrel"]!["Endpoints"]!["TesteQuebrado"]!["Url"]);
+                Assert.Equal(5080, (int?)settings["Hub"]!["Port"]);
+            }
+
+            Assert.Equal(new FileInfo(Path.Combine(hub, ReleaseTool.HubDll)).Length, broken.GetEntry(ReleaseTool.HubDll)!.Length);
         }
 
         File.Delete(Path.Combine(hub, "wwwroot", "index.html"));

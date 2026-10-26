@@ -12,7 +12,7 @@
     propósito).
 
     Com -HubDir, gera MarumbiSom.Hub-<versão>.zip e .sig.json da pasta do artefato MarumbiSom.Hub-win-x64 (versão do
-    MarumbiSom.Hub.dll), para Configurações > Hub > Enviar pacote. A assinatura do Hub é própria: um pacote do agente
+    MarumbiSom.Hub.dll), para Configurações > Atualização do Hub > Enviar pacote. A assinatura do Hub é própria: um pacote do agente
     não passa por pacote do Hub.
 
 .PARAMETER AgentDir
@@ -35,8 +35,9 @@
     uma versão própria (ex.: 0.6.998), para não ocupar no Hub a versão do pacote bom.
 
 .PARAMETER TestBroken
-    Gera um pacote de teste com o agente estragado, na -Version informada (critério de aceite: a loja volta sozinha
-    para a versão anterior).
+    Gera um pacote de teste que não sobe (critério de aceite: volta sozinho para a versão anterior). No agente, estraga
+    o programa e usa a -Version informada. No Hub, usa a versão do build (mais novo que o instalado, sem -Version) e
+    põe no appsettings.json um endereço que derruba o Hub depois de abrir o banco, para testar também a volta do banco.
 
 .EXAMPLE
     .\sign-release.ps1 -AgentDir C:\Users\vinicius\Downloads\MarumbiSom.Agent-win-x64
@@ -48,7 +49,7 @@
     .\sign-release.ps1 -AgentDir ..\MarumbiSom.Agent-win-x64 -TestBroken -Version 0.6.999
 
 .EXAMPLE
-    .\sign-release.ps1 -HubDir ..\MarumbiSom.Hub-win-x64 -TestBroken -Version 0.6.999
+    .\sign-release.ps1 -HubDir ..\MarumbiSom.Hub-win-x64 -TestBroken
 #>
 [CmdletBinding()]
 param(

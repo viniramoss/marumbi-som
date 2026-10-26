@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using MarumbiSom.Contracts.Json;
 using MarumbiSom.Contracts.Releases;
 
@@ -16,6 +17,7 @@ internal sealed class ReleaseTool(TextWriter output, TextWriter error)
 {
     public const string AgentDll = "MarumbiSom.Agent.dll";
     public const string HubDll = "MarumbiSom.Hub.dll";
+    public const string HubSettingsFile = "appsettings.json";
 
     private static readonly PackageKind AgentPackage = new(
         ReleaseProducts.Agent, "MarumbiSom.Agent", AgentDll, "do agente",
@@ -44,7 +46,8 @@ internal sealed class ReleaseTool(TextWriter output, TextWriter error)
               versão é a do MarumbiSom.Agent.dll (ou MarumbiSom.Hub.dll).
               --test-invalid-signature: assina com uma chave descartável (o pacote precisa ser recusado); aceita
                   qualquer --version, para não ocupar no Hub a versão do pacote bom.
-              --test-broken: estraga o .dll principal e usa a --version pedida (o Updater precisa reverter).
+              --test-broken: o Updater precisa reverter. No agente, estraga o .dll e usa a --version pedida; no Hub, usa a
+                  versão do .dll e põe no appsettings.json um endereço que derruba a partida depois de abrir o banco.
 
           verify --zip <pacote.zip> --sig <pacote.sig.json> (--public-key <base64> | --public-key-file <arquivo>) [--hub]
               Confere SHA-256 e assinatura de um pacote (--hub para um pacote do Hub).
@@ -144,7 +147,16 @@ internal sealed class ReleaseTool(TextWriter output, TextWriter error)
             throw new ToolException($"Versão inválida: {version}. Use três números, como 0.6.41.");
         }
 
-        if (testBroken)
+        if (testBroken && kind == HubPackage)
+        {
+            // O atualizador do Hub confere a versão do .dll; o Hub quebrado é o de verdade com um ajuste que derruba a
+            // partida depois de abrir o banco (assim a cópia e a devolução do banco também são testadas).
+            if (version != dllVersion)
+            {
+                throw new ToolException($"No Hub, --test-broken usa a versão do {kind.Dll} ({dllVersion}): use um build mais novo que o instalado, sem --version.");
+            }
+        }
+        else if (testBroken)
         {
             if (options.Optional("version") is null || version == dllVersion)
             {
@@ -189,12 +201,16 @@ internal sealed class ReleaseTool(TextWriter output, TextWriter error)
         var signaturePath = Path.Combine(outDirectory, $"{kind.Name}-{version}{suffix}.sig.json");
         File.Delete(zipPath);
         ZipFile.CreateFromDirectory(source, zipPath, CompressionLevel.Optimal, includeBaseDirectory: false);
-        if (testBroken)
+        if (testBroken && kind == HubPackage)
+        {
+            BreakHubSettings(zipPath);
+        }
+        else if (testBroken)
         {
             using var zip = ZipFile.Open(zipPath, ZipArchiveMode.Update);
             zip.GetEntry(kind.Dll)!.Delete();
             using var writer = new StreamWriter(zip.CreateEntry(kind.Dll).Open());
-            writer.Write("Pacote de teste quebrado de propósito (D27 b, D32): este programa não sobe e o Updater precisa voltar a versão anterior.");
+            writer.Write("Pacote de teste quebrado de propósito (D27 b): este programa não sobe e o Updater precisa voltar a versão anterior.");
         }
 
         string sha;
@@ -217,17 +233,48 @@ internal sealed class ReleaseTool(TextWriter output, TextWriter error)
         else if (testBroken)
         {
             output.WriteLine(hub
-                ? "PACOTE DE TESTE: o Hub desta versão não sobe. O atualizador precisa voltar sozinho para a versão anterior, com o banco de antes, em até ~3 minutos."
+                ? "PACOTE DE TESTE: o Hub desta versão abre o banco e cai antes de confirmar. O atualizador precisa voltar sozinho para a versão anterior, com o banco de antes, em até ~4 minutos."
                 : "PACOTE DE TESTE: o agente desta versão não sobe. A loja precisa voltar sozinha para a versão anterior em até ~3 minutos.");
         }
         else
         {
             output.WriteLine(hub
-                ? "Envie os dois arquivos em Configurações > Hub > Enviar pacote, no painel."
+                ? "Envie os dois arquivos em Configurações > Atualização do Hub > Enviar pacote, no painel."
                 : "Envie os dois arquivos em Configurações > Versão do agente para distribuição, no painel.");
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// Pacote do Hub de teste (D32): o <c>appsettings.json</c> ganha um endereço com porta inválida. O Hub abre o banco
+    /// (guardando a cópia da atualização), não consegue escutar e cai antes de confirmar.
+    /// </summary>
+    private static void BreakHubSettings(string zipPath)
+    {
+        using var zip = ZipFile.Open(zipPath, ZipArchiveMode.Update);
+        JsonObject settings;
+        if (zip.GetEntry(HubSettingsFile) is { } entry)
+        {
+            using (var reader = entry.Open())
+            {
+                settings = JsonNode.Parse(reader, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip })?.AsObject()
+                    ?? throw new ToolException($"O {HubSettingsFile} do Hub está vazio.");
+            }
+
+            entry.Delete();
+        }
+        else
+        {
+            settings = [];
+        }
+
+        settings["Kestrel"] = new JsonObject
+        {
+            ["Endpoints"] = new JsonObject { ["TesteQuebrado"] = new JsonObject { ["Url"] = "http://127.0.0.1:99999" } },
+        };
+        using var writer = new StreamWriter(zip.CreateEntry(HubSettingsFile).Open(), new UTF8Encoding(false));
+        writer.Write(settings.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
     private int Verify(Options options)

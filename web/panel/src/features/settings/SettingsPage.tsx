@@ -6,12 +6,13 @@ import { useToast } from '../../components/Toasts';
 import { Badge, Button, Card, CardHeader, ErrorNote, Field, Input, PageHeader, Spinner } from '../../components/ui';
 import { useNow } from '../../hooks/useNow';
 import { formatAgo, formatBytes, formatDateTime, formatMegabytes } from '../../lib/format';
+import { HubUpdateCard } from './HubUpdateCard';
 import { ReleasesCard } from './ReleasesCard';
 
 /** Mesma regra do Hub (PanelAuth.MinPasswordLength). */
 export const MinPasswordLength = 10;
 
-/** Configurações (seção 7.2): senha, backup, Hub e distribuição do agente. O Telegram ficou para depois (D21). */
+/** Configurações (seção 7.2): senha, backup, Hub (e a atualização dele, D32) e distribuição do agente. O Telegram ficou para depois (D21). */
 export function SettingsPage() {
   return (
     <>
@@ -20,6 +21,7 @@ export function SettingsPage() {
         <PasswordCard />
         <div className="space-y-6">
           <HubCard />
+          <HubUpdateCard />
           <ReleasesCard />
         </div>
       </div>
