@@ -11,6 +11,7 @@ interface Stack {
   localPassword: string;
   tracks: string[];
   offerAudio: string;
+  editorWav: string;
   release: { version: string; zip: string; sig: string };
 }
 
@@ -265,6 +266,47 @@ test('envia uma versão assinada do agente e atualiza a loja', async () => {
   await expect(page.getByText('A loja começou a baixar a versão nova do agente.')).toBeVisible();
   // O agente confere a assinatura com a chave de teste; no modo simulado o Updater só registra o resultado.
   await expect(page.getByText(`Agente atualizado para ${stack.release.version}`)).toBeVisible({ timeout: 30_000 });
+});
+
+test('tira um trecho da música no editor e ela segue na playlist', async () => {
+  // D34. O Chromium do Playwright não decodifica AAC; a onda vem de um WAV com o mesmo tom e a mesma duração.
+  await page.route('**/api/tracks/*/audio', (route) =>
+    route.fulfill({ contentType: 'audio/wav', body: readFileSync(stack.editorWav) }),
+  );
+  await page.getByRole('link', { name: 'Biblioteca' }).first().click();
+  const row = (name: string) => page.getByRole('table').getByRole('row').filter({ hasText: name });
+  // As duas músicas foram enviadas juntas: o número depende de qual terminou primeiro.
+  const number = await row('Trio Marumbi - Abertura do Açougue.mp3')
+    .getByText(/^\d{3}$/)
+    .first()
+    .textContent();
+  await row('Trio Marumbi - Abertura do Açougue.mp3').getByRole('button', { name: 'Editar trechos' }).click();
+  await expect(page.getByRole('heading', { name: `Editar ${number}` })).toBeVisible();
+
+  // Arrasta na onda e acerta o trecho digitando.
+  const wave = page.getByTestId('waveform');
+  await expect(wave).toBeVisible({ timeout: 30_000 });
+  const box = (await wave.boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.25, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await page.getByLabel('Início do trecho 1').fill('0:10');
+  await page.getByLabel('Início do trecho 1').press('Enter');
+  await page.getByLabel('Fim do trecho 1').fill('0:15');
+  await page.getByLabel('Fim do trecho 1').press('Enter');
+  await expect(page.getByText('A música fica com 0:35 (tirando 0:05,0).')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Salvar sem os trechos' }).click();
+  await expect(page.getByText(/Esta música já foi editada: 0:05,0 a menos/)).toBeVisible({ timeout: 60_000 });
+  await page.unroute('**/api/tracks/*/audio');
+
+  // Mesmo número, marcada como editada e ainda na playlist.
+  await page.getByRole('button', { name: 'Biblioteca' }).click();
+  const edited = row('Trio Marumbi - Abertura do Açougue.mp3');
+  await expect(edited.getByText('editada', { exact: true })).toBeVisible();
+  await expect(edited.getByText(number!, { exact: true }).first()).toBeVisible();
+  await expect(edited.getByRole('link', { name: 'Manhã' })).toBeVisible();
 });
 
 test('nenhum erro no console do navegador', () => {

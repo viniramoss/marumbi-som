@@ -35,9 +35,9 @@ export function UploadPanel() {
 
   const jobs = new Map((uploads.data ?? []).map((job) => [job.id, job]));
   const mine = new Set(local.map((u) => u.jobId).filter(Boolean));
-  // Também mostra o que está na fila vindo de outro aparelho.
+  // Também mostra o que está na fila vindo de outro aparelho; a edição de música (D34) aparece no próprio editor.
   const others = (uploads.data ?? []).filter(
-    (job) => !mine.has(job.id) && (job.status === 'queued' || job.status === 'processing'),
+    (job) => !mine.has(job.id) && !job.editOf && (job.status === 'queued' || job.status === 'processing'),
   );
 
   const update = (key: string, change: Partial<LocalUpload>) =>
@@ -182,12 +182,16 @@ function UploadRow({ name, upload, job }: { name: string; upload?: LocalUpload; 
       </span>
     );
   } else if (statusLook[job?.status ?? 'queued'].icon === 'spin') {
-    // Na fila ou processando no Hub: sem porcentagem, então a barra fica em movimento até terminar.
+    // Na fila, a barra fica em movimento; processando, anda a cada etapa (D34).
     const look = statusLook[job?.status ?? 'queued'];
+    const processing = job?.status === 'processing' && job.progress > 0;
     content = (
       <span className="flex w-56 flex-col gap-1">
-        <span className={`text-xs ${look.tone}`}>{look.text}</span>
-        <ProgressBar label={`${look.text}: ${name}`} />
+        <span className={`flex justify-between text-xs ${look.tone}`}>
+          {look.text}
+          {processing && <span className="tabular-nums">{Math.round(job.progress * 100)}%</span>}
+        </span>
+        <ProgressBar value={processing ? job.progress * 100 : undefined} label={`${look.text}: ${name}`} />
       </span>
     );
   } else {

@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router';
-import { Check, Library, Pause, Pencil, Play, Search, Trash2, X } from 'lucide-react';
+import { Link, useNavigate } from 'react-router';
+import { Check, Library, Pause, Pencil, Play, Scissors, Search, Trash2, X } from 'lucide-react';
 import { errorMessage } from '../../api/client';
 import { useDeleteTrack, useTracks, useUpdateTrack } from '../../api/queries';
 import type { Track } from '../../api/types';
 import { ConfirmDialog } from '../../components/Modal';
 import { useToast } from '../../components/Toasts';
-import { Card, EmptyState, ErrorNote, IconButton, Input, PageHeader, Spinner } from '../../components/ui';
+import { Badge, Card, EmptyState, ErrorNote, IconButton, Input, PageHeader, Spinner } from '../../components/ui';
 import { usePreview } from '../../hooks/usePreview';
 import { formatDateTime, formatDuration, formatLongDuration, matchesSearch } from '../../lib/format';
 import { TrackSubtitle } from './TrackSubtitle';
@@ -95,7 +95,7 @@ export function LibraryPage() {
                     </th>
                     <th className="py-2.5 pr-4">Playlists</th>
                     <th className="w-32 py-2.5 pr-4">Enviada em</th>
-                    <th className="w-24 py-2.5 pr-5" />
+                    <th className="w-32 py-2.5 pr-5" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
@@ -156,6 +156,7 @@ function TrackRow({
   const [artist, setArtist] = useState(track.artist ?? '');
   const update = useUpdateTrack();
   const toast = useToast();
+  const navigate = useNavigate();
 
   const save = async () => {
     try {
@@ -216,7 +217,10 @@ function TrackRow({
           </form>
         ) : (
           <div className="min-w-0">
-            <p className="truncate font-medium text-stone-900">{track.title}</p>
+            <p className="flex items-center gap-2 font-medium text-stone-900">
+              <span className="truncate">{track.title}</span>
+              {track.edited && <Badge tone="blue">editada</Badge>}
+            </p>
             <TrackSubtitle track={track} />
           </div>
         )}
@@ -250,6 +254,9 @@ function TrackRow({
           <div className="flex justify-end">
             <IconButton label="Renomear" onClick={() => setEditing(true)}>
               <Pencil className="size-4" />
+            </IconButton>
+            <IconButton label="Editar trechos" onClick={() => void navigate(`/biblioteca/${track.hash}`)}>
+              <Scissors className="size-4" />
             </IconButton>
             <IconButton label="Remover da biblioteca" onClick={onRemove}>
               <Trash2 className="size-4" />

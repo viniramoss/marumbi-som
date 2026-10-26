@@ -26,11 +26,14 @@ public static class TracksEndpoints
         api.MapGet("/uploads", (IngestionWorker queue) => Results.Ok(queue.Jobs)).Returns<IReadOnlyList<IngestionJob>>();
         api.MapPatch("/tracks/{hash}", UpdateAsync).Returns<TrackDto>(StatusCodes.Status200OK, StatusCodes.Status400BadRequest, StatusCodes.Status404NotFound);
         api.MapDelete("/tracks/{hash}", DeleteAsync).ReturnsNothing(StatusCodes.Status204NoContent, StatusCodes.Status404NotFound, StatusCodes.Status409Conflict);
+        api.MapPost("/tracks/{hash}/edit", EditAsync)
+            .Returns<IngestionJob>(StatusCodes.Status202Accepted, StatusCodes.Status400BadRequest, StatusCodes.Status404NotFound, StatusCodes.Status409Conflict);
         api.MapGet("/tracks/{hash}/audio", AudioAsync).Produces(StatusCodes.Status200OK, contentType: "audio/mp4").Produces(StatusCodes.Status404NotFound);
     }
 
     public static TrackDto ToDto(Data.Track track, IReadOnlyList<PlaylistRef> playlists) =>
-        new(track.Hash, track.Kind, track.Number, track.Title, track.Artist, track.DurationMs, track.SizeBytes, track.LoudnessLufs, track.OriginalName, track.CreatedAt, playlists);
+        new(track.Hash, track.Kind, track.Number, track.Title, track.Artist, track.DurationMs, track.SizeBytes, track.LoudnessLufs, track.OriginalName, track.CreatedAt, playlists,
+            track.SourceHash is not null, TrackCuts.RemovedMs(TrackCuts.Parse(track.CutsJson)));
 
     /// <param name="kind"><c>music</c> (padrão) ou <c>offer</c>, como no JSON (o enum na query só aceitaria "Offer").</param>
     private static async Task<IResult> ListAsync(HubDb db, string? q, string? kind, CancellationToken cancellationToken)
@@ -159,6 +162,81 @@ public static class TracksEndpoints
         return Results.NoContent();
     }
 
+    /// <summary>
+    /// Edição de música (D34): tira os trechos marcados (no tempo da música como está) ou, com <c>original</c>, volta para
+    /// a música enviada. O Hub refaz a música a partir do arquivo enviado, na fila da ingestão; o andamento vem em
+    /// <c>/api/uploads</c>.
+    /// </summary>
+    private static async Task<IResult> EditAsync(
+        string hash, TrackEditInput input, HubDb db, HubPaths paths, IngestionWorker queue, ClaimsPrincipal user, TimeProvider time,
+        CancellationToken cancellationToken)
+    {
+        var track = await db.Tracks.SingleOrDefaultAsync(t => t.Hash == hash && t.DeletedAt == null, cancellationToken);
+        if (track is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (track.Kind != TrackKind.Music)
+        {
+            return ApiResults.BadRequest("Só músicas podem ser editadas aqui; o áudio da oferta se troca na própria oferta.");
+        }
+
+        var cuts = input.Cuts ?? [];
+        if (cuts.Count > 50 || cuts.Any(c => c.StartMs < 0 || c.EndMs < 0))
+        {
+            return ApiResults.BadRequest("Trechos inválidos: até 50, com início e fim a partir de 0:00.");
+        }
+
+        var sourceHash = track.SourceHash ?? track.Hash;
+        var source = await db.Tracks.AsNoTracking().SingleOrDefaultAsync(t => t.Hash == sourceHash, cancellationToken) ?? track;
+        IReadOnlyList<TrackCut> newCuts;
+        if (input.Original)
+        {
+            if (track.SourceHash is null)
+            {
+                return ApiResults.BadRequest("Esta música não foi editada.");
+            }
+
+            newCuts = [];
+        }
+        else
+        {
+            var marked = TrackCuts.Normalize(cuts.Select(c => new TrackCut(c.StartMs, c.EndMs)), track.DurationMs);
+            if (marked.Count == 0)
+            {
+                return ApiResults.BadRequest("Marque pelo menos um trecho para tirar.");
+            }
+
+            newCuts = TrackCuts.Compose(TrackCuts.Parse(track.CutsJson), marked, source.DurationMs);
+        }
+
+        var remaining = TimeSpan.FromMilliseconds(source.DurationMs - TrackCuts.RemovedMs(newCuts));
+        if (remaining < IngestionProfile.Music().MinDuration)
+        {
+            return ApiResults.BadRequest(string.Create(
+                CultureInfo.InvariantCulture, $"Sem os trechos a música ficaria com {remaining.TotalSeconds:0} s; o mínimo é 30 s."));
+        }
+
+        if (queue.IsEditing(track.Hash))
+        {
+            return ApiResults.Conflict("Esta música já está sendo editada; espere terminar.");
+        }
+
+        // O arquivo enviado guardado em originals\ (sem perda); sem ele, o da biblioteca.
+        var sourcePath = Directory.Exists(paths.Originals) ? Directory.EnumerateFiles(paths.Originals, sourceHash + ".*").FirstOrDefault() : null;
+        sourcePath ??= File.Exists(paths.LibraryFile(sourceHash)) ? paths.LibraryFile(sourceHash) : null;
+        if (sourcePath is null)
+        {
+            return ApiResults.Conflict("O arquivo enviado desta música não está mais no Hub; envie a música de novo para editar.");
+        }
+
+        var job = await queue.EnqueueEditAsync(track, sourceHash, sourcePath, newCuts, cancellationToken);
+        db.Audit(user, time, "tracks.edit", track.Hash, new { input.Original, source = sourceHash, cuts = newCuts.Select(c => new[] { c.StartMs, c.EndMs }) });
+        await db.SaveChangesAsync(cancellationToken);
+        return Results.Accepted("/api/uploads", job);
+    }
+
     private static async Task<IResult> AudioAsync(string hash, HubDb db, HubPaths paths, CancellationToken cancellationToken)
     {
         if (!await db.Tracks.AnyAsync(t => t.Hash == hash, cancellationToken) || !File.Exists(paths.LibraryFile(hash)))
@@ -170,6 +248,8 @@ public static class TracksEndpoints
     }
 
     /// <param name="Number">Número da música em ordem de importação (D31); nulo nos áudios de oferta.</param>
+    /// <param name="Edited">Música editada no painel (D34).</param>
+    /// <param name="RemovedMs">Quanto foi tirado da música enviada na edição.</param>
     public sealed record TrackDto(
         string Hash,
         TrackKind Kind,
@@ -181,9 +261,17 @@ public static class TracksEndpoints
         double? LoudnessLufs,
         string OriginalName,
         DateTimeOffset CreatedAt,
-        IReadOnlyList<PlaylistRef> Playlists);
+        IReadOnlyList<PlaylistRef> Playlists,
+        bool Edited,
+        long RemovedMs);
 
     public sealed record PlaylistRef(int Id, string Name);
 
     public sealed record TrackUpdate(string? Title, string? Artist);
+
+    /// <param name="Cuts">Trechos a tirar, em ms no tempo da música como ela está agora.</param>
+    /// <param name="Original">Volta para a música enviada, sem nenhum corte (os trechos são ignorados).</param>
+    public sealed record TrackEditInput(IReadOnlyList<CutInput>? Cuts, bool Original);
+
+    public sealed record CutInput(long StartMs, long EndMs);
 }

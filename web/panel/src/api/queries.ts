@@ -3,6 +3,7 @@ import { api, call } from './client';
 import type {
   AnchorInput,
   CommandOutcome,
+  IngestionJob,
   ItemInput,
   OfferDetail,
   OfferInput,
@@ -242,6 +243,23 @@ export function useUpdateTrack() {
       client.setQueryData<Track[]>(keys.tracks, (list) => list?.map((t) => (t.hash === track.hash ? track : t)));
       void client.invalidateQueries({ queryKey: ['playlist'] });
     },
+  });
+}
+
+/** Edição de música (D34): o Hub refaz a música sem os trechos; o andamento vem na lista de envios. */
+export function useEditTrack() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      hash,
+      cuts,
+      original = false,
+    }: {
+      hash: string;
+      cuts: { startMs: number; endMs: number }[];
+      original?: boolean;
+    }) => call(api.POST('/api/tracks/{hash}/edit', { params: { path: { hash } }, body: { cuts, original } })),
+    onSuccess: (job) => client.setQueryData<IngestionJob[]>(keys.uploads, (list) => [job, ...(list ?? [])]),
   });
 }
 
