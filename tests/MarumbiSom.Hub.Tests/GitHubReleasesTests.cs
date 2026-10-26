@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using MarumbiSom.Contracts.Releases;
 using MarumbiSom.Hub.Panel;
+using MarumbiSom.Hub.Updates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -96,6 +97,45 @@ public sealed class GitHubReleasesTests
     }
 
     [Fact]
+    public async Task Baixa_o_pacote_do_hub_mais_novo_e_confere_a_assinatura_do_hub()
+    {
+        var github = new FakeGitHub();
+        var (key, publicKey) = ReleaseSigning.NewKeyPair();
+        var keyFile = Path.Combine(Path.GetTempPath(), $"marumbi-chave-{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(keyFile, publicKey);
+        try
+        {
+            github.Release("agente-v9.1.0", ("9.1.0", ReleasePackages.Package("9.1.0", key)), hub: ReleasePackages.HubPackage("9.1.0", key));
+            // Mais novo, mas assinado como pacote do agente: recusado, e o 9.1.0 continua sendo o disponível.
+            github.Release("agente-v9.2.0", ("9.2.0", ReleasePackages.Package("9.2.0", key)), hub: ReleasePackages.HubPackage("9.2.0", key, product: ReleaseProducts.Agent));
+            await using var hub = await StartAsync(github, services => services.PostConfigure<HubOptions>(o => o.UpdatePublicKeyFile = keyFile));
+            var watcher = hub.App.Services.GetRequiredService<GitHubReleaseWatcher>();
+            var updates = hub.App.Services.GetRequiredService<HubUpdates>();
+
+            await watcher.CheckAsync(CancellationToken.None);
+            var refused = await updates.StatusAsync(CancellationToken.None);
+            Assert.True(refused.Problem);
+            Assert.Contains("9.2.0 do Hub no GitHub foi recusada: Assinatura inválida", refused.Message, StringComparison.Ordinal);
+            Assert.Null(updates.AvailableVersion);
+            Assert.Null(refused.Download);
+
+            github.RemoveHub("9.2.0");
+            await watcher.CheckAsync(CancellationToken.None);
+            await watcher.CheckAsync(CancellationToken.None);
+            var status = await updates.StatusAsync(CancellationToken.None);
+            Assert.Equal("9.1.0", status.Available?.Version);
+            Assert.Contains("já foi baixada", status.Message, StringComparison.Ordinal);
+            Assert.Equal(1, github.Downloads("9.1.0", "Hub"));
+            // O agente continua vindo como antes, na mesma procura.
+            Assert.Equal("9.2.0", (await hub.WithDbAsync(db => db.AgentReleases.SingleAsync(r => r.IsCurrent))).Version);
+        }
+        finally
+        {
+            File.Delete(keyFile);
+        }
+    }
+
+    [Fact]
     public async Task Explica_quando_o_github_recusa()
     {
         var github = new FakeGitHub { ListStatus = HttpStatusCode.NotFound };
@@ -149,9 +189,12 @@ public sealed class GitHubReleasesTests
         Assert.Equal(JsonValueKind.Null, status.GetProperty("repository").ValueKind);
     }
 
-    private static Task<HubHarness> StartAsync(FakeGitHub github) =>
+    private static Task<HubHarness> StartAsync(FakeGitHub github, Action<IServiceCollection>? configure = null) =>
         HubHarness.StartAsync(gitHubRepository: Repository, configureServices: services =>
-            services.AddHttpClient(GitHubReleaseWatcher.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => github));
+        {
+            services.AddHttpClient(GitHubReleaseWatcher.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => github);
+            configure?.Invoke(services);
+        });
 
     /// <summary>API de Releases do GitHub em memória: lista e download dos arquivos pelo endereço da API.</summary>
     private sealed class FakeGitHub : HttpMessageHandler
@@ -166,9 +209,10 @@ public sealed class GitHubReleasesTests
 
         public ConcurrentQueue<(string Path, string? Authorization)> Requests { get; } = [];
 
-        public int Downloads(string version) => _downloads.GetValueOrDefault($"MarumbiSom.Agent-{version}.zip");
+        public int Downloads(string version, string product = "Agent") => _downloads.GetValueOrDefault($"MarumbiSom.{product}-{version}.zip");
 
-        public void Release(string tag, (string Version, ReleasePackages.ReleaseFiles Files) package, bool draft = false)
+        /// <param name="hub">Pacote do Hub da mesma Release (D32 a).</param>
+        public void Release(string tag, (string Version, ReleasePackages.ReleaseFiles Files) package, bool draft = false, ReleasePackages.ReleaseFiles? hub = null)
         {
             var assets = new List<object> { Asset($"MarumbiSom.Agent-{package.Version}.zip", package.Files.Zip) };
             if (package.Files.Signature is { } signature)
@@ -177,9 +221,45 @@ public sealed class GitHubReleasesTests
             }
 
             assets.Add(Asset($"MarumbiSom.Agent-Setup-{package.Version}.exe", [1, 2, 3]));
+            if (hub is not null)
+            {
+                assets.Add(Asset($"MarumbiSom.Hub-{package.Version}.zip", hub.Zip));
+                assets.Add(Asset($"MarumbiSom.Hub-{package.Version}.sig.json", hub.Signature!));
+            }
+
             lock (_releases)
             {
                 _releases.Insert(0, new { tag_name = tag, draft, prerelease = false, assets });
+            }
+        }
+
+        /// <summary>Tira da lista o pacote do Hub de uma versão (Release refeita sem ele).</summary>
+        public void RemoveHub(string version)
+        {
+            lock (_releases)
+            {
+                foreach (var path in _names.Where(n => n.Value.StartsWith($"MarumbiSom.Hub-{version}.", StringComparison.Ordinal)).Select(n => n.Key).ToList())
+                {
+                    _assets.Remove(path);
+                    _names.Remove(path);
+                }
+
+                var live = _names.Keys.ToHashSet(StringComparer.Ordinal);
+                for (var i = 0; i < _releases.Count; i++)
+                {
+                    var release = JsonSerializer.SerializeToElement(_releases[i]);
+                    var assets = release.GetProperty("assets").EnumerateArray()
+                        .Where(a => live.Contains(new Uri(a.GetProperty("url").GetString()!).AbsolutePath))
+                        .Select(a => JsonSerializer.Deserialize<object>(a.GetRawText())!)
+                        .ToList();
+                    _releases[i] = new
+                    {
+                        tag_name = release.GetProperty("tag_name").GetString(),
+                        draft = release.GetProperty("draft").GetBoolean(),
+                        prerelease = false,
+                        assets,
+                    };
+                }
             }
         }
 

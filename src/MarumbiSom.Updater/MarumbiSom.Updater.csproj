@@ -9,11 +9,13 @@
     <!-- Analisa no build o que o trimming da publicação precisa (JSON por source generator, sem reflexão). -->
     <IsTrimmable>true</IsTrimmable>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <!-- GetFinalPathNameByHandle: confere que um arquivo de data\ não é link antes de o SYSTEM ler (D32 d). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <!--
-    Um único .exe com o runtime embutido: o Updater roda copiado em data\updates\updater, longe da pasta do programa
-    que ele troca (D27 e, f).
+    Um único .exe com o runtime embutido: o Updater roda copiado em data\updates\updater (agente) ou em
+    C:\MarumbiSom\Hub\updater (Hub), longe da pasta do programa que ele troca (D27 e, f, D32 c).
   -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -25,11 +27,14 @@
 
   <ItemGroup>
     <PackageReference Include="System.ServiceProcess.ServiceController" />
+    <!-- Ed25519: no modo Hub o próprio Updater confere a assinatura (D32 d). -->
+    <PackageReference Include="BouncyCastle.Cryptography" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Arquivos trocados com o agente; compilado aqui para o Updater não depender do Contracts. -->
+    <!-- Arquivos trocados com o agente e o Hub e a assinatura; compilados aqui para o Updater não depender do Contracts. -->
     <Compile Include="..\MarumbiSom.Contracts\Releases\UpdateFiles.cs" Link="UpdateFiles.cs" />
+    <Compile Include="..\MarumbiSom.Contracts\Releases\ReleaseSigning.cs" Link="ReleaseSigning.cs" />
   </ItemGroup>
 
   <ItemGroup>

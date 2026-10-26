@@ -6,6 +6,7 @@ using MarumbiSom.Hub.Data;
 using MarumbiSom.Hub.Library;
 using MarumbiSom.Hub.Manifests;
 using MarumbiSom.Hub.Panel;
+using MarumbiSom.Hub.Updates;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Data.Sqlite;
@@ -75,6 +76,8 @@ public static class HubApp
         });
         services.AddSingleton<GitHubReleaseWatcher>();
         services.AddHostedService(sp => sp.GetRequiredService<GitHubReleaseWatcher>());
+        services.AddSingleton<HubUpdates>();
+        services.AddHostedService(sp => sp.GetRequiredService<HubUpdates>());
         return services;
     }
 
@@ -84,11 +87,15 @@ public static class HubApp
         return new SqliteConnectionStringBuilder { DataSource = paths.Database, ForeignKeys = true, DefaultTimeout = 30, Pooling = true }.ToString();
     }
 
-    /// <summary>Cria as pastas, aplica as migrações e liga o modo WAL (seção 4).</summary>
+    /// <summary>
+    /// Cria as pastas, trata a cópia do banco de uma atualização do Hub (D32 e), aplica as migrações e liga o modo WAL
+    /// (seção 4).
+    /// </summary>
     public static async Task InitializeDatabaseAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(services);
         services.GetRequiredService<HubPaths>().EnsureCreated();
+        services.GetRequiredService<HubUpdates>().PrepareBeforeDatabase();
         await using var scope = services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<HubDb>();
         await db.Database.MigrateAsync(cancellationToken);
@@ -122,6 +129,7 @@ public static class HubApp
         api.MapSettings();
         api.MapOffers();
         api.MapReleases();
+        api.MapHubUpdate();
         app.MapPanelOpenApi();
         app.MapAgentApi();
         app.MapGet("/healthz", () => Results.Ok(new { ok = true })).ExcludeFromDescription();

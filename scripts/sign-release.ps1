@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Gera o pacote assinado de uma versão do agente para enviar no painel (seção 12.2, passo 1; D27 b).
+    Gera o pacote assinado de uma versão do agente (ou do Hub) para enviar no painel (seção 12.2, passo 1; D27 b, D32).
 
 .DESCRIPTION
     Compacta a pasta do agente publicada pelo CI (artefato MarumbiSom.Agent-win-x64) em MarumbiSom.Agent-<versão>.zip
@@ -11,8 +11,15 @@
     deixaria as lojas atualizadas sem aceitar as próximas atualizações (use -AllowKeyChange só se a troca for de
     propósito).
 
+    Com -HubDir, gera MarumbiSom.Hub-<versão>.zip e .sig.json da pasta do artefato MarumbiSom.Hub-win-x64 (versão do
+    MarumbiSom.Hub.dll), para Configurações > Hub > Enviar pacote. A assinatura do Hub é própria: um pacote do agente
+    não passa por pacote do Hub.
+
 .PARAMETER AgentDir
     Pasta do artefato MarumbiSom.Agent-win-x64 extraída.
+
+.PARAMETER HubDir
+    No lugar de -AgentDir: pasta do artefato MarumbiSom.Hub-win-x64 extraída.
 
 .PARAMETER KeyFile
     Chave privada gerada pelo new-signing-key.ps1.
@@ -39,10 +46,14 @@
 
 .EXAMPLE
     .\sign-release.ps1 -AgentDir ..\MarumbiSom.Agent-win-x64 -TestBroken -Version 0.6.999
+
+.EXAMPLE
+    .\sign-release.ps1 -HubDir ..\MarumbiSom.Hub-win-x64 -TestBroken -Version 0.6.999
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)] [string] $AgentDir,
+    [string] $AgentDir,
+    [string] $HubDir,
     [string] $KeyFile = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'MarumbiSom\chave-assinatura-atualizacoes.txt'),
     [string] $OutDir = (Get-Location).Path,
     [string] $Version,
@@ -55,10 +66,14 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'release-tool.ps1')
 
-$AgentDir = (Resolve-Path $AgentDir).Path
+if ([bool]$AgentDir -eq [bool]$HubDir) { throw 'Informe a pasta do agente (-AgentDir) ou a do Hub (-HubDir), uma das duas.' }
 if (-not (Test-Path $KeyFile)) { throw "Chave privada não encontrada em $KeyFile. Gere com .\new-signing-key.ps1 (uma vez só)." }
 
-$toolArgs = @('pack', '--key', $KeyFile, '--agent', $AgentDir, '--out', $OutDir)
+if ($AgentDir) {
+    $toolArgs = @('pack', '--key', $KeyFile, '--agent', (Resolve-Path $AgentDir).Path, '--out', $OutDir)
+} else {
+    $toolArgs = @('pack', '--key', $KeyFile, '--hub', (Resolve-Path $HubDir).Path, '--out', $OutDir)
+}
 if ($Version) { $toolArgs += @('--version', $Version) }
 if ($AllowKeyChange) { $toolArgs += '--allow-key-change' }
 if ($TestInvalidSignature) { $toolArgs += '--test-invalid-signature' }

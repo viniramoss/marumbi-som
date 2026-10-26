@@ -7,9 +7,17 @@ using Org.BouncyCastle.Crypto.Signers;
 
 namespace MarumbiSom.Contracts.Releases;
 
+/// <summary>Programa de um pacote assinado: entra na mensagem assinada (D32 a).</summary>
+public static class ReleaseProducts
+{
+    public const string Agent = "agent";
+    public const string Hub = "hub";
+}
+
 /// <summary>
-/// Assinatura Ed25519 dos pacotes do agente (seção 12.2, D27 a). A mensagem assinada amarra a versão ao SHA-256 do
-/// .zip, então um pacote antigo não passa por um novo. Chaves e assinaturas circulam em Base64.
+/// Assinatura Ed25519 dos pacotes do agente e do Hub (seção 12.2, D27 a, D32 a). A mensagem assinada amarra o programa
+/// e a versão ao SHA-256 do .zip, então um pacote antigo não passa por um novo e um pacote do agente não passa por um
+/// do Hub. Chaves e assinaturas circulam em Base64.
 /// </summary>
 public static partial class ReleaseSigning
 {
@@ -17,8 +25,15 @@ public static partial class ReleaseSigning
 
     private const string PrivateKeyPrefix = "marumbi-som-ed25519-private:";
 
-    public static byte[] Message(string version, string sha256) =>
-        Encoding.UTF8.GetBytes($"marumbi-som-agent|{version}|{sha256.ToLowerInvariant()}");
+    public static byte[] Message(string version, string sha256, string product = ReleaseProducts.Agent)
+    {
+        if (product is not (ReleaseProducts.Agent or ReleaseProducts.Hub))
+        {
+            throw new ArgumentException($"Programa desconhecido: {product}.", nameof(product));
+        }
+
+        return Encoding.UTF8.GetBytes($"marumbi-som-{product}|{version}|{sha256.ToLowerInvariant()}");
+    }
 
     /// <summary>Par novo: a privada no formato do arquivo de chave privada, a pública em Base64.</summary>
     public static (string PrivateKeyFile, string PublicKey) NewKeyPair()
@@ -31,16 +46,16 @@ public static partial class ReleaseSigning
     public static string PublicKeyOf(string privateKeyFile) =>
         Convert.ToBase64String(ParsePrivate(privateKeyFile).GeneratePublicKey().GetEncoded());
 
-    public static string Sign(string privateKeyFile, string version, string sha256)
+    public static string Sign(string privateKeyFile, string version, string sha256, string product = ReleaseProducts.Agent)
     {
         var signer = new Ed25519Signer();
         signer.Init(true, ParsePrivate(privateKeyFile));
-        var message = Message(version, sha256);
+        var message = Message(version, sha256, product);
         signer.BlockUpdate(message, 0, message.Length);
         return Convert.ToBase64String(signer.GenerateSignature());
     }
 
-    public static bool Verify(string publicKey, string version, string sha256, string signature)
+    public static bool Verify(string publicKey, string version, string sha256, string signature, string product = ReleaseProducts.Agent)
     {
         byte[] keyBytes;
         byte[] signatureBytes;
@@ -61,7 +76,7 @@ public static partial class ReleaseSigning
 
         var verifier = new Ed25519Signer();
         verifier.Init(false, new Ed25519PublicKeyParameters(keyBytes));
-        var message = Message(version, sha256);
+        var message = Message(version, sha256, product);
         verifier.BlockUpdate(message, 0, message.Length);
         return verifier.VerifySignature(signatureBytes);
     }
@@ -117,7 +132,7 @@ public static partial class ReleaseSigning
     private static partial Regex VersionPattern();
 }
 
-/// <summary>Conteúdo do <c>.sig.json</c> que acompanha o .zip do agente (D27 b).</summary>
+/// <summary>Conteúdo do <c>.sig.json</c> que acompanha o .zip do agente ou do Hub (D27 b, D32 a).</summary>
 public sealed record ReleaseSignature(string Version, string Sha256, string Signature);
 
 /// <summary>Versão do agente como o Hub entrega no comando <c>updateAgent</c> e em <c>/agent/releases/current</c> (D27 d).</summary>

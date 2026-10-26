@@ -1814,6 +1814,147 @@
           }
         }
       }
+    },
+    "/api/hub/update": {
+      "get": {
+        "tags": [
+          "testhost"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubUpdateStatus"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "HubUpdateEndpoints"
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubUpdateStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "HubUpdateEndpoints"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubUpdateStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/hub/update/auto": {
+      "put": {
+        "tags": [
+          "HubUpdateEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HubAutoUpdateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubUpdateStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/hub/update/package": {
+      "post": {
+        "tags": [
+          "HubUpdateEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/IFormFileCollection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubUpdateStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2139,6 +2280,187 @@
           "music",
           "offer"
         ]
+      },
+      "HubAutoUpdateInput": {
+        "required": [
+          "enabled"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "HubPackageInfo": {
+        "required": [
+          "version",
+          "sizeBytes",
+          "downloadedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "downloadedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "HubUpdateLastInfo": {
+        "required": [
+          "version",
+          "previousVersion",
+          "outcome",
+          "error",
+          "at",
+          "automatic"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "previousVersion": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "automatic": {
+            "type": "boolean"
+          }
+        }
+      },
+      "HubUpdatePendingInfo": {
+        "required": [
+          "version",
+          "requestedAt",
+          "automatic",
+          "stage",
+          "updaterLate"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "automatic": {
+            "type": "boolean"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "updaterLate": {
+            "type": "boolean"
+          }
+        }
+      },
+      "HubUpdateStatus": {
+        "required": [
+          "currentVersion",
+          "supported",
+          "updaterInstalled",
+          "available",
+          "download",
+          "message",
+          "problem",
+          "autoUpdate",
+          "autoUpdateTime",
+          "pending",
+          "last"
+        ],
+        "type": "object",
+        "properties": {
+          "currentVersion": {
+            "type": "string"
+          },
+          "supported": {
+            "type": "boolean"
+          },
+          "updaterInstalled": {
+            "type": "boolean"
+          },
+          "available": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HubPackageInfo"
+              }
+            ]
+          },
+          "download": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GitHubDownload"
+              }
+            ]
+          },
+          "message": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "problem": {
+            "type": "boolean"
+          },
+          "autoUpdate": {
+            "type": "boolean"
+          },
+          "autoUpdateTime": {
+            "examples": [
+              "07:30"
+            ],
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$",
+            "type": "string"
+          },
+          "pending": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HubUpdatePendingInfo"
+              }
+            ]
+          },
+          "last": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HubUpdateLastInfo"
+              }
+            ]
+          }
+        }
       },
       "IFormFile": {
         "type": "string",
@@ -3593,6 +3915,9 @@
     },
     {
       "name": "ReleasesEndpoints"
+    },
+    {
+      "name": "HubUpdateEndpoints"
     }
   ]
 }
