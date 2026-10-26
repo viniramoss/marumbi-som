@@ -96,6 +96,24 @@ public sealed class IngestionTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Numero_da_musica_removida_so_volta_com_o_mesmo_audio()
+    {
+        var first = await UploadAndWaitAsync(await GenerateAsync("primeira.mp3", toneSeconds: 31, amplitude: 0.5, frequency: 330));
+        var removed = await UploadAndWaitAsync(await GenerateAsync("removida.mp3", toneSeconds: 31, amplitude: 0.5, frequency: 550));
+        (await _admin.DeleteAsync($"/api/tracks/{removed.Hash}")).EnsureSuccessStatusCode();
+
+        // Outra música depois de remover a 002 ganha a 003; a 002 fica guardada para o mesmo áudio (D31).
+        var other = await UploadAndWaitAsync(await GenerateAsync("outra.mp3", toneSeconds: 31, amplitude: 0.5, frequency: 660));
+        var back = await UploadAndWaitAsync(await GenerateAsync("removida de novo.mp3", toneSeconds: 31, amplitude: 0.5, frequency: 550));
+
+        Assert.All(new[] { first, removed, other, back }, j => Assert.Equal(IngestionStatus.Done, j.Status));
+        Assert.Equal(removed.Hash, back.Hash);
+        var tracks = await _hub.WithDbAsync(db => db.Tracks.ToDictionaryAsync(t => t.Hash));
+        Assert.Equal((1, 2, 3), (tracks[first.Hash!].Number, tracks[removed.Hash!].Number, tracks[other.Hash!].Number));
+        Assert.Null(tracks[removed.Hash!].DeletedAt);
+    }
+
+    [Fact]
     public async Task Audio_curto_ou_invalido_e_recusado_com_motivo()
     {
         var shortInput = await GenerateAsync("curta.mp3", toneSeconds: 10, amplitude: 0.5);
