@@ -74,6 +74,7 @@ public sealed class PanelHub(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         agents.MessageHandled += OnAgentMessage;
+        agents.QueueChanged += OnQueueChanged;
         agents.ConnectionChanged += OnConnectionChanged;
         publisher.Published += OnPublished;
         ingestion.Changed += OnIngestionChanged;
@@ -138,6 +139,7 @@ public sealed class PanelHub(
         finally
         {
             agents.MessageHandled -= OnAgentMessage;
+            agents.QueueChanged -= OnQueueChanged;
             agents.ConnectionChanged -= OnConnectionChanged;
             publisher.Published -= OnPublished;
             ingestion.Changed -= OnIngestionChanged;
@@ -175,6 +177,9 @@ public sealed class PanelHub(
     }
 
     private void OnConnectionChanged(object? sender, int storeId) => StoreChanged(storeId);
+
+    // A fila só vem no detalhe da loja (GET /api/stores/{id}), não no resumo enviado a cada status.
+    private void OnQueueChanged(object? sender, int storeId) => Changed($"store:{storeId}");
 
     private void OnPublished(object? sender, PublishedManifest e) => StoreChanged(e.StoreId);
 

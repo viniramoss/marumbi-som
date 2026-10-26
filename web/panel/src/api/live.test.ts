@@ -41,6 +41,16 @@ describe('applyLiveMessage', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.store(1) });
   });
 
+  it('a fila do detalhe é recarregada quando a loja aplica uma versão nova da configuração', () => {
+    const client = new QueryClient();
+    client.setQueryData(keys.store(1), storeDetail());
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+
+    applyLiveMessage(client, { type: 'store', store: storeSummary({ appliedVersion: 4, latestVersion: 4 }) });
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.store(1) });
+  });
+
   it('fila vazia com música tocando é recarregada (o detalhe foi lido antes de a loja informar a fila)', () => {
     const client = new QueryClient();
     client.setQueryData(keys.store(1), storeDetail({ queue: [] }));
