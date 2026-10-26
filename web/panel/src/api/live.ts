@@ -40,6 +40,7 @@ export function topicKeys(topic: string): QueryKey[] {
 export function applyLiveMessage(client: QueryClient, message: PanelMessage) {
   if (message.type === 'store') {
     const store = message.store;
+    const previous = client.getQueryData<StoreDetail>(keys.store(store.id));
     let known = false;
     client.setQueryData<StoreSummary[]>(keys.stores, (list) =>
       list?.map((s) => {
@@ -56,12 +57,12 @@ export function applyLiveMessage(client: QueryClient, message: PanelMessage) {
     }
     // A fila e as músicas do manifesto vêm só no detalhe; ele é recarregado quando a música ou a versão muda, e
     // enquanto a fila estiver vazia com música tocando (o detalhe pode ter sido lido antes de a loja informar a fila).
-    const detail = client.getQueryData<StoreDetail>(keys.store(store.id));
+    // O Hub também avisa "store:{id}" quando a fila muda. A comparação usa o detalhe de antes da troca do resumo.
     if (
-      detail &&
-      (detail.queue[0]?.hash === store.nowPlaying?.hash ||
-        detail.status.appliedVersion !== store.appliedVersion ||
-        (detail.queue.length === 0 && store.nowPlaying !== null))
+      previous &&
+      (previous.queue[0]?.hash === store.nowPlaying?.hash ||
+        previous.status.appliedVersion !== store.appliedVersion ||
+        (previous.queue.length === 0 && store.nowPlaying !== null))
     ) {
       void client.invalidateQueries({ queryKey: keys.store(store.id) });
     }
