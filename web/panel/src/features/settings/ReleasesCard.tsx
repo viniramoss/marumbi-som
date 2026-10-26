@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { Link } from 'react-router';
 import { Download, PackageCheck, Trash2, Upload } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { errorMessage } from '../../api/client';
@@ -8,7 +9,8 @@ import { pickReleaseFiles, uploadRelease } from '../../api/upload';
 import { ConfirmDialog } from '../../components/Modal';
 import { useToast } from '../../components/Toasts';
 import { Badge, Button, Card, CardHeader, ErrorNote, ProgressBar, Spinner } from '../../components/ui';
-import { storesToUpdate } from '../../lib/agentUpdate';
+import { AgentUpdateStatus } from '../../components/AgentUpdateStatus';
+import { isUpdating, storesToUpdate } from '../../lib/agentUpdate';
 import { formatBytes, formatDateTime } from '../../lib/format';
 import { GitHubReleases } from './GitHubReleases';
 
@@ -37,6 +39,7 @@ export function ReleasesCard() {
   const [updating, setUpdating] = useState(false);
   const current = releases.data?.find((r) => r.isCurrent);
   const outdated = storesToUpdate(stores.data ?? [], current);
+  const updatingNow = (stores.data ?? []).filter((s) => isUpdating(s.update));
 
   const send = async (files: File[]) => {
     setProblem(null);
@@ -183,22 +186,37 @@ export function ReleasesCard() {
           </ul>
         )}
         {current && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-stone-50 px-3 py-2.5 text-sm ring-1 ring-stone-200">
-            <p className="text-stone-600">
-              {outdated.length === 0
-                ? 'Nenhuma loja conectada precisa de atualização.'
-                : outdated.length === 1
-                  ? `1 loja conectada está numa versão anterior à ${current.version}.`
-                  : `${outdated.length} lojas conectadas estão numa versão anterior à ${current.version}.`}
-            </p>
-            <Button
-              variant="primary"
-              icon={<Download className="size-4" />}
-              disabled={outdated.length === 0}
-              onClick={() => setConfirmUpdate(true)}
-            >
-              Atualizar lojas
-            </Button>
+          <div className="space-y-3 rounded-lg bg-stone-50 px-3 py-2.5 text-sm ring-1 ring-stone-200">
+            {/* Lojas que já estão baixando ou instalando aparecem com o andamento, não como "nada a atualizar". */}
+            {updatingNow.map((store) => (
+              <div key={store.id} className="space-y-1">
+                <Link to={`/lojas/${store.id}?aba=ajustes`} className="font-medium text-stone-800 hover:text-brand-800">
+                  {store.name}
+                </Link>
+                <AgentUpdateStatus update={store.update} />
+              </div>
+            ))}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-stone-600">
+                {outdated.length > 0
+                  ? outdated.length === 1
+                    ? `1 loja conectada está numa versão anterior à ${current.version}.`
+                    : `${outdated.length} lojas conectadas estão numa versão anterior à ${current.version}.`
+                  : updatingNow.length === 1
+                    ? '1 loja está atualizando agora.'
+                    : updatingNow.length > 1
+                      ? `${updatingNow.length} lojas estão atualizando agora.`
+                      : 'Nenhuma loja conectada precisa de atualização.'}
+              </p>
+              <Button
+                variant="primary"
+                icon={<Download className="size-4" />}
+                disabled={outdated.length === 0}
+                onClick={() => setConfirmUpdate(true)}
+              >
+                Atualizar lojas
+              </Button>
+            </div>
           </div>
         )}
       </div>
