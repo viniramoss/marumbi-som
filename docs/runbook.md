@@ -76,11 +76,12 @@ baixa sozinho e mostra **"Versão X do agente disponível"** no Início. Nenhuma
    funciona). **Add secret**. O GitHub não mostra o secret de novo; a cópia no pendrive continua sendo o backup.
    Quem tiver permissão de escrita no repositório consegue publicar versões assinadas: deixe o repositório só com
    você e com a verificação em duas etapas ligada.
-2. **Token de leitura** (o repositório é privado, e o Hub precisa ler as Releases): no GitHub, foto do perfil →
+2. **Token de leitura** (opcional desde que o repositório ficou público, D33; só é preciso se ele voltar a ser
+   privado): no GitHub, foto do perfil →
    **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**. Nome
    "Hub Marumbi Som", validade a maior disponível, *Repository access*: **Only select repositories** →
    `marumbi-som`, *Repository permissions*: **Contents: Read-only**. **Generate token** e copie.
-3. Painel → Configurações → Versão do agente para distribuição → **Token do GitHub** → cole → **Salvar token**. O
+3. Painel → Configurações → Versão do agente para distribuição → **Cadastrar token** → cole → **Salvar token**. O
    Hub guarda o token cifrado e já procura a versão mais nova (a barra mostra o download, uns 110 MB).
 
 Quando o token vencer, a tela mostra "O GitHub recusou o token": gere outro (passo 2) e use **Trocar token**. Se o

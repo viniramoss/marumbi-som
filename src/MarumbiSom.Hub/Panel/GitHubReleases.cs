@@ -429,7 +429,7 @@ public sealed partial class GitHubReleaseWatcher(
     {
         HttpStatusCode.OK => null,
         HttpStatusCode.Unauthorized => "O GitHub recusou o token (vencido ou inválido). Gere outro e cadastre em Configurações.",
-        HttpStatusCode.NotFound when !hasToken => "O GitHub não mostrou o repositório. Como ele é privado, cadastre o token do GitHub em Configurações.",
+        HttpStatusCode.NotFound when !hasToken => "O GitHub não mostrou o repositório. Se ele estiver privado, cadastre o token do GitHub em Configurações.",
         HttpStatusCode.NotFound => "O GitHub não mostrou o repositório: confira se o token dá acesso de leitura ao marumbi-som.",
         HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests => "O GitHub limitou as consultas agora; o Hub tenta de novo mais tarde.",
         _ => $"O GitHub respondeu {(int)status}.",

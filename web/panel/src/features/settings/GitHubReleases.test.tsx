@@ -39,7 +39,7 @@ describe('GitHubReleases', () => {
     expect(screen.getByRole('button', { name: /Procurar agora/ })).toBeDisabled();
   });
 
-  it('sem token pede o token e mostra o motivo da recusa', async () => {
+  it('sem token (repositório público) só mostra o campo quando pedido, e mostra o motivo da recusa', async () => {
     const user = userEvent.setup();
     renderScreen(<GitHubReleases />, [
       [
@@ -48,17 +48,22 @@ describe('GitHubReleases', () => {
           tokenConfigured: false,
           problem: true,
           message:
-            'O GitHub não mostrou o repositório. Como ele é privado, cadastre o token do GitHub em Configurações.',
+            'O GitHub não mostrou o repositório. Se ele estiver privado, cadastre o token do GitHub em Configurações.',
         }),
       ],
     ]);
 
     expect(screen.getByText(/cadastre o token do GitHub/)).toBeInTheDocument();
+    expect(screen.getByText('Sem token: o repositório é público.')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Token do GitHub/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Cadastrar token/ }));
     const save = screen.getByRole('button', { name: 'Salvar token' });
     expect(save).toBeDisabled();
     await user.type(screen.getByLabelText(/Token do GitHub/), 'github_pat_abc');
     expect(save).toBeEnabled();
-    expect(screen.queryByRole('button', { name: 'Cancelar' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(screen.getByText('Sem token: o repositório é público.')).toBeInTheDocument();
   });
 
   it('com token cadastrado não mostra o campo até pedir para trocar', async () => {
