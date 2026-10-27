@@ -18,7 +18,18 @@ jobs:
         with:
           global-json-file: global.json
       - name: ffmpeg para os testes de ingestão do Hub
-        run: command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+        # O apt às vezes trava no espelho do Ubuntu (já ficou 30 min parado): cada tentativa tem limite e são até 3.
+        timeout-minutes: 20
+        run: |
+          command -v ffmpeg && exit 0
+          for i in 1 2 3; do
+            timeout 120 sudo apt-get update -o Acquire::Retries=3 \
+              && timeout 240 sudo apt-get install -y --no-install-recommends ffmpeg && exit 0
+            echo "Instalação do ffmpeg falhou ou travou (tentativa $i de 3)."
+            sudo dpkg --configure -a || true
+            sleep 15
+          done
+          exit 1
       - run: dotnet restore
       - run: dotnet build --no-restore
       - run: dotnet test --no-build --verbosity normal
