@@ -18,20 +18,27 @@ export function Modal({
 }) {
   const titleId = useId();
   const panel = useRef<HTMLDivElement>(null);
+  // Quem abre a janela costuma passar uma função nova a cada render; o foco não pode depender dela.
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
 
+  // Só ao abrir: foca o primeiro campo e devolve o foco ao fechar. Refocar a cada render (a tela atrás se atualiza
+  // ao vivo) puxava a lista de volta para o primeiro campo, e a janela não rolava.
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const first = panel.current?.querySelector<HTMLElement>('input, select, textarea, button:not([data-close])');
     (first ?? panel.current)?.focus();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') close.current();
     };
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
       previous?.focus();
     };
-  }, [onClose]);
+  }, []);
 
   return createPortal(
     <div
