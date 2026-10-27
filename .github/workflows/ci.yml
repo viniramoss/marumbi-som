@@ -229,7 +229,8 @@ jobs:
 
   release:
     name: Publicar no GitHub Releases (D29)
-    runs-on: ubuntu-latest
+    # Fixo no 24.04 como os outros jobs: em 27/10/2026 a criação da Release passou a falhar no ubuntu-latest.
+    runs-on: ubuntu-24.04
     needs: publish
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.publicar)
     permissions:
@@ -257,8 +258,10 @@ jobs:
           fi
           flags=()
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then flags+=(--prerelease); fi
+          # O erro do gh vira anotação: o log do job nem sempre está acessível, as anotações sim.
+          trap 'echo "::error::gh release create falhou ($(gh --version | head -1), $(lsb_release -ds)): $(tr "\n" " " < "$RUNNER_TEMP/gh-erro.txt")"' ERR
           gh release create "$tag" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Agente $VERSION" "${flags[@]}" \
+            --title "Agente $VERSION" "${flags[@]}" 2> "$RUNNER_TEMP/gh-erro.txt" \
             --notes "Versão $VERSION (${GITHUB_REF_NAME}, ${GITHUB_SHA::7}).
 
           - Agente: o Hub baixa sozinho o pacote assinado (MarumbiSom.Agent-$VERSION.zip e .sig.json). Atualize as lojas no painel, em Configurações (loja piloto primeiro).
