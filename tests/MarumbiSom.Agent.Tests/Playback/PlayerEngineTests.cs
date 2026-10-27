@@ -412,6 +412,38 @@ public sealed class PlayerEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task Reiniciar_audio_fecha_os_mpv_e_a_musica_volta_do_mesmo_ponto_em_mpv_novos()
+    {
+        var t1 = _h.AddTrack("Um", 300);
+        _h.Publish(new Dictionary<string, PlaylistDefinition> { ["manha"] = PlayerHarness.Playlist(false, t1) });
+        await _h.RunUntilAsync("10:00:20");
+
+        _h.Bluetooth.RestartingAudio = true;
+        _h.Bluetooth.IsConnected = false;
+        var snapshot = await SnapshotAsync();
+
+        // Os três mpv fecham antes de o Windows derrubar o áudio (D37 b) e não reabrem enquanto ele reinicia.
+        Assert.All(new[] { _h.A, _h.B, _h.Spot }, m => Assert.False(m.IsRunning));
+        Assert.Equal(PlayerStatus.Paused, snapshot.Status);
+        Assert.Equal(t1, snapshot.NowPlayingHash);
+        Assert.Equal("Reiniciando o áudio do Windows", snapshot.Reason);
+        Assert.InRange(snapshot.PositionS ?? 0, 19.5, 21);
+        await _h.RunForAsync(TimeSpan.FromSeconds(20));
+        Assert.All(new[] { _h.A, _h.B, _h.Spot }, m => Assert.Equal(1, m.StartCount));
+
+        _h.Bluetooth.RestartingAudio = false;
+        _h.Bluetooth.IsConnected = true;
+        await _h.RunForAsync(TimeSpan.FromSeconds(1));
+
+        Assert.All(new[] { _h.A, _h.B, _h.Spot }, m => Assert.Equal(2, m.StartCount));
+        var playing = new[] { _h.A, _h.B }.Single(m => m.CurrentFile is not null);
+        Assert.Equal(_h.PathOf(t1), playing.CurrentFile);
+        Assert.False(playing.Paused);
+        Assert.InRange(playing.Position.TotalSeconds, 19.5, 22);
+        Assert.Equal(PlayerStatus.Playing, (await SnapshotAsync()).Status);
+    }
+
+    [Fact]
     public async Task Caixa_desconectada_pausa_e_retoma_da_mesma_posicao()
     {
         var t1 = _h.AddTrack("Um", 300);

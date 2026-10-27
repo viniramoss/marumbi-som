@@ -499,6 +499,11 @@ public sealed class PlayerEngine
                 await PauseForBluetoothAsync(now);
             }
 
+            if (_bluetooth.Status == BluetoothStatus.RestartingAudio)
+            {
+                await CloseDecksForAudioRestartAsync(now);
+            }
+
             return false;
         }
 
@@ -556,6 +561,25 @@ public sealed class PlayerEngine
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// "Reiniciar áudio" (D37): fecha os mpv antes de o Windows derrubar o áudio; a faixa continua do mesmo ponto
+    /// em mpv novos quando a caixa reconectar. Fora da caixa conectada os mpv não são reabertos, então fecha uma vez só.
+    /// </summary>
+    private async Task CloseDecksForAudioRestartAsync(DateTimeOffset now)
+    {
+        var running = AllDecks.Where(d => d.Mpv.IsRunning).ToList();
+        if (running.Count == 0)
+        {
+            return;
+        }
+
+        _logger.LogInformation("Reinício do áudio do Windows: fechando os mpv; a música continua do mesmo ponto depois");
+        foreach (var deck in running)
+        {
+            await FailDeckAsync(deck, now, "fechado para o reinício do áudio do Windows");
+        }
     }
 
     private async Task PauseForBluetoothAsync(DateTimeOffset now)
@@ -1442,7 +1466,9 @@ public sealed class PlayerEngine
 
     private PlayerSnapshot BuildSnapshot(DateTimeOffset now, bool connected)
     {
-        var track = _active?.Track;
+        // Sem caixa, a faixa guardada para continuar (mpv fechados no reinício do áudio, D37) segue aparecendo como pausada.
+        var resume = connected || _active?.Track is not null ? null : _resume;
+        var track = _active?.Track ?? resume?.Track;
         var upcoming = new List<QueueItem>();
         if (_window is { } window && _manifest is not null && _manifest.Playlists.TryGetValue(window.PlaylistId, out var playlist))
         {
@@ -1456,14 +1482,16 @@ public sealed class PlayerEngine
         return new PlayerSnapshot
         {
             Status = status,
-            Reason = status == PlayerStatus.Playing ? null : _lastIdleReason ?? (!connected ? "Caixa desconectada" : null),
+            Reason = status == PlayerStatus.Playing ? null
+                : _lastIdleReason ?? (connected ? null
+                    : _bluetooth.Status == BluetoothStatus.RestartingAudio ? "Reiniciando o áudio do Windows" : "Caixa desconectada"),
             ManifestVersion = _manifest?.Version,
             NowPlayingHash = track?.Item.Hash,
             Title = track?.Info?.Title,
             Artist = track?.Info?.Artist,
             PlaylistId = track?.Item.PlaylistId,
-            PositionS = _active?.EstimatedPosition(now),
-            DurationS = _active?.Duration,
+            PositionS = resume?.PositionS ?? _active?.EstimatedPosition(now),
+            DurationS = resume is null ? _active?.Duration : resume.Track.Info?.DurationMs / 1000.0,
             Volume = Math.Max(0, _storeVolume),
             Crossfading = _outgoing is not null,
             WindowPlaylistId = _window?.PlaylistId,

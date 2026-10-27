@@ -1,5 +1,5 @@
 import { storeSummary } from '../test/fixtures';
-import { playerStatus } from './status';
+import { bluetoothStatus, playerStatus } from './status';
 
 describe('playerStatus', () => {
   it('segue o player quando a loja está conectada', () => {
@@ -19,5 +19,15 @@ describe('playerStatus', () => {
       tone: 'gray',
     });
     expect(playerStatus(storeSummary({ player: 'idle' }))).toEqual({ label: 'Parada', tone: 'gray' });
+  });
+});
+
+describe('bluetoothStatus', () => {
+  it('mostra o reinício do áudio (D37) como andamento, não como falha', () => {
+    expect(bluetoothStatus(storeSummary({ bluetooth: 'restartingAudio' }))).toEqual({
+      label: 'Reiniciando o áudio…',
+      tone: 'blue',
+    });
+    expect(bluetoothStatus(storeSummary({ bluetooth: 'disconnected' })).tone).toBe('red');
   });
 });

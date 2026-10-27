@@ -24,11 +24,14 @@ public static class CommandTypes
     public const string PlayNow = "playNow";
     public const string PlayOffer = "playOffer";
     public const string ReconnectBluetooth = "reconnectBluetooth";
+
+    /// <summary>Reinicia o áudio e o Bluetooth do Windows e reconecta a caixa, sem reiniciar o PC (D37).</summary>
+    public const string RestartAudio = "restartAudio";
     public const string RestartAgent = "restartAgent";
     public const string UpdateAgent = "updateAgent";
 
     public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
-        Play, Pause, Next, SetVolume, PlayNow, PlayOffer, ReconnectBluetooth, RestartAgent, UpdateAgent,
+        Play, Pause, Next, SetVolume, PlayNow, PlayOffer, ReconnectBluetooth, RestartAudio, RestartAgent, UpdateAgent,
     };
 }

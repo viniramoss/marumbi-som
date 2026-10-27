@@ -38,13 +38,19 @@ Pastas de pacotes baixados da internet: antes de rodar scripts, no PowerShell
 
 1. Painel → Loja → Ao vivo → **Reconectar caixa**. O agente já tenta sozinho (seção 9); o botão força uma tentativa.
 2. Peça para alguém da loja conferir se a caixa está ligada na tomada e ligada no botão.
-3. Ainda vermelha: Área de Trabalho Remota → Configurações do Windows → Bluetooth: a caixa aparece? Se não aparece
+3. Caixa ligada e ainda vermelha: Loja → Ao vivo → **Reiniciar áudio** (D37), que reinicia o Bluetooth e o áudio do
+   Windows sem reiniciar o PC.
+4. Ainda vermelha: Área de Trabalho Remota → Configurações do Windows → Bluetooth: a caixa aparece? Se não aparece
    nenhum dispositivo, o adaptador USB pode ter saído do lugar (peça para tirarem e colocarem de volta na mesma porta).
-4. Último caso: pedir para desligarem e religarem a caixa, ou reiniciar o PC (Loja → Ajustes → **Reiniciar agente**
+5. Último caso: pedir para desligarem e religarem a caixa, ou reiniciar o PC (Loja → Ajustes → **Reiniciar agente**
    antes de reiniciar o PC inteiro).
 
 ## Caixa verde, painel dizendo "tocando", mas a loja sem som
 
+0. Primeiro, de onde estiver: painel → Loja → **Ao vivo** → **Reiniciar áudio** (D37). O PC reinicia o áudio e o
+   Bluetooth do Windows e reconecta a caixa sem reiniciar o PC; a música para por uns 30 s e volta do mesmo ponto. A
+   linha "Caixa de som" mostra "Reiniciando o áudio…" até a caixa voltar. Resolveu: anote no histórico do piloto.
+   Continuou mudo: siga os passos abaixo e, no fim, reinicie o PC da loja.
 1. No PC da loja (ou pela Área de Trabalho Remota): atalho **Configurar Som** → **Tocar som de teste**. Se em
    **Últimos registros** aparece "Som de teste terminou: Played" e ninguém ouviu, o agente está mandando o som para a
    caixa e o problema está entre o Windows e a caixa.

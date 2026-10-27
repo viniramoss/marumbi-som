@@ -206,11 +206,19 @@ internal sealed class FakeBluetooth : IBluetoothConnection
 
     public string? SpeakerEndpointId => IsConnected ? "sim-endpoint" : null;
 
-    public BluetoothStatus Status => IsConnected ? BluetoothStatus.Connected : BluetoothStatus.Disconnected;
+    /// <summary>Como o guardião no estado RestartingAudio (D37); use junto com <see cref="IsConnected"/> = false.</summary>
+    public bool RestartingAudio { get; set; }
+
+    public BluetoothStatus Status => RestartingAudio ? BluetoothStatus.RestartingAudio
+        : IsConnected ? BluetoothStatus.Connected : BluetoothStatus.Disconnected;
 
     public int ReconnectRequests { get; private set; }
+
+    public int AudioRestartRequests { get; private set; }
 
     public event EventHandler<BluetoothConnectionChangedEventArgs>? ConnectionChanged;
 
     public void RequestReconnect() => ReconnectRequests++;
+
+    public void RequestAudioRestart() => AudioRestartRequests++;
 }

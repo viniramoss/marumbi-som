@@ -2,6 +2,7 @@ using MarumbiSom.Agent.Bluetooth;
 using MarumbiSom.Agent.Configuration;
 using MarumbiSom.Agent.Simulation;
 using MarumbiSom.Agent.Windows.Abstractions;
+using MarumbiSom.Contracts.Messages;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
@@ -175,6 +176,93 @@ public class BluetoothGuardianTests
         await RunUntilAsync(GuardianState.Connected);
 
         Assert.Equal("connect.A", _actions[0]);
+    }
+
+    [Fact]
+    public async Task Reiniciar_audio_desconecta_reinicia_servicos_e_adaptador_e_reconecta()
+    {
+        await RunUntilAsync(GuardianState.Connected);
+        _actions.Clear();
+
+        _guardian.RequestAudioRestart();
+        var grace = await _guardian.StepAsync(CancellationToken.None);
+
+        // Antes de mexer no Windows, o player tem tempo de pausar e fechar os mpv (D37 b).
+        Assert.Equal(GuardianState.RestartingAudio, _guardian.State);
+        Assert.Equal(BluetoothStatus.RestartingAudio, _guardian.Status);
+        Assert.False(_guardian.IsConnected);
+        Assert.Equal(BluetoothGuardian.AudioRestartGrace, grace);
+        Assert.Empty(_windows.RestartedServices);
+        Assert.Equal([true, false], _changes);
+
+        // "Reconectar caixa" no meio não cancela o reinício.
+        _guardian.RequestReconnect();
+        _time.Advance(grace);
+        await _guardian.StepAsync(CancellationToken.None);
+        // Entre o reinício e a caixa voltar, o painel continua vendo "reiniciando o áudio" (D37 d), sem piscar vermelho.
+        Assert.Equal(GuardianState.Initializing, _guardian.State);
+        Assert.Equal(BluetoothStatus.RestartingAudio, _guardian.Status);
+        var elapsed = await RunUntilAsync(GuardianState.Connected);
+        Assert.Equal(BluetoothStatus.Connected, _guardian.Status);
+
+        Assert.Equal([WindowsServiceNames.AudioEndpointBuilder, WindowsServiceNames.Bluetooth], _windows.RestartedServices);
+        Assert.Equal(1, _windows.AdapterResets);
+        Assert.Equal(["audio.restart", "adapter.reset"], _actions);
+        Assert.Equal([true, false, true], _changes);
+        Assert.True(elapsed <= TimeSpan.FromSeconds(30), $"levou {elapsed}");
+    }
+
+    [Fact]
+    public async Task Reiniciar_audio_ignora_o_intervalo_do_adaptador_mas_conta_para_o_automatico()
+    {
+        _windows.AdapterEnabled = false;
+        await RunUntilAsync(GuardianState.Connected);
+        Assert.Equal(1, _windows.AdapterResets);
+
+        _guardian.RequestAudioRestart();
+        await RunUntilAsync(GuardianState.Connected, afterLeaving: true);
+        Assert.Equal(2, _windows.AdapterResets);
+
+        // Logo depois, o método C automático não reinicia o adaptador de novo antes de 10 minutos.
+        _windows.SpeakerLinked = false;
+        _windows.WorkingMethods.Clear();
+        await RunForAsync(TimeSpan.FromMinutes(5));
+        Assert.Equal(2, _windows.AdapterResets);
+    }
+
+    [Fact]
+    public async Task Reiniciar_audio_com_servico_que_falha_segue_as_outras_etapas_e_reconecta()
+    {
+        _windows.SpeakerPoweredOn = false;
+        _windows.SpeakerLinked = false;
+        await RunForAsync(TimeSpan.FromMinutes(1));
+        _windows.SpeakerPoweredOn = true;
+        _windows.FailingRestarts.Add(WindowsServiceNames.AudioEndpointBuilder);
+        var resetsBefore = _windows.AdapterResets;
+        _windows.RestartedServices.Clear();
+
+        // Pedido com a caixa fora (estado Aguardando): o reinício acontece do mesmo jeito.
+        _guardian.RequestAudioRestart();
+        await RunUntilAsync(GuardianState.Connected);
+
+        Assert.Equal([WindowsServiceNames.AudioEndpointBuilder, WindowsServiceNames.Bluetooth], _windows.RestartedServices);
+        Assert.Equal(resetsBefore + 1, _windows.AdapterResets);
+    }
+
+    [Fact]
+    public async Task Reiniciar_audio_sem_a_caixa_voltar_deixa_de_mostrar_reiniciando_depois_de_90_s()
+    {
+        await RunUntilAsync(GuardianState.Connected);
+        _windows.SpeakerPoweredOn = false;
+        _windows.SpeakerLinked = false;
+
+        _guardian.RequestAudioRestart();
+        await RunForAsync(TimeSpan.FromSeconds(60));
+        Assert.Equal(BluetoothStatus.RestartingAudio, _guardian.Status);
+
+        await RunForAsync(TimeSpan.FromSeconds(40));
+        Assert.NotEqual(BluetoothStatus.RestartingAudio, _guardian.Status);
+        Assert.False(_guardian.IsConnected);
     }
 
     [Fact]

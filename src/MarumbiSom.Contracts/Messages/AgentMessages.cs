@@ -71,6 +71,9 @@ public enum BluetoothStatus
     [JsonStringEnumMemberName("connecting")] Connecting,
     [JsonStringEnumMemberName("connected")] Connected,
     [JsonStringEnumMemberName("radioOff")] RadioOff,
+
+    /// <summary>Reiniciando o áudio e o Bluetooth do Windows a pedido do painel (D37).</summary>
+    [JsonStringEnumMemberName("restartingAudio")] RestartingAudio,
 }
 
 public sealed record CommandResultMessage(string Id, bool Ok, string? Error = null) : AgentMessage;
