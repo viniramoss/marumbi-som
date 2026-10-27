@@ -45,7 +45,7 @@ jobs:
       - run: dotnet test --no-build --verbosity normal
 
   panel:
-    # Fixo no 24.04 pelo mesmo motivo do job de testes (apt do ffmpeg no Ubuntu 26).
+    # Fixo no 24.04 pelo mesmo motivo do job de testes (o cache dos pacotes do ffmpeg vale para uma versão só).
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -60,19 +60,26 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/panel/package-lock.json
+      # Mesmo cache e mesma instalação do job de testes (o apt às vezes trava no espelho do Ubuntu).
+      - name: Semana do cache do ffmpeg
+        id: semana
+        run: echo "id=$(date +%G-%V)" >> "$GITHUB_OUTPUT"
+      - name: Pacotes do ffmpeg no cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/apt-ffmpeg
+          key: apt-ffmpeg-ubuntu-24.04-${{ steps.semana.outputs.id }}
+          restore-keys: apt-ffmpeg-ubuntu-24.04-
       - name: ffmpeg para a ingestão do Hub no teste ponta a ponta
-        # Mesmo limite e tentativas do job de testes: o apt às vezes trava no espelho do Ubuntu.
-        timeout-minutes: 20
-        run: |
-          command -v ffmpeg && exit 0
-          for i in 1 2 3; do
-            timeout 120 sudo apt-get update -o Acquire::Retries=3 \
-              && timeout 240 sudo apt-get install -y --no-install-recommends ffmpeg && exit 0
-            echo "::warning::Instalação do ffmpeg falhou ou travou (tentativa $i de 3, código $?, $(lsb_release -ds))."
-            sudo dpkg --configure -a || true
-            sleep 15
-          done
-          exit 1
+        id: ffmpeg
+        timeout-minutes: 25
+        run: '"$GITHUB_WORKSPACE/.github/scripts/instalar-ffmpeg.sh" "$RUNNER_TEMP/apt-ffmpeg"'
+      - name: Guardar os pacotes do ffmpeg no cache
+        if: steps.ffmpeg.outputs.salvar == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/apt-ffmpeg
+          key: apt-ffmpeg-ubuntu-24.04-${{ steps.semana.outputs.id }}
       - run: npm ci
       - name: Tipos do painel em dia com o openapi.json do Hub (seção 7.3)
         run: npm run api && git diff --exit-code -- src/types/api.ts
