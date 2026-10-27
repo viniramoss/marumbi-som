@@ -296,6 +296,122 @@ public sealed class PlayerEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task Mpv_sem_resposta_no_ipc_e_reiniciado_e_a_faixa_continua_no_outro()
+    {
+        // PC piloto, 27/10/2026: set_property estourou o tempo e o mpv ficou mudo até reiniciar o serviço.
+        var t1 = _h.AddTrack("Um", 300);
+        _h.Publish(new Dictionary<string, PlaylistDefinition> { ["manha"] = PlayerHarness.Playlist(false, t1) });
+        await _h.RunUntilAsync("10:00:20");
+
+        _h.A.Hang();
+        await _h.RunForAsync(TimeSpan.FromSeconds(1));
+        Assert.Equal(_h.PathOf(t1), _h.B.CurrentFile);
+        Assert.InRange(_h.B.Position.TotalSeconds, 19, 21.5);
+
+        await _h.RunForAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(2, _h.A.StartCount);
+        Assert.False(_h.A.Hung);
+        Assert.Single(_h.TrackStarts);
+    }
+
+    [Fact]
+    public async Task Saida_de_audio_que_nao_abre_nao_pula_a_musica_e_ela_continua_do_mesmo_ponto()
+    {
+        // PC piloto, 27/10/2026: com a caixa desativada no Windows, "Failed to find device" fez o agente pular 021, 022 e 023.
+        var t1 = _h.AddTrack("Um", 300);
+        var t2 = _h.AddTrack("Dois", 300);
+        var t3 = _h.AddTrack("Três", 300);
+        _h.Publish(new Dictionary<string, PlaylistDefinition> { ["manha"] = PlayerHarness.Playlist(false, t1, t2, t3) });
+        await _h.RunUntilAsync("10:00:30");
+
+        _h.B.AudioOutputMissing = true;
+        _h.Spot.AudioOutputMissing = true;
+        _h.A.LoseAudioDevice();
+        await _h.RunForAsync(TimeSpan.FromSeconds(1));
+        _h.Bluetooth.IsConnected = false;
+        await _h.RunForAsync(TimeSpan.FromSeconds(5));
+
+        foreach (var mpv in new[] { _h.A, _h.B, _h.Spot })
+        {
+            mpv.AudioOutputMissing = false;
+        }
+
+        _h.Bluetooth.IsConnected = true;
+        await _h.RunForAsync(TimeSpan.FromSeconds(3));
+
+        Assert.Equal([t1], _h.TrackStarts.Select(s => s.Hash));
+        var playing = new[] { _h.A, _h.B }.Single(m => m.CurrentFile is not null);
+        Assert.Equal(_h.PathOf(t1), playing.CurrentFile);
+        Assert.InRange(playing.Position.TotalSeconds, 31, 34);
+        Assert.InRange(PlayerHarness.GainAt(playing, _h.Now), 0.99, 1.01);
+    }
+
+    [Fact]
+    public async Task Saida_de_audio_que_segue_falhando_tenta_de_novo_com_espera_crescente()
+    {
+        var t1 = _h.AddTrack("Um", 300);
+        var t2 = _h.AddTrack("Dois", 300);
+        _h.Publish(new Dictionary<string, PlaylistDefinition> { ["manha"] = PlayerHarness.Playlist(false, t1, t2) });
+        await _h.RunUntilAsync("10:00:30");
+        var loadsBefore = _h.A.FileStarts.Count + _h.B.FileStarts.Count;
+
+        // O endpoint continua "ativo" para o guardião, mas a saída não abre: tentativas em +2 s, +5 s e +15 s.
+        _h.B.AudioOutputMissing = true;
+        _h.A.LoseAudioDevice();
+        await _h.RunUntilAsync("10:01:15");
+        Assert.Equal(3, _h.A.FileStarts.Count + _h.B.FileStarts.Count - loadsBefore);
+
+        // Próxima tentativa 30 s depois da última (10:00:52 → 10:01:22), já com a saída de volta.
+        _h.A.AudioOutputMissing = false;
+        _h.B.AudioOutputMissing = false;
+        await _h.RunUntilAsync("10:01:25");
+
+        Assert.Equal([t1], _h.TrackStarts.Select(s => s.Hash));
+        var playing = new[] { _h.A, _h.B }.Single(m => m.CurrentFile is not null);
+        Assert.Equal(_h.PathOf(t1), playing.CurrentFile);
+        Assert.InRange(playing.Position.TotalSeconds, 30, 34);
+    }
+
+    [Fact]
+    public async Task Caixa_reconectada_reabre_a_saida_de_audio_dos_mpv()
+    {
+        var t1 = _h.AddTrack("Um", 300);
+        _h.Publish(new Dictionary<string, PlaylistDefinition> { ["manha"] = PlayerHarness.Playlist(false, t1) });
+        await _h.RunUntilAsync("10:00:20");
+
+        _h.Bluetooth.IsConnected = false;
+        await _h.RunForAsync(TimeSpan.FromSeconds(3));
+        _h.Bluetooth.IsConnected = true;
+        await _h.RunForAsync(TimeSpan.FromSeconds(1));
+
+        // Mesmo id de endpoint: sem o aviso da reconexão o mpv seguiria na saída antiga (seção 9.5).
+        Assert.Equal(1, _h.A.AudioOutputReloads);
+        Assert.Equal(1, _h.B.AudioOutputReloads);
+        Assert.Equal(1, _h.Spot.AudioOutputReloads);
+        Assert.False(_h.A.Paused);
+        Assert.Equal(_h.PathOf(t1), _h.A.CurrentFile);
+    }
+
+    [Fact]
+    public async Task Mpv_que_trava_ao_reabrir_a_saida_e_reiniciado()
+    {
+        var t1 = _h.AddTrack("Um", 300);
+        _h.Publish(new Dictionary<string, PlaylistDefinition> { ["manha"] = PlayerHarness.Playlist(false, t1) });
+        await _h.RunUntilAsync("10:00:20");
+
+        _h.Bluetooth.IsConnected = false;
+        await _h.RunForAsync(TimeSpan.FromSeconds(3));
+        _h.A.Hang();
+        _h.Bluetooth.IsConnected = true;
+        await _h.RunForAsync(TimeSpan.FromSeconds(1));
+        Assert.Equal(_h.PathOf(t1), _h.B.CurrentFile);
+        Assert.InRange(_h.B.Position.TotalSeconds, 19.5, 21.5);
+
+        await _h.RunForAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(2, _h.A.StartCount);
+    }
+
+    [Fact]
     public async Task Caixa_desconectada_pausa_e_retoma_da_mesma_posicao()
     {
         var t1 = _h.AddTrack("Um", 300);
