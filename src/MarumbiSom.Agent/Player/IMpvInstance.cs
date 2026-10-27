@@ -11,6 +11,9 @@ public sealed class MpvEventArgs(string name, JsonElement raw) : EventArgs
 
     /// <summary>Motivo do <c>end-file</c>: eof, stop, quit, error, redirect.</summary>
     public string? Reason => Raw.TryGetProperty("reason", out var r) ? r.GetString() : null;
+
+    /// <summary>Erro do <c>end-file</c> com reason=error (ex.: "audio output initialization failed").</summary>
+    public string? FileError => Raw.TryGetProperty("file_error", out var e) ? e.GetString() : null;
 }
 
 /// <summary>Um processo mpv controlado por IPC (seção 10.1). O agente usa dois: música e ofertas.</summary>
@@ -58,7 +61,7 @@ public static class MpvInstanceExtensions
             var value = await mpv.GetPropertyAsync("time-pos", cancellationToken);
             return value.ValueKind == JsonValueKind.Number ? value.GetDouble() : null;
         }
-        catch (MpvCommandException)
+        catch (MpvCommandException ex) when (!ex.TimedOut)
         {
             // "property unavailable" quando o mpv está ocioso.
             return null;
@@ -91,4 +94,7 @@ public sealed class MpvCommandException : Exception
         : base(message, innerException)
     {
     }
+
+    /// <summary>O mpv não respondeu a tempo: processo vivo, mas travado.</summary>
+    public bool TimedOut { get; init; }
 }
