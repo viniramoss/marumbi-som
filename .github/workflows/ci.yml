@@ -50,7 +50,18 @@ jobs:
           cache: npm
           cache-dependency-path: web/panel/package-lock.json
       - name: ffmpeg para a ingestão do Hub no teste ponta a ponta
-        run: command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+        # Mesmo limite e tentativas do job de testes: o apt às vezes trava no espelho do Ubuntu.
+        timeout-minutes: 20
+        run: |
+          command -v ffmpeg && exit 0
+          for i in 1 2 3; do
+            timeout 120 sudo apt-get update -o Acquire::Retries=3 \
+              && timeout 240 sudo apt-get install -y --no-install-recommends ffmpeg && exit 0
+            echo "Instalação do ffmpeg falhou ou travou (tentativa $i de 3)."
+            sudo dpkg --configure -a || true
+            sleep 15
+          done
+          exit 1
       - run: npm ci
       - name: Tipos do painel em dia com o openapi.json do Hub (seção 7.3)
         run: npm run api && git diff --exit-code -- src/types/api.ts
