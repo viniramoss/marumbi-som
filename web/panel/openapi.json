@@ -1986,6 +1986,35 @@
         }
       }
     },
+    "/api/hub/update/check": {
+      "post": {
+        "tags": [
+          "HubUpdateEndpoints"
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubUpdateStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/hub/update/package": {
       "post": {
         "tags": [
@@ -2471,6 +2500,7 @@
           "download",
           "message",
           "problem",
+          "searching",
           "autoUpdate",
           "autoUpdateTime",
           "pending",
@@ -2514,6 +2544,9 @@
             ]
           },
           "problem": {
+            "type": "boolean"
+          },
+          "searching": {
             "type": "boolean"
           },
           "autoUpdate": {

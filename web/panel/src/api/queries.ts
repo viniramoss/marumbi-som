@@ -439,6 +439,15 @@ export function useRequestHubUpdate() {
   });
 }
 
+/** "Buscar atualizações" (D35): o Hub procura no GitHub agora e já pede a troca se vier versão nova. */
+export function useSearchHubUpdate() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => call(api.POST('/api/hub/update/check')),
+    onSuccess: (status) => client.setQueryData(keys.hubUpdate, status),
+  });
+}
+
 export function useCancelHubUpdate() {
   const client = useQueryClient();
   return useMutation({

@@ -2176,6 +2176,50 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/hub/update/check': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Accepted */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['HubUpdateStatus'];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/hub/update/package': {
     parameters: {
       query?: never;
@@ -2349,6 +2393,7 @@ export interface components {
       download: null | components['schemas']['GitHubDownload'];
       message: null | string;
       problem: boolean;
+      searching: boolean;
       autoUpdate: boolean;
       /** @example 07:30 */
       autoUpdateTime: string;

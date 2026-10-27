@@ -1,8 +1,15 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { CircleArrowUp, Upload, X } from 'lucide-react';
+import { CircleArrowUp, RefreshCw, Upload, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { errorMessage } from '../../api/client';
-import { keys, useCancelHubUpdate, useHubUpdate, useRequestHubUpdate, useSetHubAutoUpdate } from '../../api/queries';
+import {
+  keys,
+  useCancelHubUpdate,
+  useHubUpdate,
+  useRequestHubUpdate,
+  useSearchHubUpdate,
+  useSetHubAutoUpdate,
+} from '../../api/queries';
 import type { HubUpdateLast, HubUpdatePending, HubUpdateStatus } from '../../api/types';
 import { pickReleaseFiles, uploadHubPackage } from '../../api/upload';
 import { ConfirmDialog } from '../../components/Modal';
@@ -16,12 +23,14 @@ interface Sending {
 }
 
 /**
- * Atualização do Hub (D32 f): a versão nova chega do GitHub junto com a do agente e é instalada pela tarefa do Windows,
- * no botão ou sozinha de madrugada. O Hub fica fora do ar por cerca de 1 minuto; as lojas continuam tocando.
+ * Atualização do Hub (D32 f, D35): a versão nova chega do GitHub junto com a do agente e é instalada pela tarefa do
+ * Windows, no botão ou sozinha de madrugada; **Buscar atualizações** procura na hora e já instala. O Hub fica fora do ar
+ * por cerca de 1 minuto; as lojas continuam tocando.
  */
 export function HubUpdateCard() {
   const status = useHubUpdate();
   const request = useRequestHubUpdate();
+  const search = useSearchHubUpdate();
   const cancel = useCancelHubUpdate();
   const setAuto = useSetHubAutoUpdate();
   const client = useQueryClient();
@@ -138,7 +147,14 @@ export function HubUpdateCard() {
                   />
                 </div>
               )}
+              {hub.searching && !hub.download && (
+                <div className="space-y-1">
+                  <p className="text-stone-600">Procurando versão nova no GitHub…</p>
+                  <ProgressBar label="Procurando versão nova do Hub no GitHub" />
+                </div>
+              )}
               {!hub.download &&
+                !hub.searching &&
                 hub.message &&
                 (hub.problem ? <ErrorNote>{hub.message}</ErrorNote> : <p className="text-stone-600">{hub.message}</p>)}
               {sending && (
@@ -178,7 +194,7 @@ export function HubUpdateCard() {
               ) : (
                 <>
                   {hub.last && <LastUpdate last={hub.last} />}
-                  {hub.available && (
+                  {hub.available ? (
                     <div className="flex justify-end">
                       <Button
                         variant="primary"
@@ -187,6 +203,24 @@ export function HubUpdateCard() {
                         onClick={() => setConfirming(true)}
                       >
                         Atualizar o Hub agora
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="max-w-md text-xs text-stone-500">
+                        Procura no GitHub e, se tiver versão nova, já instala. O painel sai do ar por cerca de 1 minuto;
+                        as lojas continuam tocando.
+                      </p>
+                      <Button
+                        variant="primary"
+                        icon={<RefreshCw className="size-4" />}
+                        busy={hub.searching || search.isPending || hub.download !== null}
+                        disabled={!hub.updaterInstalled}
+                        onClick={() =>
+                          search.mutate(undefined, { onError: (error) => toast.error(errorMessage(error)) })
+                        }
+                      >
+                        Buscar atualizações
                       </Button>
                     </div>
                   )}

@@ -134,7 +134,8 @@ cd C:\MarumbiSom-release
 
 O Hub se atualiza sozinho (D32): a Release do GitHub traz o pacote do Hub assinado, o Hub baixa junto com o do agente
 e, com **Atualizar sozinho de madrugada** ligado (padrão), instala às 03:00. Para instalar antes: Configurações →
-**Atualização do Hub** → **Atualizar o Hub agora**. O painel sai do ar por cerca de 1 minuto e volta pedindo para
+**Atualização do Hub** → **Buscar atualizações** (procura no GitHub e já instala; com versão já baixada, o botão é
+**Atualizar o Hub agora**). O painel sai do ar por cerca de 1 minuto e volta pedindo para
 recarregar a página; as lojas continuam tocando e reconectam sozinhas. Os dados ficam, e o banco é copiado antes da
 troca. Detalhes em [atualizacao-do-hub.md](atualizacao-do-hub.md).
 
