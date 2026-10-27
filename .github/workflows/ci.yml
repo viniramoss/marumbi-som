@@ -11,7 +11,9 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Fixo no 24.04: o ubuntu-latest passa para o Ubuntu 26 aos poucos desde 19/10/2026 e, desde 27/10, o apt do ffmpeg
+    # falha em parte das execuções (as três tentativas abaixo esgotadas).
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -25,7 +27,8 @@ jobs:
           for i in 1 2 3; do
             timeout 120 sudo apt-get update -o Acquire::Retries=3 \
               && timeout 240 sudo apt-get install -y --no-install-recommends ffmpeg && exit 0
-            echo "Instalação do ffmpeg falhou ou travou (tentativa $i de 3)."
+            # Anotação, e não só echo: o log do job nem sempre está acessível, as anotações sim.
+            echo "::warning::Instalação do ffmpeg falhou ou travou (tentativa $i de 3, código $?, $(lsb_release -ds))."
             sudo dpkg --configure -a || true
             sleep 15
           done
