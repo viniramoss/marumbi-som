@@ -142,7 +142,7 @@ public sealed class MpvProcessInstance(string name, string mpvPath, string pipeN
         }
         catch (Exception ex) when (ex is IOException or TimeoutException or ObjectDisposedException)
         {
-            throw new MpvCommandException($"Comando '{command[0]}' falhou no mpv '{Name}': {ex.Message}", ex);
+            throw new MpvCommandException($"Comando '{command[0]}' falhou no mpv '{Name}': {ex.Message}", ex) { TimedOut = ex is TimeoutException };
         }
         finally
         {

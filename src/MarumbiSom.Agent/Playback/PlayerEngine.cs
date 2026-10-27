@@ -37,6 +37,8 @@ public sealed class PlayerEngine
     private static readonly TimeSpan LoadTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan SnapshotInterval = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan ErrorBackoff = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan[] AudioOutputRetry = [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(30)];
+    private static readonly TimeSpan AudioOutputHealthy = TimeSpan.FromSeconds(5);
 
     private readonly Deck _deckA;
     private readonly Deck _deckB;
@@ -76,6 +78,8 @@ public sealed class PlayerEngine
     private bool _bluetoothPaused;
     private long _trackInstance;
     private int _consecutiveErrors;
+    private int _audioOutputFailures;
+    private volatile bool _reloadOutputs;
     private DateTimeOffset _retryAt;
     private DateTimeOffset _lastReapply;
     private string? _lastIdleReason;
@@ -115,11 +119,20 @@ public sealed class PlayerEngine
         foreach (var deck in AllDecks)
         {
             var target = deck;
-            deck.Mpv.EventReceived += (_, e) => _deckEvents.Enqueue(new DeckEvent(target, e.Name, e.Reason));
+            deck.Mpv.EventReceived += (_, e) => _deckEvents.Enqueue(new DeckEvent(target, e.Name, e.Reason, e.FileError));
             deck.Mpv.Exited += (_, _) => _deckEvents.Enqueue(new DeckEvent(target, DeckEvent.Crash, null));
         }
 
         manifests.ActiveChanged += (_, _) => _manifestChanged = true;
+
+        // Caixa reconectada com o mesmo id de endpoint: o mpv pode ter ficado com a saída antiga, morta (seção 9.5).
+        bluetooth.ConnectionChanged += (_, e) =>
+        {
+            if (e.IsConnected)
+            {
+                _reloadOutputs = true;
+            }
+        };
     }
 
     private enum Phase
@@ -268,11 +281,11 @@ public sealed class PlayerEngine
                 if (e.Name == "file-loaded" && _spot is { Phase: SpotPhase.Playing } loaded)
                 {
                     loaded.LoadedAt = now;
-                    loaded.DurationS = await GetDurationAsync(deck.Mpv, cancellationToken);
+                    await TryAsync(deck, async () => loaded.DurationS = await GetDurationAsync(deck.Mpv, cancellationToken), now);
                 }
                 else if (e.Name == "end-file" && _spot is { Phase: SpotPhase.Playing } spot && e.Reason is "eof" or "error")
                 {
-                    await FinishSpotAsync(SpotEndResult(spot, e.Reason, now), now);
+                    await FinishSpotAsync(SpotEndResult(spot, e.Reason, e.FileError, now), now);
                 }
 
                 continue;
@@ -280,6 +293,12 @@ public sealed class PlayerEngine
 
             switch (e.Name)
             {
+                case "end-file" when deck.Track is null:
+                    // Resto da fila de eventos de um mpv que já foi parado ou reiniciado.
+                    break;
+                case "end-file" when e.Reason == "error" && IsAudioOutputError(e.FileError):
+                    await OnAudioOutputFailedAsync(deck, e.FileError, now);
+                    break;
                 case "start-file" when !deck.AwaitingLoad && deck.Appended is not null:
                     await CommitAppendedAsync(deck, now, cancellationToken);
                     break;
@@ -289,14 +308,14 @@ public sealed class PlayerEngine
                 case "end-file" when deck.AwaitingLoad:
                     if (e.Reason == "error")
                     {
-                        await OnTrackErrorAsync(deck, now);
+                        await OnTrackErrorAsync(deck, e.FileError, now);
                     }
 
                     break;
                 case "end-file" when e.Reason is "eof" or "error":
                     if (e.Reason == "error")
                     {
-                        await OnTrackErrorAsync(deck, now);
+                        await OnTrackErrorAsync(deck, e.FileError, now);
                     }
                     else if (deck.Appended is null)
                     {
@@ -483,6 +502,8 @@ public sealed class PlayerEngine
             return false;
         }
 
+        var reload = _reloadOutputs;
+        _reloadOutputs = false;
         foreach (var deck in AllDecks)
         {
             if (deck.RestartAt is { } restartAt && now < restartAt)
@@ -498,15 +519,24 @@ public sealed class PlayerEngine
                     deck.ResetAfterStart(endpoint);
                     _logger.LogInformation("mpv {Deck} pronto", deck.Label);
                 }
-                else if (deck.Endpoint != endpoint)
+                else if (reload || deck.Endpoint != endpoint)
                 {
                     await deck.Mpv.ReloadAudioOutputAsync(endpoint, cancellationToken);
                     deck.Endpoint = endpoint;
+                    _logger.LogInformation("mpv {Deck}: saída de áudio reaberta na caixa", deck.Label);
                 }
             }
             catch (Exception ex) when (ex is MpvCommandException or InvalidOperationException or IOException or TimeoutException
                 or System.ComponentModel.Win32Exception)
             {
+                if (deck.Mpv.IsRunning)
+                {
+                    // Vivo mas sem reabrir a saída (PC piloto, 27/10/2026: travou e ficou mudo até reiniciar o serviço).
+                    _logger.LogError(ex, "mpv {Deck} não reabriu a saída de áudio", deck.Label);
+                    await FailDeckAsync(deck, now, "não reabriu a saída de áudio");
+                    continue;
+                }
+
                 _logger.LogError(ex, "Falha ao iniciar o mpv {Deck}; nova tentativa em 5 s", deck.Label);
                 deck.RestartAt = now + TimeSpan.FromSeconds(5);
             }
@@ -874,10 +904,10 @@ public sealed class PlayerEngine
         }
     }
 
-    private async Task OnTrackErrorAsync(Deck deck, DateTimeOffset now)
+    private async Task OnTrackErrorAsync(Deck deck, string? error, DateTimeOffset now)
     {
         var hash = deck.Track?.Item.Hash;
-        _logger.LogError("mpv {Deck} não conseguiu tocar {Title} ({Hash})", deck.Label, hash is null ? "?" : TitleOf(hash), hash);
+        _logger.LogError("mpv {Deck} não conseguiu tocar {Title} ({Hash}): {Error}", deck.Label, hash is null ? "?" : TitleOf(hash), hash, error ?? "sem detalhe");
         if (hash is not null)
         {
             _ = VerifyInBackgroundAsync(hash);
@@ -893,6 +923,22 @@ public sealed class PlayerEngine
         deck.AwaitingLoad = false;
         await OnTrackEndedAsync(deck, now);
     }
+
+    /// <summary>
+    /// A saída de áudio não abriu (endpoint da caixa desativado ou sumindo): a faixa não tem culpa. Em vez de pular para a
+    /// próxima, o mpv reinicia e a mesma faixa continua do ponto onde parou, com espera crescente entre as tentativas
+    /// (PC piloto, 27/10/2026: 021, 022 e 023 puladas em 1 s enquanto o Windows desativava a caixa).
+    /// </summary>
+    private async Task OnAudioOutputFailedAsync(Deck deck, string? error, DateTimeOffset now)
+    {
+        var delay = AudioOutputRetry[Math.Min(_audioOutputFailures, AudioOutputRetry.Length - 1)];
+        _audioOutputFailures++;
+        _retryAt = now + delay;
+        await FailDeckAsync(deck, now, $"a saída de áudio não abriu ({error}); a música continua do mesmo ponto daqui a {delay.TotalSeconds:0} s");
+    }
+
+    private static bool IsAudioOutputError(string? error) =>
+        error is not null && error.Contains("audio output", StringComparison.OrdinalIgnoreCase);
 
     private async Task VerifyInBackgroundAsync(string hash)
     {
@@ -978,11 +1024,11 @@ public sealed class PlayerEngine
     /// "entre músicas" cortada logo após o Windows trocar a saída padrão). Oferta que termina bem antes da duração conta
     /// como interrompida, e o log diz quanto tocou.
     /// </summary>
-    private SpotResult SpotEndResult(ActiveSpot spot, string? reason, DateTimeOffset now)
+    private SpotResult SpotEndResult(ActiveSpot spot, string? reason, string? error, DateTimeOffset now)
     {
         if (reason == "error")
         {
-            _logger.LogWarning("mpv de ofertas não conseguiu tocar {Path}", spot.Path);
+            _logger.LogWarning("mpv de ofertas não conseguiu tocar {Path}: {Error}", spot.Path, error ?? "sem detalhe");
             return SpotResult.Interrupted;
         }
 
@@ -1245,6 +1291,10 @@ public sealed class PlayerEngine
             {
                 deck.StallPosition = position;
                 deck.StallSince = now;
+                if (position is not null && now - deck.LoadStartedAt >= AudioOutputHealthy)
+                {
+                    _audioOutputFailures = 0;
+                }
             }
             else if (now - deck.StallSince >= StallLimit)
             {
@@ -1320,9 +1370,10 @@ public sealed class PlayerEngine
         catch (MpvCommandException ex)
         {
             _logger.LogWarning(ex, "Comando no mpv {Deck} falhou", deck.Label);
-            if (!deck.Mpv.IsRunning)
+            if (!deck.Mpv.IsRunning || ex.TimedOut)
             {
-                await FailDeckAsync(deck, now, "sem resposta");
+                // Travado com o processo vivo também reinicia: senão cada ciclo espera o tempo esgotar e o som não volta.
+                await FailDeckAsync(deck, now, ex.TimedOut ? "travado, sem resposta" : "sem resposta");
             }
 
             return false;
@@ -1336,7 +1387,7 @@ public sealed class PlayerEngine
             var value = await mpv.GetPropertyAsync("duration", cancellationToken);
             return value.ValueKind == JsonValueKind.Number ? value.GetDouble() : null;
         }
-        catch (MpvCommandException)
+        catch (MpvCommandException ex) when (!ex.TimedOut)
         {
             return null;
         }
@@ -1442,7 +1493,7 @@ public sealed class PlayerEngine
         ? info.Artist is { Length: > 0 } artist ? $"{artist} - {info.Title}" : info.Title
         : hash[..Math.Min(12, hash.Length)];
 
-    private sealed record DeckEvent(Deck Deck, string Name, string? Reason)
+    private sealed record DeckEvent(Deck Deck, string Name, string? Reason, string? FileError = null)
     {
         public const string Crash = "__crash";
     }
