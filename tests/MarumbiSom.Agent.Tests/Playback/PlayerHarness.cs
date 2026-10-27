@@ -186,7 +186,23 @@ internal sealed class PlayerHarness : IDisposable
 
 internal sealed class FakeBluetooth : IBluetoothConnection
 {
-    public bool IsConnected { get; set; } = true;
+    private bool _connected = true;
+
+    /// <summary>Como o guardião: avisa ConnectionChanged a cada troca, sempre com o mesmo endpoint.</summary>
+    public bool IsConnected
+    {
+        get => _connected;
+        set
+        {
+            if (_connected == value)
+            {
+                return;
+            }
+
+            _connected = value;
+            ConnectionChanged?.Invoke(this, new BluetoothConnectionChangedEventArgs(value, "sim-endpoint"));
+        }
+    }
 
     public string? SpeakerEndpointId => IsConnected ? "sim-endpoint" : null;
 
@@ -194,9 +210,7 @@ internal sealed class FakeBluetooth : IBluetoothConnection
 
     public int ReconnectRequests { get; private set; }
 
-#pragma warning disable CS0067 // O player consulta IsConnected a cada ciclo; o evento não é usado.
     public event EventHandler<BluetoothConnectionChangedEventArgs>? ConnectionChanged;
-#pragma warning restore CS0067
 
     public void RequestReconnect() => ReconnectRequests++;
 }
