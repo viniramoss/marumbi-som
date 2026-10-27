@@ -38,7 +38,8 @@ jobs:
       - run: dotnet test --no-build --verbosity normal
 
   panel:
-    runs-on: ubuntu-latest
+    # Fixo no 24.04 pelo mesmo motivo do job de testes (apt do ffmpeg no Ubuntu 26).
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: web/panel
@@ -60,7 +61,7 @@ jobs:
           for i in 1 2 3; do
             timeout 120 sudo apt-get update -o Acquire::Retries=3 \
               && timeout 240 sudo apt-get install -y --no-install-recommends ffmpeg && exit 0
-            echo "Instalação do ffmpeg falhou ou travou (tentativa $i de 3)."
+            echo "::warning::Instalação do ffmpeg falhou ou travou (tentativa $i de 3, código $?, $(lsb_release -ds))."
             sudo dpkg --configure -a || true
             sleep 15
           done
