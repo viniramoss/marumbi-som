@@ -39,6 +39,7 @@ import { AppliedStatus } from '../../components/AppliedStatus';
 import { ConfirmDialog } from '../../components/Modal';
 import { useToast } from '../../components/Toasts';
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorNote, IconButton, Spinner } from '../../components/ui';
+import { useDragAutoScroll } from '../../hooks/useDragAutoScroll';
 import { useNow } from '../../hooks/useNow';
 import { usePreview } from '../../hooks/usePreview';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
@@ -111,6 +112,8 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
   );
   const playingAt = (hash: string, index: number) =>
     draft.items.findIndex((i) => i.hash === hash) === index ? playing.filter((p) => p.hash === hash) : [];
+  // Oferta arrastada da coluna até a linha do tempo (no topo) ou até uma música mais abaixo: a página rola junto.
+  useDragAutoScroll(OfferDrag);
 
   // Nada vai para as lojas sem "Salvar e publicar".
   const leaveDialog = useUnsavedChanges(
