@@ -43,6 +43,19 @@ Pastas de pacotes baixados da internet: antes de rodar scripts, no PowerShell
 4. Último caso: pedir para desligarem e religarem a caixa, ou reiniciar o PC (Loja → Ajustes → **Reiniciar agente**
    antes de reiniciar o PC inteiro).
 
+## Caixa verde, painel dizendo "tocando", mas a loja sem som
+
+1. No PC da loja (ou pela Área de Trabalho Remota): atalho **Configurar Som** → **Tocar som de teste**. Se em
+   **Últimos registros** aparece "Som de teste terminou: Played" e ninguém ouviu, o agente está mandando o som para a
+   caixa e o problema está entre o Windows e a caixa.
+2. Confirme fora do agente: Área de Trabalho Remota → `mmsys.cpl` → aba **Reprodução** → botão direito na saída da caixa
+   (ex.: "Fones de ouvido" com o nome da caixa) → **Testar**. Mudo também: não é o agente.
+3. Na loja: volume da própria caixa e o botão de modo (BT/FM/USB/AUX); nenhum celular conectado nela. Depois desligar e
+   ligar a caixa e deixar o agente reconectar (até 1 min). Ainda mudo: **Configurar Som** → remover a caixa, parear de
+   novo e repetir o **Testar**.
+4. Se o **Testar** do Windows sai e o agente continua mudo: Loja → Ajustes → **Reiniciar agente** e mande o log do dia
+   (`agent-AAAAMMDD.log`) para o desenvolvimento.
+
 ## Música nova ou playlist não chega na loja
 
 1. Painel → Início: o cartão mostra "Baixando x/y" ou "Sincronizado". O download respeita o limite de 2 Mbps; muitas
