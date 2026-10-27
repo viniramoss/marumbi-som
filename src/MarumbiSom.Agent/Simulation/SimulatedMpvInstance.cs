@@ -11,6 +11,9 @@ namespace MarumbiSom.Agent.Simulation;
 /// </summary>
 public sealed class SimulatedMpvInstance : IMpvInstance
 {
+    /// <summary>Texto do <c>file_error</c> do mpv real quando a saída WASAPI não abre.</summary>
+    public const string AudioOutputError = "audio output initialization failed";
+
     private readonly Lock _lock = new();
     private readonly List<string> _playlist = [];
     private readonly List<(DateTimeOffset At, double Volume)> _volumeHistory = [];
@@ -57,6 +60,14 @@ public sealed class SimulatedMpvInstance : IMpvInstance
 
     /// <summary>A posição parou de avançar (simula o mpv travado).</summary>
     public bool Frozen { get; private set; }
+
+    /// <summary>Processo vivo, mas o IPC não responde: todo comando estoura o tempo.</summary>
+    public bool Hung { get; private set; }
+
+    /// <summary>A saída de áudio não abre (endpoint sumiu): todo arquivo termina com erro logo após carregar.</summary>
+    public bool AudioOutputMissing { get; set; }
+
+    public int AudioOutputReloads { get; private set; }
 
     public IReadOnlyList<string> Playlist
     {
@@ -122,6 +133,7 @@ public sealed class SimulatedMpvInstance : IMpvInstance
             StartCount++;
             Paused = false;
             Frozen = false;
+            Hung = false;
             AudioDevice = "wasapi/" + audioEndpointId;
             Volume = volume;
             _playlist.Clear();
@@ -158,6 +170,23 @@ public sealed class SimulatedMpvInstance : IMpvInstance
         }
     }
 
+    /// <summary>Simula o mpv travado sem resposta no IPC (PC piloto, 27/10/2026: set_property estourou o tempo).</summary>
+    public void Hang()
+    {
+        Freeze();
+        Hung = true;
+    }
+
+    /// <summary>
+    /// Simula o endpoint da caixa desativado no meio do arquivo (PC piloto, 27/10/2026): o mpv encerra o arquivo com
+    /// <c>end-file</c> reason=error e file_error "audio output initialization failed", e os próximos também falham.
+    /// </summary>
+    public void LoseAudioDevice()
+    {
+        AudioOutputMissing = true;
+        EndCurrent("error", advance: true, AudioOutputError);
+    }
+
     /// <summary>
     /// Simula a saída de áudio caindo no meio do arquivo (ex.: a caixa Bluetooth some por um instante): o mpv encerra o
     /// arquivo atual com <c>end-file</c> reason=eof, como se tivesse chegado ao fim.
@@ -185,6 +214,11 @@ public sealed class SimulatedMpvInstance : IMpvInstance
         }
 
         var verb = (string)command[0];
+        if (Hung)
+        {
+            throw new MpvCommandException($"Comando '{verb}' falhou no mpv '{Name}': The operation has timed out.", new TimeoutException()) { TimedOut = true };
+        }
+
         object? result = null;
         switch (verb)
         {
@@ -220,6 +254,7 @@ public sealed class SimulatedMpvInstance : IMpvInstance
                 Seek(Convert.ToDouble(command[1], CultureInfo.InvariantCulture));
                 break;
             case "ao-reload":
+                AudioOutputReloads++;
                 break;
             case "set_property":
                 SetProperty((string)command[1], command[2]);
@@ -303,6 +338,13 @@ public sealed class SimulatedMpvInstance : IMpvInstance
             return;
         }
 
+        if (AudioOutputMissing)
+        {
+            Raise("file-loaded");
+            EndCurrent("error", advance: true, AudioOutputError);
+            return;
+        }
+
         lock (_lock)
         {
             ScheduleEnd(_durationOf(path));
@@ -317,7 +359,7 @@ public sealed class SimulatedMpvInstance : IMpvInstance
         _endTimer = Paused || Frozen ? null : _time.CreateTimer(_ => EndCurrent("eof", advance: true), null, remaining < TimeSpan.Zero ? TimeSpan.Zero : remaining, Timeout.InfiniteTimeSpan);
     }
 
-    private void EndCurrent(string reason, bool advance)
+    private void EndCurrent(string reason, bool advance, string? fileError = null)
     {
         int next;
         lock (_lock)
@@ -336,7 +378,7 @@ public sealed class SimulatedMpvInstance : IMpvInstance
             }
         }
 
-        Raise("end-file", reason);
+        Raise("end-file", reason, fileError);
         if (next >= 0)
         {
             StartEntry(next);
@@ -435,11 +477,19 @@ public sealed class SimulatedMpvInstance : IMpvInstance
 
     private string? CurrentFileUnlocked() => _current >= 0 && _current < _playlist.Count ? _playlist[_current] : null;
 
-    private void Raise(string eventName, string? reason = null)
+    private void Raise(string eventName, string? reason = null, string? fileError = null)
     {
-        var payload = reason is null
-            ? JsonSerializer.SerializeToElement(new Dictionary<string, object> { ["event"] = eventName })
-            : JsonSerializer.SerializeToElement(new Dictionary<string, object> { ["event"] = eventName, ["reason"] = reason });
-        EventReceived?.Invoke(this, new MpvEventArgs(eventName, payload));
+        var fields = new Dictionary<string, object> { ["event"] = eventName };
+        if (reason is not null)
+        {
+            fields["reason"] = reason;
+        }
+
+        if (fileError is not null)
+        {
+            fields["file_error"] = fileError;
+        }
+
+        EventReceived?.Invoke(this, new MpvEventArgs(eventName, JsonSerializer.SerializeToElement(fields)));
     }
 }
