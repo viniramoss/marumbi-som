@@ -11,28 +11,35 @@ permissions:
 
 jobs:
   test:
-    # Fixo no 24.04: o ubuntu-latest passa para o Ubuntu 26 aos poucos desde 19/10/2026 e, desde 27/10, o apt do ffmpeg
-    # falha em parte das execuções (as três tentativas abaixo esgotadas).
+    # Fixo no 24.04: o ubuntu-latest passa para o Ubuntu 26 aos poucos desde 19/10/2026, e o cache dos pacotes do ffmpeg
+    # abaixo vale para uma versão só.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      # O apt às vezes trava no espelho do Ubuntu: listas e pacotes da última instalação ficam no cache do Actions
+      # (renovado toda semana) e a instalação pela rede só acontece sem cache. Detalhes em .github/scripts/instalar-ffmpeg.sh.
+      - name: Semana do cache do ffmpeg
+        id: semana
+        run: echo "id=$(date +%G-%V)" >> "$GITHUB_OUTPUT"
+      - name: Pacotes do ffmpeg no cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/apt-ffmpeg
+          key: apt-ffmpeg-ubuntu-24.04-${{ steps.semana.outputs.id }}
+          restore-keys: apt-ffmpeg-ubuntu-24.04-
       - name: ffmpeg para os testes de ingestão do Hub
-        # O apt às vezes trava no espelho do Ubuntu (já ficou 30 min parado): cada tentativa tem limite e são até 3.
-        timeout-minutes: 20
-        run: |
-          command -v ffmpeg && exit 0
-          for i in 1 2 3; do
-            timeout 120 sudo apt-get update -o Acquire::Retries=3 \
-              && timeout 240 sudo apt-get install -y --no-install-recommends ffmpeg && exit 0
-            # Anotação, e não só echo: o log do job nem sempre está acessível, as anotações sim.
-            echo "::warning::Instalação do ffmpeg falhou ou travou (tentativa $i de 3, código $?, $(lsb_release -ds))."
-            sudo dpkg --configure -a || true
-            sleep 15
-          done
-          exit 1
+        id: ffmpeg
+        timeout-minutes: 25
+        run: .github/scripts/instalar-ffmpeg.sh "$RUNNER_TEMP/apt-ffmpeg"
+      - name: Guardar os pacotes do ffmpeg no cache
+        if: steps.ffmpeg.outputs.salvar == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/apt-ffmpeg
+          key: apt-ffmpeg-ubuntu-24.04-${{ steps.semana.outputs.id }}
       - run: dotnet restore
       - run: dotnet build --no-restore
       - run: dotnet test --no-build --verbosity normal
