@@ -555,6 +555,37 @@ public sealed class PlayerEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task Som_de_teste_com_o_mpv_de_ofertas_fechado_nao_culpa_a_caixa()
+    {
+        _h.Spot.FailsToStart = true;
+        await _h.RunUntilAsync("09:59:10");
+
+        var result = await _h.CommandAsync(new PlayerCommand(PlayerCommandKind.TestSound));
+
+        Assert.False(result.Ok);
+        Assert.Contains("mpv das ofertas", result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Sem_mpv_de_musica_aberto_o_motivo_aparece_no_status_e_a_musica_comeca_quando_abrir()
+    {
+        var t1 = _h.AddTrack("Um", 300);
+        _h.Publish(new Dictionary<string, PlaylistDefinition> { ["manha"] = PlayerHarness.Playlist(false, t1) });
+        _h.A.FailsToStart = true;
+        _h.B.FailsToStart = true;
+        await _h.RunUntilAsync("10:00:10");
+
+        var snapshot = _h.Engine.Snapshot;
+        Assert.Equal(PlayerStatus.Stopped, snapshot.Status);
+        Assert.Equal("Nenhum mpv de música aberto; tentando de novo", snapshot.Reason);
+
+        _h.A.FailsToStart = false;
+        _h.B.FailsToStart = false;
+        await _h.RunForAsync(TimeSpan.FromSeconds(7));
+        Assert.NotNull(new[] { _h.A, _h.B }.SingleOrDefault(m => m.CurrentFile == _h.PathOf(t1)));
+    }
+
+    [Fact]
     public async Task Mpv_da_faixa_que_entrava_morre_na_mixagem_e_ela_continua_no_outro()
     {
         var t1 = _h.AddTrack("Um", 60);

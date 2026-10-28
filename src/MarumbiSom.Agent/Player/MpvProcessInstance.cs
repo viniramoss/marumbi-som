@@ -11,6 +11,7 @@ namespace MarumbiSom.Agent.Player;
 /// <summary>Processo mpv real, controlado por named pipe com o protocolo JSON IPC do mpv.</summary>
 public sealed class MpvProcessInstance(string name, string mpvPath, string pipeName, ILogger<MpvProcessInstance> logger) : IMpvInstance
 {
+    private const int StatusDllNotFound = unchecked((int)0xC0000135);
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(10);
 
@@ -160,6 +161,10 @@ public sealed class MpvProcessInstance(string name, string mpvPath, string pipeN
     {
         yield return "--idle=yes";
         yield return "--no-video";
+        // Nunca abrir saída de vídeo: num PC sem driver de vídeo (Loja 2, 28/10/2026) o vo gpu-next falhava ao criar
+        // a swapchain do d3d11 e o mpv morria (0xC0000005) ao carregar cada faixa.
+        yield return "--vo=null";
+        yield return "--audio-display=no";
         yield return "--no-terminal";
         yield return "--gapless-audio=yes";
         yield return $@"--input-ipc-server=\\.\pipe\{pipeName}";
@@ -288,7 +293,18 @@ public sealed class MpvProcessInstance(string name, string mpvPath, string pipeN
             return;
         }
 
-        logger.LogWarning("mpv '{Name}' terminou inesperadamente com código {ExitCode}", Name, code);
+        if (code == StatusDllNotFound)
+        {
+            // Loja 2 (28/10/2026): o mpv.exe não abria num Windows 10 sem o vulkan-1.dll.
+            logger.LogError(
+                "mpv '{Name}' não abriu: falta uma DLL no Windows (código {ExitCode}, STATUS_DLL_NOT_FOUND). Confira se tools\\ tem o vulkan-1.dll ao lado do mpv.exe",
+                Name, code);
+        }
+        else
+        {
+            logger.LogWarning("mpv '{Name}' terminou inesperadamente com código {ExitCode}", Name, code);
+        }
+
         Exited?.Invoke(this, EventArgs.Empty);
     }
 
