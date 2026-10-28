@@ -25,6 +25,19 @@
       "for": [
         "hub"
       ]
+    },
+    {
+      "name": "vulkan-loader",
+      "comment": "O mpv.exe do shinchiro importa o vulkan-1.dll, que só existe no Windows com driver de vídeo instalado; sem ele o mpv morre com 0xC0000135 (Loja 2, 28/10/2026). É o carregador oficial da Khronos (Apache-2.0), compilado e assinado pelo Silk.NET (.NET Foundation).",
+      "version": "Vulkan-Loader 94605142 (Silk.NET.Vulkan.Loader.Native 2025.9.12)",
+      "url": "https://api.nuget.org/v3-flatcontainer/silk.net.vulkan.loader.native/2025.9.12/silk.net.vulkan.loader.native.2025.9.12.nupkg",
+      "sha256": "33811c05ab0bcba632ad38abba459b0d72d6e58859342e0782d011863dde07d1",
+      "files": [
+        "runtimes/win-x64/native/vulkan-1.dll"
+      ],
+      "for": [
+        "agent"
+      ]
     }
   ]
 }
