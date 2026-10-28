@@ -151,6 +151,10 @@ public sealed class MpvProcessInstance(string name, string mpvPath, string pipeN
     {
         yield return "--idle=yes";
         yield return "--no-video";
+        // Nunca abrir saída de vídeo: num PC sem driver de vídeo (Loja 2, 28/10/2026) o vo gpu-next falhava ao criar
+        // a swapchain do d3d11 e o mpv morria (0xC0000005) ao carregar cada faixa.
+        yield return "--vo=null";
+        yield return "--audio-display=no";
         yield return "--no-terminal";
         yield return "--gapless-audio=yes";
         yield return $@"--input-ipc-server=\\.\pipe\{pipeName}";
