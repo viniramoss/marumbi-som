@@ -96,6 +96,13 @@ function renderHub(h) {
     $('hub-form').hidden = true;
     return;
   }
+  const progress = $('hub-progress');
+  progress.hidden = !(h && h.linked && h.pendingVersion != null && h.progress && h.progress.total > 0);
+  if (!progress.hidden) {
+    progress.max = h.progress.total;
+    progress.value = h.progress.done;
+    progress.textContent = `${h.progress.done} de ${h.progress.total}`;
+  }
   $('hub-unlink').hidden = !h.linked;
   $('hub-link').textContent = h.linked ? 'Vincular de novo' : 'Vincular esta loja';
   if (!h.linked) {

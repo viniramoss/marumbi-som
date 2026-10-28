@@ -17,18 +17,20 @@ public static class TracksEndpoints
 
     public static void MapTracks(this RouteGroupBuilder api)
     {
-        api.MapGet("/tracks", ListAsync);
+        api.MapGet("/tracks", ListAsync).Returns<IReadOnlyList<TrackDto>>();
         api.MapPost("/tracks", UploadAsync)
             .DisableAntiforgery()
-            .WithMetadata(new RequestSizeLimitAttribute(MaxRequestBytes), new RequestFormLimitsAttribute { MultipartBodyLengthLimit = MaxRequestBytes });
-        api.MapGet("/uploads", (IngestionWorker queue) => Results.Ok(queue.Jobs));
-        api.MapPatch("/tracks/{hash}", UpdateAsync);
-        api.MapDelete("/tracks/{hash}", DeleteAsync);
-        api.MapGet("/tracks/{hash}/audio", AudioAsync);
+            .WithMetadata(new RequestSizeLimitAttribute(MaxRequestBytes), new RequestFormLimitsAttribute { MultipartBodyLengthLimit = MaxRequestBytes })
+            .Accepts<IFormFileCollection>("multipart/form-data")
+            .Returns<IReadOnlyList<IngestionJob>>(StatusCodes.Status202Accepted, StatusCodes.Status400BadRequest);
+        api.MapGet("/uploads", (IngestionWorker queue) => Results.Ok(queue.Jobs)).Returns<IReadOnlyList<IngestionJob>>();
+        api.MapPatch("/tracks/{hash}", UpdateAsync).Returns<TrackDto>(StatusCodes.Status200OK, StatusCodes.Status400BadRequest, StatusCodes.Status404NotFound);
+        api.MapDelete("/tracks/{hash}", DeleteAsync).ReturnsNothing(StatusCodes.Status204NoContent, StatusCodes.Status404NotFound, StatusCodes.Status409Conflict);
+        api.MapGet("/tracks/{hash}/audio", AudioAsync).Produces(StatusCodes.Status200OK, contentType: "audio/mp4").Produces(StatusCodes.Status404NotFound);
     }
 
-    public static TrackDto ToDto(Data.Track track) =>
-        new(track.Hash, track.Kind, track.Title, track.Artist, track.DurationMs, track.SizeBytes, track.LoudnessLufs, track.OriginalName, track.CreatedAt);
+    public static TrackDto ToDto(Data.Track track, IReadOnlyList<PlaylistRef> playlists) =>
+        new(track.Hash, track.Kind, track.Title, track.Artist, track.DurationMs, track.SizeBytes, track.LoudnessLufs, track.OriginalName, track.CreatedAt, playlists);
 
     private static async Task<IResult> ListAsync(HubDb db, string? q, TrackKind? kind, CancellationToken cancellationToken)
     {
@@ -43,35 +45,46 @@ public static class TracksEndpoints
                 || compare.IndexOf(t.OriginalName, q, options) >= 0).ToList();
         }
 
-        return Results.Ok(tracks.OrderBy(t => t.Artist ?? t.Title, StringComparer.CurrentCultureIgnoreCase).ThenBy(t => t.Title, StringComparer.CurrentCultureIgnoreCase).Select(ToDto));
+        var usage = await UsageAsync(db, cancellationToken);
+        return Results.Ok(tracks.OrderBy(t => t.Artist ?? t.Title, StringComparer.CurrentCultureIgnoreCase).ThenBy(t => t.Title, StringComparer.CurrentCultureIgnoreCase)
+            .Select(t => ToDto(t, usage[t.Hash].ToList())));
+    }
+
+    /// <summary>Em quais playlists cada música está (seção 7.2, Biblioteca).</summary>
+    private static async Task<ILookup<string, PlaylistRef>> UsageAsync(HubDb db, CancellationToken cancellationToken)
+    {
+        var rows = await db.PlaylistItems.AsNoTracking()
+            .Join(db.Playlists, i => i.PlaylistId, p => p.Id, (i, p) => new { i.TrackHash, p.Id, p.Name })
+            .Distinct().ToListAsync(cancellationToken);
+        return rows.OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ToLookup(r => r.TrackHash, r => new PlaylistRef(r.Id, r.Name), StringComparer.Ordinal);
     }
 
     private static async Task<IResult> UploadAsync(HttpRequest request, IngestionWorker queue, HubDb db, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
     {
         if (!request.HasFormContentType)
         {
-            return Results.BadRequest(new { error = "Envie os arquivos como multipart/form-data." });
+            return ApiResults.BadRequest("Envie os arquivos como multipart/form-data.");
         }
 
         var form = await request.ReadFormAsync(cancellationToken);
         if (form.Files.Count == 0)
         {
-            return Results.BadRequest(new { error = "Nenhum arquivo enviado." });
+            return ApiResults.BadRequest("Nenhum arquivo enviado.");
         }
 
         var kind = form.TryGetValue("kind", out var kindValue) && kindValue == "offer" ? TrackKind.Offer : TrackKind.Music;
-        var jobs = new List<object>();
+        var jobs = new List<IngestionJob>();
         foreach (var file in form.Files)
         {
             if (!AudioProcessor.AllowedExtensions.Contains(Path.GetExtension(file.FileName)))
             {
-                jobs.Add(new { originalName = file.FileName, status = "rejected", error = "Formato não aceito." });
+                jobs.Add(IngestionJob.Rejected(file.FileName, kind, time.GetUtcNow(), "Formato não aceito."));
                 continue;
             }
 
             if (file.Length > AudioProcessor.MaxUploadBytes)
             {
-                jobs.Add(new { originalName = file.FileName, status = "rejected", error = "Arquivo maior que 100 MB." });
+                jobs.Add(IngestionJob.Rejected(file.FileName, kind, time.GetUtcNow(), "Arquivo maior que 100 MB."));
                 continue;
             }
 
@@ -85,7 +98,8 @@ public static class TracksEndpoints
     }
 
     private static async Task<IResult> UpdateAsync(
-        string hash, TrackUpdate update, HubDb db, ManifestPublisher publisher, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
+        string hash, TrackUpdate update, HubDb db, ManifestPublisher publisher, PanelHub panel, ClaimsPrincipal user, TimeProvider time,
+        CancellationToken cancellationToken)
     {
         var track = await db.Tracks.SingleOrDefaultAsync(t => t.Hash == hash && t.DeletedAt == null, cancellationToken);
         if (track is null)
@@ -97,7 +111,7 @@ public static class TracksEndpoints
         {
             if (string.IsNullOrWhiteSpace(update.Title) || update.Title.Length > 200)
             {
-                return Results.BadRequest(new { error = "Título obrigatório, até 200 caracteres." });
+                return ApiResults.BadRequest("Título obrigatório, até 200 caracteres.");
             }
 
             track.Title = update.Title.Trim();
@@ -111,10 +125,12 @@ public static class TracksEndpoints
         db.Audit(user, time, "tracks.update", hash, update);
         await db.SaveChangesAsync(cancellationToken);
         await publisher.RegenerateAllAsync(cancellationToken);
-        return Results.Ok(ToDto(track));
+        panel.Changed("tracks", "playlists");
+        var usage = await UsageAsync(db, cancellationToken);
+        return Results.Ok(ToDto(track, usage[hash].ToList()));
     }
 
-    private static async Task<IResult> DeleteAsync(string hash, HubDb db, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
+    private static async Task<IResult> DeleteAsync(string hash, HubDb db, PanelHub panel, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
     {
         var track = await db.Tracks.SingleOrDefaultAsync(t => t.Hash == hash && t.DeletedAt == null, cancellationToken);
         if (track is null)
@@ -137,6 +153,7 @@ public static class TracksEndpoints
         track.DeletedAt = time.GetUtcNow();
         db.Audit(user, time, "tracks.delete", hash, new { track.Title });
         await db.SaveChangesAsync(cancellationToken);
+        panel.Changed("tracks");
         return Results.NoContent();
     }
 
@@ -151,7 +168,18 @@ public static class TracksEndpoints
     }
 
     public sealed record TrackDto(
-        string Hash, TrackKind Kind, string Title, string? Artist, long DurationMs, long SizeBytes, double? LoudnessLufs, string OriginalName, DateTimeOffset CreatedAt);
+        string Hash,
+        TrackKind Kind,
+        string Title,
+        string? Artist,
+        long DurationMs,
+        long SizeBytes,
+        double? LoudnessLufs,
+        string OriginalName,
+        DateTimeOffset CreatedAt,
+        IReadOnlyList<PlaylistRef> Playlists);
+
+    public sealed record PlaylistRef(int Id, string Name);
 
     public sealed record TrackUpdate(string? Title, string? Artist);
 }

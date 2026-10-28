@@ -37,6 +37,12 @@ public sealed record StatusMessage : AgentMessage
     public long DiskFreeMb { get; init; }
 
     public long UptimeS { get; init; }
+
+    /// <summary>Playlist da agenda em vigor (D23).</summary>
+    public string? PlaylistId { get; init; }
+
+    /// <summary>Hashes das próximas até 10 faixas previstas (D23).</summary>
+    public IReadOnlyList<string>? Queue { get; init; }
 }
 
 public sealed record SyncProgress(int Done, int Total);

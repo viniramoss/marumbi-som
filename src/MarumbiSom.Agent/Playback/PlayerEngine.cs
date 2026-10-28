@@ -1450,11 +1450,11 @@ public sealed class PlayerEngine
     private PlayerSnapshot BuildSnapshot(DateTimeOffset now, bool connected)
     {
         var track = _active?.Track;
-        var upcoming = new List<string>();
+        var upcoming = new List<QueueItem>();
         if (_window is { } window && _manifest is not null && _manifest.Playlists.TryGetValue(window.PlaylistId, out var playlist))
         {
             _state.State.Playlists.TryGetValue(window.PlaylistId, out var cursor);
-            upcoming.AddRange(_order.Upcoming(window.PlaylistId, playlist, cursor, IsPlayable, 10).Select(i => TitleOf(i.Hash)));
+            upcoming.AddRange(_order.Upcoming(window.PlaylistId, playlist, cursor, IsPlayable, 10));
         }
 
         var status = track is null ? PlayerStatus.Stopped
@@ -1479,7 +1479,8 @@ public sealed class PlayerEngine
             SpeakerConnected = connected,
             Spot = _spot?.Label,
             QueuedSpots = _spots.Queue.Select(q => $"{q.OfferId} ({q.Priority}, {q.Mode})").ToList(),
-            Upcoming = upcoming,
+            Upcoming = upcoming.Select(i => TitleOf(i.Hash)).ToList(),
+            UpcomingHashes = upcoming.Select(i => i.Hash).ToList(),
         };
     }
 

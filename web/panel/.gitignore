@@ -1,0 +1,4 @@
+# Saídas do teste ponta a ponta (e2e/stack.mjs e Playwright)
+e2e/.stack.json
+playwright-report/
+test-results/

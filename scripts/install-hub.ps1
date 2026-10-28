@@ -84,6 +84,13 @@ foreach ($dir in @($Root, $AppDir, $DataDir, $LogsDir)) {
 # /E copia subpastas; não usa /MIR para não apagar tools\ instalado separadamente.
 robocopy $SourceDir $AppDir /E /NFL /NDL /NJH /NJS /NP /R:10 /W:3 | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy falhou com código $LASTEXITCODE" }
+# O painel (wwwroot, D23 f) é espelhado: arquivos de versões anteriores do painel saem.
+if (Test-Path (Join-Path $SourceDir 'wwwroot\index.html')) {
+    robocopy (Join-Path $SourceDir 'wwwroot') (Join-Path $AppDir 'wwwroot') /MIR /NFL /NDL /NJH /NJS /NP /R:10 /W:3 | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "robocopy do painel falhou com código $LASTEXITCODE" }
+} else {
+    Write-Warning "Pacote sem o painel (wwwroot\index.html). Use o pacote do CI ou rode 'npm ci; npm run build' em web\panel e copie dist para wwwroot."
+}
 
 if (-not $existing) {
     Write-Step "Registrando o serviço $ServiceName (conta $ServiceAccount)"

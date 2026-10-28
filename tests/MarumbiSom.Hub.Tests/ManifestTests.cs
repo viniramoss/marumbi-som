@@ -185,6 +185,8 @@ public sealed class ManifestTests
         var store = await HubHarness.JsonAsync(await admin.PostAsJsonAsync("/api/stores", new { name = "Loja 2 – Centro" }));
         var storeId = store.GetProperty("status").GetProperty("id").GetInt32();
         Assert.Equal("loja-2-centro", store.GetProperty("status").GetProperty("slug").GetString());
+        // Loja nova sem agenda: o painel avisa que ela não toca nada.
+        Assert.False(store.GetProperty("status").GetProperty("hasSchedule").GetBoolean());
         await HubHarness.JsonAsync(await admin.PutAsJsonAsync($"/api/stores/{storeId}/schedules", new object[]
         {
             new { days = new[] { 0, 1, 2, 3, 4, 5, 6 }, start = "00:00", end = "24:00", playlistId },

@@ -13,12 +13,13 @@ public static class PlaylistsEndpoints
 
     public static void MapPlaylists(this RouteGroupBuilder api)
     {
-        api.MapGet("/playlists", ListAsync);
-        api.MapPost("/playlists", CreateAsync);
-        api.MapGet("/playlists/{id:int}", GetAsync);
-        api.MapPatch("/playlists/{id:int}", UpdateAsync);
-        api.MapDelete("/playlists/{id:int}", DeleteAsync);
-        api.MapPut("/playlists/{id:int}/items", ReplaceItemsAsync);
+        api.MapGet("/playlists", ListAsync).Returns<IReadOnlyList<PlaylistSummary>>();
+        api.MapPost("/playlists", CreateAsync).Returns<PlaylistDetail>(StatusCodes.Status201Created, StatusCodes.Status400BadRequest);
+        api.MapGet("/playlists/{id:int}", GetAsync).Returns<PlaylistDetail>(StatusCodes.Status200OK, StatusCodes.Status404NotFound);
+        api.MapPatch("/playlists/{id:int}", UpdateAsync).Returns<PlaylistDetail>(StatusCodes.Status200OK, StatusCodes.Status400BadRequest, StatusCodes.Status404NotFound);
+        api.MapDelete("/playlists/{id:int}", DeleteAsync).ReturnsNothing(StatusCodes.Status204NoContent, StatusCodes.Status404NotFound, StatusCodes.Status409Conflict);
+        api.MapPut("/playlists/{id:int}/items", ReplaceItemsAsync)
+            .Returns<PlaylistDetail>(StatusCodes.Status200OK, StatusCodes.Status400BadRequest, StatusCodes.Status404NotFound);
     }
 
     private static async Task<IResult> ListAsync(HubDb db, CancellationToken cancellationToken)
@@ -34,14 +35,16 @@ public static class PlaylistsEndpoints
                 p.UpdatedAt,
             })
             .ToListAsync(cancellationToken);
-        return Results.Ok(playlists.OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase));
+        var usage = await UsageAsync(db, null, cancellationToken);
+        return Results.Ok(playlists.OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(p => new PlaylistSummary(p.Id, p.Name, p.Shuffle, p.ItemCount, p.DurationMs, p.UpdatedAt, usage[p.Id].ToList())));
     }
 
-    private static async Task<IResult> CreateAsync(PlaylistInput input, HubDb db, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
+    private static async Task<IResult> CreateAsync(PlaylistInput input, HubDb db, PanelHub panel, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
     {
         if (ValidateName(input.Name) is { } error)
         {
-            return Results.BadRequest(new { error });
+            return ApiResults.BadRequest(error);
         }
 
         var now = time.GetUtcNow();
@@ -50,6 +53,7 @@ public static class PlaylistsEndpoints
         await db.SaveChangesAsync(cancellationToken);
         db.Audit(user, time, "playlists.create", playlist.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), input);
         await db.SaveChangesAsync(cancellationToken);
+        panel.Changed("playlists");
         return Results.Created($"/api/playlists/{playlist.Id}", await DetailAsync(db, playlist.Id, cancellationToken));
     }
 
@@ -57,7 +61,7 @@ public static class PlaylistsEndpoints
         await DetailAsync(db, id, cancellationToken) is { } detail ? Results.Ok(detail) : Results.NotFound();
 
     private static async Task<IResult> UpdateAsync(
-        int id, PlaylistInput input, HubDb db, ManifestPublisher publisher, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
+        int id, PlaylistInput input, HubDb db, ManifestPublisher publisher, PanelHub panel, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
     {
         var playlist = await db.Playlists.SingleOrDefaultAsync(p => p.Id == id, cancellationToken);
         if (playlist is null)
@@ -69,7 +73,7 @@ public static class PlaylistsEndpoints
         {
             if (ValidateName(input.Name) is { } error)
             {
-                return Results.BadRequest(new { error });
+                return ApiResults.BadRequest(error);
             }
 
             playlist.Name = input.Name.Trim();
@@ -91,10 +95,12 @@ public static class PlaylistsEndpoints
         db.Audit(user, time, "playlists.update", id.ToString(System.Globalization.CultureInfo.InvariantCulture), new { input, removedAnchors });
         await db.SaveChangesAsync(cancellationToken);
         await publisher.RegenerateAllAsync(cancellationToken);
+        panel.Changed("playlists", "tracks", $"playlist:{id}");
         return Results.Ok(await DetailAsync(db, id, cancellationToken));
     }
 
-    private static async Task<IResult> DeleteAsync(int id, HubDb db, ManifestPublisher publisher, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
+    private static async Task<IResult> DeleteAsync(
+        int id, HubDb db, ManifestPublisher publisher, PanelHub panel, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
     {
         var playlist = await db.Playlists.SingleOrDefaultAsync(p => p.Id == id, cancellationToken);
         if (playlist is null)
@@ -114,6 +120,7 @@ public static class PlaylistsEndpoints
         db.Audit(user, time, "playlists.delete", id.ToString(System.Globalization.CultureInfo.InvariantCulture), new { playlist.Name });
         await db.SaveChangesAsync(cancellationToken);
         await publisher.RegenerateAllAsync(cancellationToken);
+        panel.Changed("playlists", "tracks");
         return Results.NoContent();
     }
 
@@ -122,7 +129,7 @@ public static class PlaylistsEndpoints
     /// Itens removidos levam junto as âncoras de oferta presas a eles.
     /// </summary>
     private static async Task<IResult> ReplaceItemsAsync(
-        int id, List<ItemInput> items, HubDb db, ManifestPublisher publisher, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
+        int id, List<ItemInput> items, HubDb db, ManifestPublisher publisher, PanelHub panel, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
     {
         var playlist = await db.Playlists.Include(p => p.Items).SingleOrDefaultAsync(p => p.Id == id, cancellationToken);
         if (playlist is null)
@@ -134,12 +141,12 @@ public static class PlaylistsEndpoints
         var givenIds = items.Where(i => i.Id is not null).Select(i => i.Id!).ToList();
         if (givenIds.Except(existingIds).FirstOrDefault() is { } unknown)
         {
-            return Results.BadRequest(new { error = $"Item {unknown} não pertence a esta playlist." });
+            return ApiResults.BadRequest($"Item {unknown} não pertence a esta playlist.");
         }
 
         if (givenIds.Count != givenIds.Distinct(StringComparer.Ordinal).Count())
         {
-            return Results.BadRequest(new { error = "O mesmo item aparece duas vezes." });
+            return ApiResults.BadRequest("O mesmo item aparece duas vezes.");
         }
 
         var hashes = items.Select(i => i.Hash).Distinct(StringComparer.Ordinal).ToList();
@@ -147,7 +154,7 @@ public static class PlaylistsEndpoints
             .Select(t => t.Hash).ToListAsync(cancellationToken);
         if (hashes.Except(valid, StringComparer.Ordinal).FirstOrDefault() is { } missing)
         {
-            return Results.BadRequest(new { error = $"Música {missing} não existe na biblioteca." });
+            return ApiResults.BadRequest($"Música {missing} não existe na biblioteca.");
         }
 
         var removed = existingIds.Except(givenIds, StringComparer.Ordinal).ToList();
@@ -168,6 +175,7 @@ public static class PlaylistsEndpoints
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await publisher.RegenerateAllAsync(cancellationToken);
+        panel.Changed("playlists", "tracks", $"playlist:{id}");
         return Results.Ok(await DetailAsync(db, id, cancellationToken));
     }
 
@@ -195,7 +203,23 @@ public static class PlaylistsEndpoints
             .Join(db.Tracks, i => i.TrackHash, t => t.Hash, (i, t) => new { i.Position, Item = new PlaylistItemDetail(i.Id, t.Hash, t.Title, t.Artist, t.DurationMs) })
             .OrderBy(x => x.Position).Select(x => x.Item)
             .ToListAsync(cancellationToken);
-        return new PlaylistDetail(playlist.Id, playlist.Name, playlist.Shuffle, items);
+        var usage = await UsageAsync(db, id, cancellationToken);
+        return new PlaylistDetail(playlist.Id, playlist.Name, playlist.Shuffle, items, usage[id].ToList());
+    }
+
+    /// <summary>Lojas e horários que usam cada playlist (seção 7.2, Playlists).</summary>
+    private static async Task<ILookup<int, PlaylistUsage>> UsageAsync(HubDb db, int? playlistId, CancellationToken cancellationToken)
+    {
+        var query = db.Schedules.AsNoTracking();
+        if (playlistId is { } only)
+        {
+            query = query.Where(s => s.PlaylistId == only);
+        }
+
+        var rows = await query.Join(db.Stores, s => s.StoreId, s => s.Id, (s, store) => new { s.PlaylistId, s.StoreId, store.Name, s.DaysMask, s.StartTime, s.EndTime })
+            .ToListAsync(cancellationToken);
+        return rows.OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).ThenBy(r => r.StartTime)
+            .ToLookup(r => r.PlaylistId, r => new PlaylistUsage(r.StoreId, r.Name, ManifestGenerator.DaysFromMask(r.DaysMask), r.StartTime, r.EndTime));
     }
 
     private static string? ValidateName(string? name) =>
@@ -207,5 +231,10 @@ public static class PlaylistsEndpoints
 
     public sealed record PlaylistItemDetail(string Id, string Hash, string Title, string? Artist, long DurationMs);
 
-    public sealed record PlaylistDetail(int Id, string Name, bool Shuffle, IReadOnlyList<PlaylistItemDetail> Items);
+    /// <summary>Uma janela da agenda de uma loja que toca esta playlist.</summary>
+    public sealed record PlaylistUsage(int StoreId, string StoreName, IReadOnlyList<int> Days, TimeOnly Start, TimeOnly End);
+
+    public sealed record PlaylistSummary(int Id, string Name, bool Shuffle, int ItemCount, long DurationMs, DateTimeOffset UpdatedAt, IReadOnlyList<PlaylistUsage> Usage);
+
+    public sealed record PlaylistDetail(int Id, string Name, bool Shuffle, IReadOnlyList<PlaylistItemDetail> Items, IReadOnlyList<PlaylistUsage> Usage);
 }

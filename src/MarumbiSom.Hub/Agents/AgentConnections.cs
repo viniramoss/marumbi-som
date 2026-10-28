@@ -19,6 +19,9 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
 {
     public const int MaxMessageBytes = 64 * 1024;
 
+    /// <summary>Evento gravado quando o <c>uptimeS</c> do status diminui (D23 e).</summary>
+    public const string AgentRestartedEvent = "agent.restarted";
+
     /// <summary>Sem nenhuma mensagem nesse tempo (o status vem a cada 30 s), a conexão é considerada morta.</summary>
     public static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(120);
 
@@ -27,6 +30,12 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
 
     /// <summary>Disparado depois de gravar cada mensagem recebida (usado pelo painel ao vivo e pelos testes).</summary>
     public event EventHandler<(int StoreId, AgentMessage Message)>? MessageHandled;
+
+    /// <summary>Disparado quando uma loja conecta ou desconecta.</summary>
+    public event EventHandler<int>? ConnectionChanged;
+
+    /// <summary>A fila informada pela loja mudou (ex.: músicas novas na playlist); o detalhe da loja no painel é relido.</summary>
+    public event EventHandler<int>? QueueChanged;
 
     public bool IsOnline(int storeId) => _connections.ContainsKey(storeId);
 
@@ -42,6 +51,7 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
 
         _connections[storeId] = connection;
         logger.LogInformation("Loja {Store} conectada", slug);
+        ConnectionChanged?.Invoke(this, storeId);
         try
         {
             await ReceiveLoopAsync(storeId, slug, connection, cancellationToken);
@@ -52,9 +62,13 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
         }
         finally
         {
-            _connections.TryRemove(new KeyValuePair<int, Connection>(storeId, connection));
+            var removed = _connections.TryRemove(new KeyValuePair<int, Connection>(storeId, connection));
             connection.Dispose();
             logger.LogInformation("Loja {Store} desconectada", slug);
+            if (removed)
+            {
+                ConnectionChanged?.Invoke(this, storeId);
+            }
         }
     }
 
@@ -92,6 +106,7 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
         if (_connections.TryRemove(storeId, out var connection))
         {
             await connection.CloseAsync(reason);
+            ConnectionChanged?.Invoke(this, storeId);
         }
     }
 
@@ -171,6 +186,7 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
     {
         var now = time.GetUtcNow();
         long? announceVersion = null;
+        var queueChanged = false;
         await using (var scope = scopes.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<HubDb>();
@@ -200,16 +216,37 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
 
                     break;
                 case StatusMessage status:
+                    if (state.UptimeS is { } previousUptime && status.UptimeS < previousUptime)
+                    {
+                        db.Events.Add(new StoreEvent { StoreId = storeId, Type = AgentRestartedEvent, CreatedAt = now });
+                    }
+
+                    var bluetooth = Wire(status.Bluetooth);
+                    if (state.BtState != bluetooth || state.BtChangedAt is null)
+                    {
+                        state.BtChangedAt = now;
+                    }
+
+                    if (state.PendingVersion != status.PendingVersion || state.SyncDone != status.SyncProgress?.Done || state.SyncChangedAt is null)
+                    {
+                        state.SyncChangedAt = now;
+                    }
+
                     state.PlayerState = Wire(status.Player);
                     state.NowPlayingHash = status.NowPlaying;
                     state.PositionMs = status.PositionMs;
+                    state.PositionAt = now;
                     state.Volume = status.Volume;
-                    state.BtState = Wire(status.Bluetooth);
+                    state.BtState = bluetooth;
                     state.PendingVersion = status.PendingVersion;
                     state.SyncDone = status.SyncProgress?.Done;
                     state.SyncTotal = status.SyncProgress?.Total;
                     state.DiskFreeMb = status.DiskFreeMb;
                     state.UptimeS = status.UptimeS;
+                    state.PlaylistKey = status.PlaylistId;
+                    var queue = status.Queue is null ? null : JsonSerializer.Serialize(status.Queue.Take(10));
+                    queueChanged = !string.Equals(queue, state.QueueJson, StringComparison.Ordinal);
+                    state.QueueJson = queue;
                     break;
                 case CommandResultMessage result:
                     if (int.TryParse(result.Id, NumberStyles.None, CultureInfo.InvariantCulture, out var commandId)
@@ -239,6 +276,8 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
                     break;
                 case TrackStartedMessage track:
                     state.NowPlayingHash = track.Hash;
+                    state.PositionMs = 0;
+                    state.PositionAt = track.At.ToUniversalTime();
                     db.PlayHistory.Add(new PlayHistory { StoreId = storeId, TrackHash = track.Hash, StartedAt = track.At.ToUniversalTime() });
                     break;
                 case SpotStartedMessage spot:
@@ -284,6 +323,10 @@ public sealed class AgentConnections(IServiceScopeFactory scopes, TimeProvider t
         }
 
         MessageHandled?.Invoke(this, (storeId, message));
+        if (queueChanged)
+        {
+            QueueChanged?.Invoke(this, storeId);
+        }
     }
 
     private static string Wire<T>(T value)

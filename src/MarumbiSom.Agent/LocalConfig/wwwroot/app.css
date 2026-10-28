@@ -100,6 +100,16 @@ pre {
   word-break: break-all;
 }
 
+progress {
+  display: block;
+  width: 100%;
+  height: 8px;
+  margin: 0 0 12px;
+  accent-color: var(--accent);
+}
+
+progress[hidden] { display: none; }
+
 @media (max-width: 480px) {
   .grid { grid-template-columns: 1fr; }
   .grid dt { margin-top: 6px; }

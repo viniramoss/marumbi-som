@@ -33,6 +33,17 @@ public sealed record IngestionJob
     public string? Error { get; set; }
 
     public string? Hash { get; set; }
+
+    /// <summary>Arquivo recusado antes de entrar na fila (formato ou tamanho).</summary>
+    public static IngestionJob Rejected(string originalName, TrackKind kind, DateTimeOffset at, string error) => new()
+    {
+        Id = Guid.NewGuid().ToString("N"),
+        OriginalName = Path.GetFileName(originalName),
+        Kind = kind,
+        UploadedAt = at,
+        Status = IngestionStatus.Rejected,
+        Error = error,
+    };
 }
 
 /// <summary>
@@ -53,6 +64,9 @@ public sealed class IngestionWorker(
 
     /// <summary>Disparado quando um trabalho termina (com sucesso ou não).</summary>
     public event EventHandler<IngestionJob>? Completed;
+
+    /// <summary>Disparado a cada mudança de situação de um trabalho (fila, processando, fim); usado pelo painel ao vivo.</summary>
+    public event EventHandler<IngestionJob>? Changed;
 
     public IReadOnlyList<IngestionJob> Jobs => _jobs.Values.OrderByDescending(j => j.UploadedAt).ToList();
 
@@ -81,6 +95,7 @@ public sealed class IngestionWorker(
         Track(job);
         await _queue.Writer.WriteAsync(job, cancellationToken);
         logger.LogInformation("Upload recebido: {Name} ({Kind}), na fila", job.OriginalName, kind);
+        Changed?.Invoke(this, job);
         return job;
     }
 
@@ -122,6 +137,7 @@ public sealed class IngestionWorker(
     internal async Task ProcessAsync(IngestionJob job, CancellationToken cancellationToken)
     {
         job.Status = IngestionStatus.Processing;
+        Changed?.Invoke(this, job);
         var audioPath = AudioPathFor(job);
         try
         {
@@ -200,6 +216,7 @@ public sealed class IngestionWorker(
             TryDelete(audioPath);
             TryDelete(SidecarPathFor(job.Id));
             Completed?.Invoke(this, job);
+            Changed?.Invoke(this, job);
         }
     }
 
