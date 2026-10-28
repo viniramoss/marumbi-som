@@ -32,6 +32,16 @@ export function formatAgo(iso: string | null | undefined, now: number): string {
   return `há ${Math.floor(hours / 24)} dias`;
 }
 
+/** Para algo previsto: "agora", "em 40 s", "em 5 min", "em 2 h". */
+export function formatIn(iso: string, now: number): string {
+  const seconds = Math.round((Date.parse(iso) - now) / 1000);
+  if (seconds < 5) return 'agora';
+  if (seconds < 60) return `em ${seconds} s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `em ${minutes} min`;
+  return `em ${Math.round(minutes / 60)} h`;
+}
+
 const dateTime = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 const time = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' });
 const timeSeconds = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });

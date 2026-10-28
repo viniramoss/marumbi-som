@@ -186,6 +186,80 @@ public sealed class SpotScheduler(StateStore state, CacheManager cache, IPlaybac
         return null;
     }
 
+    /// <summary>
+    /// Próxima oferta prevista, para o painel (D26 d): a primeira da fila, a próxima regra de tempo ou a próxima âncora
+    /// "durante" na música atual e nas próximas da fila. É estimativa: pular, pausar ou trocar a agenda mudam a previsão.
+    /// </summary>
+    public NextSpot? NextPlanned(
+        PlaybackContext context, IReadOnlyList<QueueItem> upcoming, Func<string, double?> durationS, DateTimeOffset? windowEnd)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(upcoming);
+        ArgumentNullException.ThrowIfNull(durationS);
+        if (_manifest is null || !context.MusicPlaying)
+        {
+            return null;
+        }
+
+        var now = context.Now;
+        var gapUntil = state.State.LastOfferEndedAt is { } lastEnd ? lastEnd + TimeSpan.FromSeconds(Spots.MinOfferGapS) : now;
+        var afterGap = gapUntil > now ? gapUntil : now;
+        var candidates = new List<(string OfferId, DateTimeOffset At)>();
+        if (_queue.FirstOrDefault() is { } queued)
+        {
+            candidates.Add((queued.OfferId, queued.IgnoresMinGap ? now : afterGap));
+        }
+
+        var playlistId = context.Current?.PlaylistId ?? context.WindowPlaylistId;
+        foreach (var placement in Spots.Placements)
+        {
+            if (placement is EveryMinutesPlacement minutes && AppliesTo(minutes, playlistId))
+            {
+                var interval = TimeSpan.FromMinutes(Math.Max(1, minutes.Minutes));
+                var due = state.State.SpotLastTriggered.TryGetValue(minutes.Id, out var last) ? last + interval : now + interval;
+                candidates.Add((minutes.OfferId, due > afterGap ? due : afterGap));
+            }
+            else if (placement is ClockPlacement clock && AppliesTo(clock, playlistId) && NextClock(clock, now) is { } at)
+            {
+                candidates.Add((clock.OfferId, at > afterGap ? at : afterGap));
+            }
+        }
+
+        var anchors = Spots.Placements.OfType<AnchorDuringPlacement>().ToList();
+        var start = now;
+        if (context.Current is { } current && context.PositionS is { } position)
+        {
+            var fired = context.TrackInstance == _anchorTrackInstance ? _anchorsFiredThisTrack : [];
+            foreach (var anchor in anchors.Where(a => a.PlaylistId == current.PlaylistId && a.ItemId == current.ItemId && !fired.Contains(a.Id)))
+            {
+                var offset = AnchorOffsetS(anchor, context.DurationS);
+                if (offset >= position)
+                {
+                    candidates.Add((anchor.OfferId, now.AddSeconds(offset - position)));
+                }
+            }
+
+            start = now.AddSeconds(Math.Max(0, (context.DurationS ?? position) - position));
+        }
+
+        foreach (var item in upcoming)
+        {
+            var duration = durationS(item.Hash);
+            foreach (var anchor in anchors.Where(a => a.PlaylistId == item.PlaylistId && a.ItemId == item.ItemId))
+            {
+                candidates.Add((anchor.OfferId, start.AddSeconds(AnchorOffsetS(anchor, duration))));
+            }
+
+            start = start.AddSeconds(duration ?? 0);
+        }
+
+        var next = candidates
+            .Where(c => (windowEnd is null || c.At < windowEnd) && Spots.Offers.TryGetValue(c.OfferId, out var offer) && offer.IsValidAt(c.At))
+            .OrderBy(c => c.At)
+            .FirstOrDefault();
+        return next.OfferId is null ? null : new NextSpot(next.OfferId, TimeZoneInfo.ConvertTime(next.At, _zone));
+    }
+
     /// <summary>Devolve à fila uma oferta "entre" que não chegou a tocar (ex.: o admin pulou a música).</summary>
     public void Requeue(SpotToPlay spot)
     {
@@ -330,14 +404,7 @@ public sealed class SpotScheduler(StateStore state, CacheManager cache, IPlaybac
             return;
         }
 
-        // offsetMs deve ser ≤ duração − 5 s; fora disso, o agente limita (seção 10.3.4).
-        var offset = TimeSpan.FromMilliseconds(Math.Max(0, anchor.OffsetMs));
-        if (context.DurationS is { } duration)
-        {
-            var max = TimeSpan.FromSeconds(duration) - AnchorDuringEndMargin;
-            offset = max < TimeSpan.Zero ? TimeSpan.Zero : TimeSpan.FromTicks(Math.Min(offset.Ticks, max.Ticks));
-        }
-
+        var offset = TimeSpan.FromSeconds(AnchorOffsetS(anchor, context.DurationS));
         var elapsed = TimeSpan.FromSeconds(position);
         if (elapsed < offset)
         {
@@ -400,6 +467,42 @@ public sealed class SpotScheduler(StateStore state, CacheManager cache, IPlaybac
     {
         logger.LogInformation("Oferta {Offer} ({Placement}) descartada: {Reason}", request.OfferId, request.PlacementId, reason);
         events.Publish(new SpotSkippedMessage(request.OfferId, request.PlacementId, reason));
+    }
+
+    /// <summary>offsetMs deve ser ≤ duração − 5 s; fora disso, o agente limita (seção 10.3.4).</summary>
+    private static double AnchorOffsetS(AnchorDuringPlacement anchor, double? durationS)
+    {
+        var offset = Math.Max(0, anchor.OffsetMs) / 1000.0;
+        return durationS is { } duration ? Math.Clamp(offset, 0, Math.Max(0, duration - AnchorDuringEndMargin.TotalSeconds)) : offset;
+    }
+
+    /// <summary>Próximo horário da regra (ou agora, se ela está para disparar dentro da tolerância), nos próximos 7 dias.</summary>
+    private DateTimeOffset? NextClock(ClockPlacement rule, DateTimeOffset now)
+    {
+        var today = TimeZoneInfo.ConvertTime(now, _zone).Date;
+        var last = state.State.SpotLastTriggered.GetValueOrDefault(rule.Id, DateTimeOffset.MinValue);
+        for (var day = -1; day <= 7; day++)
+        {
+            var date = today.AddDays(day);
+            if (!rule.Days.Contains((int)date.DayOfWeek))
+            {
+                continue;
+            }
+
+            var local = date + rule.Time.ToTimeSpan();
+            var at = new DateTimeOffset(local, _zone.GetUtcOffset(local));
+            if (at >= now)
+            {
+                return at;
+            }
+
+            if (now - at < ClockGrace && last < at)
+            {
+                return now;
+            }
+        }
+
+        return null;
     }
 
     private static bool AppliesTo(RulePlacement rule, string? playlistId) =>

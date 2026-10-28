@@ -5,13 +5,11 @@ import type { ReactNode } from 'react';
 import { api } from '../api/client';
 import { keys, useSession } from '../api/queries';
 import { useLiveState } from '../hooks/useLive';
-import { SoonTag } from './ui';
 
 interface NavItem {
   to: string;
   label: string;
   icon: ReactNode;
-  stage?: number;
   mobile?: boolean;
 }
 
@@ -20,7 +18,8 @@ const nav: NavItem[] = [
   { to: '/lojas', label: 'Lojas', icon: <Store className="size-5" />, mobile: true },
   { to: '/playlists', label: 'Playlists', icon: <ListMusic className="size-5" />, mobile: true },
   { to: '/biblioteca', label: 'Biblioteca', icon: <Library className="size-5" />, mobile: true },
-  { to: '/ofertas', label: 'Ofertas', icon: <Megaphone className="size-5" />, stage: 5 },
+  // Fora da barra do celular (cinco itens cabem; o painel é pensado primeiro para o computador).
+  { to: '/ofertas', label: 'Ofertas', icon: <Megaphone className="size-5" /> },
   { to: '/configuracoes', label: 'Configurações', icon: <Settings className="size-5" />, mobile: true },
 ];
 
@@ -78,7 +77,6 @@ export function Layout() {
             >
               {item.icon}
               <span className="flex-1">{item.label}</span>
-              {item.stage && <SoonTag stage={item.stage} />}
             </NavLink>
           ))}
         </nav>

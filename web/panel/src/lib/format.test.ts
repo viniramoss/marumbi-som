@@ -1,4 +1,4 @@
-import { formatAgo, formatDays, formatDuration, formatLongDuration, matchesSearch } from './format';
+import { formatAgo, formatDays, formatDuration, formatIn, formatLongDuration, matchesSearch } from './format';
 
 describe('formatDuration', () => {
   it('mostra minutos e segundos, e horas quando passa de uma', () => {
@@ -31,6 +31,17 @@ describe('formatAgo', () => {
     expect(formatAgo('2026-10-23T10:00:00Z', now)).toBe('há 3 h');
     expect(formatAgo('2026-10-20T13:00:00Z', now)).toBe('há 3 dias');
     expect(formatAgo(null, now)).toBe('nunca');
+  });
+});
+
+describe('formatIn', () => {
+  const now = Date.parse('2026-10-23T13:00:00Z');
+
+  it('diz quanto falta (próxima oferta prevista)', () => {
+    expect(formatIn('2026-10-23T12:59:00Z', now)).toBe('agora');
+    expect(formatIn('2026-10-23T13:00:40Z', now)).toBe('em 40 s');
+    expect(formatIn('2026-10-23T13:05:00Z', now)).toBe('em 5 min');
+    expect(formatIn('2026-10-23T15:00:00Z', now)).toBe('em 2 h');
   });
 });
 

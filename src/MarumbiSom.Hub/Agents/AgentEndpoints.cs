@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using MarumbiSom.Hub.Data;
 using MarumbiSom.Hub.Manifests;
+using MarumbiSom.Hub.Panel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
 
@@ -58,6 +59,8 @@ public static class AgentEndpoints
         });
         authenticated.MapGet("/manifest", ManifestAsync);
         authenticated.MapGet("/files/{hash}", FileAsync);
+        authenticated.MapGet("/releases/current", CurrentReleaseAsync);
+        authenticated.MapGet("/releases/{version}/package", ReleasePackageAsync);
         authenticated.MapGet("/ws", SocketAsync);
     }
 
@@ -100,6 +103,21 @@ public static class AgentEndpoints
 
         context.Response.Headers.ETag = etag.Tag.Value;
         return Results.Text(manifest.Json, "application/json", Encoding.UTF8);
+    }
+
+    /// <summary>Versão do agente para distribuição (seção 11.3, D27 d).</summary>
+    private static async Task<IResult> CurrentReleaseAsync(HubDb db, CancellationToken cancellationToken)
+    {
+        var release = await db.AgentReleases.AsNoTracking().SingleOrDefaultAsync(r => r.IsCurrent, cancellationToken);
+        return release is null ? Results.NotFound(new { error = "Nenhuma versão do agente publicada." }) : Results.Ok(ReleasesEndpoints.ToAgentInfo(release));
+    }
+
+    /// <summary>Pacote da atualização (aceita Range, para retomar). Quem confere a assinatura é o agente.</summary>
+    private static async Task<IResult> ReleasePackageAsync(string version, HubDb db, HubPaths paths, CancellationToken cancellationToken)
+    {
+        var release = await db.AgentReleases.AsNoTracking().SingleOrDefaultAsync(r => r.Version == version, cancellationToken);
+        var path = release is null ? null : ReleasesEndpoints.PackagePath(paths, release);
+        return path is null || !File.Exists(path) ? Results.NotFound() : Results.File(path, "application/zip", enableRangeProcessing: true);
     }
 
     private static async Task<IResult> FileAsync(string hash, HttpContext context, HubDb db, HubPaths paths, CancellationToken cancellationToken)

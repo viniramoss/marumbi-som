@@ -2,13 +2,16 @@ import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { Download, KeyRound, Power, Save, Trash2, Unlink } from 'lucide-react';
 import { errorMessage } from '../../api/client';
-import { useDeleteStore, useRevokeToken, useUpdateStore } from '../../api/queries';
+import { useDeleteStore, useReleases, useRevokeToken, useUpdateStore } from '../../api/queries';
 import type { StoreDetail } from '../../api/types';
 import { ConfirmDialog } from '../../components/Modal';
 import { useToast } from '../../components/Toasts';
-import { Button, Card, CardHeader, Field, Input, Select, SoonTag } from '../../components/ui';
+import { AgentUpdateStatus } from '../../components/AgentUpdateStatus';
+import { Button, Card, CardHeader, Field, Input, Select } from '../../components/ui';
 import { useCommand } from '../../hooks/useCommand';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
+import { updateBlocker } from '../../lib/agentUpdate';
+import { formatBytes } from '../../lib/format';
 import { EnrollCodeDialog } from './EnrollCode';
 import { useGenerateEnrollCode } from './useGenerateEnrollCode';
 
@@ -108,11 +111,7 @@ export function StoreSettingsTab({ detail }: { detail: StoreDetail }) {
             </Field>
             <Field
               label="Intervalo mínimo entre ofertas"
-              hint={
-                <span className="inline-flex items-center gap-1.5">
-                  Padrão 5 min. Passa a valer com as ofertas <SoonTag stage={5} />
-                </span>
-              }
+              hint='Padrão 5 min. Vale para as regras de tempo; ofertas presas a músicas e o "tocar oferta agora" não esperam.'
             >
               <NumberInput
                 value={form.minOfferGapMin}
@@ -194,7 +193,7 @@ function NumberInput({
   );
 }
 
-type Confirm = 'restart' | 'revoke' | 'delete' | null;
+type Confirm = 'restart' | 'update' | 'revoke' | 'delete' | null;
 
 function Maintenance({ detail }: { detail: StoreDetail }) {
   const store = detail.status;
@@ -202,6 +201,9 @@ function Maintenance({ detail }: { detail: StoreDetail }) {
   const { run, busy } = useCommand(store.id);
   const revoke = useRevokeToken(store.id);
   const remove = useDeleteStore();
+  const releases = useReleases();
+  const current = releases.data?.find((r) => r.isCurrent);
+  const blocker = updateBlocker(store, current);
   const toast = useToast();
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState<Confirm>(null);
@@ -257,14 +259,22 @@ function Maintenance({ detail }: { detail: StoreDetail }) {
           </Button>
         </Action>
         <Action
-          title={
-            <span className="inline-flex items-center gap-2">
-              Atualizar agente <SoonTag stage={6} />
-            </span>
+          title="Atualizar agente"
+          description={
+            <>
+              Versão instalada: {store.agentVersion ?? 'desconhecida'}. Para distribuição:{' '}
+              {current?.version ?? 'nenhuma ainda (veja em Configurações)'}.
+              <AgentUpdateStatus update={store.update} className="mt-2" />
+            </>
           }
-          description={`Versão instalada: ${store.agentVersion ?? 'desconhecida'}. A atualização pelo painel chega na Etapa 6.`}
         >
-          <Button disabled icon={<Download className="size-4" />}>
+          <Button
+            disabled={blocker !== null}
+            title={blocker ?? undefined}
+            busy={busy === 'updateAgent'}
+            icon={<Download className="size-4" />}
+            onClick={() => setConfirm('update')}
+          >
             Atualizar
           </Button>
         </Action>
@@ -301,6 +311,22 @@ function Maintenance({ detail }: { detail: StoreDetail }) {
           <p>A música da {store.name} para por alguns segundos enquanto o serviço reinicia.</p>
         </ConfirmDialog>
       )}
+      {confirm === 'update' && current && (
+        <ConfirmDialog
+          title={`Atualizar o agente para a versão ${current.version}?`}
+          confirmLabel="Atualizar"
+          danger={false}
+          busy={busy === 'updateAgent'}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => void run({ command: 'updateAgent', version: current.version }).then(() => setConfirm(null))}
+        >
+          <p>
+            A {store.name} baixa o pacote ({formatBytes(current.sizeBytes)}) sem parar a música e confere a assinatura.
+            Ao instalar, a música para por alguns segundos.
+          </p>
+          <p>Se a versão nova não subir e falar com o Hub em 2 minutos, a loja volta sozinha para a versão anterior.</p>
+        </ConfirmDialog>
+      )}
       {confirm === 'revoke' && (
         <ConfirmDialog
           title="Desvincular o PC da loja?"
@@ -335,12 +361,12 @@ function Maintenance({ detail }: { detail: StoreDetail }) {
   );
 }
 
-function Action({ title, description, children }: { title: ReactNode; description: string; children: ReactNode }) {
+function Action({ title, description, children }: { title: ReactNode; description: ReactNode; children: ReactNode }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-stone-900">{title}</p>
-        <p className="mt-0.5 text-sm text-stone-500">{description}</p>
+        <div className="mt-0.5 text-sm text-stone-500">{description}</div>
       </div>
       {children}
     </div>

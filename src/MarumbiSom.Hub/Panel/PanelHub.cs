@@ -159,16 +159,20 @@ public sealed class PanelHub(
     private void OnAgentMessage(object? sender, (int StoreId, AgentMessage Message) e)
     {
         StoreChanged(e.StoreId);
-        var topic = e.Message switch
+        string[] topics = e.Message switch
         {
-            AgentEventMessage => $"events:{e.StoreId}",
-            TrackStartedMessage => $"history:{e.StoreId}",
-            StatusMessage => null,
-            _ => null,
+            // A contagem de lojas por versão do agente (Configurações) muda quando uma loja sobe noutra versão.
+            AgentEventMessage { Event: AgentEvents.UpdateDone or AgentEvents.UpdateRolledBack } => [$"events:{e.StoreId}", "releases"],
+            AgentEventMessage => [$"events:{e.StoreId}"],
+            HelloMessage => ["releases"],
+            TrackStartedMessage => [$"history:{e.StoreId}"],
+            // Execuções de oferta aparecem no histórico da loja e nas contagens da tela de Ofertas (D26 f).
+            SpotStartedMessage or SpotFinishedMessage or SpotSkippedMessage => [$"history:{e.StoreId}", "offers"],
+            _ => [],
         };
-        if (topic is not null)
+        if (topics.Length > 0)
         {
-            Changed(topic);
+            Changed(topics);
         }
     }
 
@@ -267,5 +271,5 @@ public abstract record PanelMessage;
 /// <summary>Resumo atualizado de uma loja.</summary>
 public sealed record PanelStoreMessage(StoreSummary Store) : PanelMessage;
 
-/// <summary>Tópicos com dados novos: <c>stores</c>, <c>tracks</c>, <c>uploads</c>, <c>playlists</c>, <c>events:{id}</c>, <c>history:{id}</c>.</summary>
+/// <summary>Tópicos com dados novos: <c>stores</c>, <c>tracks</c>, <c>uploads</c>, <c>playlists</c>, <c>offers</c>, <c>events:{id}</c>, <c>history:{id}</c>.</summary>
 public sealed record PanelChangedMessage(IReadOnlyList<string> Topics) : PanelMessage;

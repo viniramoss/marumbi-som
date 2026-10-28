@@ -12,16 +12,17 @@ import {
   Volume2,
 } from 'lucide-react';
 import { errorMessage } from '../../api/client';
-import { useStoreTracks } from '../../api/queries';
+import { useStoreOffers, useStoreTracks } from '../../api/queries';
 import type { StoreDetail, StoreSummary } from '../../api/types';
 import { Modal } from '../../components/Modal';
 import { SyncProgress } from '../../components/SyncProgress';
-import { Button, Card, CardHeader, EmptyState, ErrorNote, Input, SoonTag, Spinner } from '../../components/ui';
+import { Button, Card, CardHeader, EmptyState, ErrorNote, Input, Spinner } from '../../components/ui';
 import { useCommand } from '../../hooks/useCommand';
 import { useNow } from '../../hooks/useNow';
-import { formatAgo, formatDuration, formatMegabytes, matchesSearch } from '../../lib/format';
+import { formatAgo, formatDateTime, formatDuration, formatMegabytes, matchesSearch } from '../../lib/format';
 import { bluetoothStatus, syncStatus } from '../../lib/status';
 import { NowPlaying } from '../dashboard/NowPlaying';
+import { OfferInfo } from '../dashboard/OfferInfo';
 import { NoScheduleNotice, StoreAlerts } from '../dashboard/StoreAlerts';
 import { EnrollCard } from './EnrollCode';
 
@@ -53,11 +54,13 @@ export function LiveTab({ detail }: { detail: StoreDetail }) {
                 <Megaphone className="size-4 text-stone-400" /> Ofertas
               </span>
             }
-            actions={<SoonTag stage={5} />}
           />
-          <p className="px-5 py-4 text-sm text-stone-500">
-            Próxima oferta prevista, última oferta tocada e "tocar oferta agora" chegam com a tela de Ofertas.
-          </p>
+          <div className="space-y-2 px-5 py-4">
+            <OfferInfo store={store} showEmpty />
+            <p className="text-xs text-stone-500">
+              A previsão vem da loja e muda se alguém pular, pausar ou se a agenda trocar de playlist.
+            </p>
+          </div>
         </Card>
       </div>
     </div>
@@ -67,6 +70,7 @@ export function LiveTab({ detail }: { detail: StoreDetail }) {
 function Controls({ store }: { store: StoreSummary }) {
   const { run, busy } = useCommand(store.id);
   const [choosing, setChoosing] = useState(false);
+  const [offering, setOffering] = useState(false);
   const offline = !store.online;
   const playing = store.player === 'playing';
 
@@ -104,8 +108,14 @@ function Controls({ store }: { store: StoreSummary }) {
         >
           Reconectar caixa
         </Button>
-        <Button size="lg" disabled title="Chega na Etapa 5, com as ofertas" icon={<Megaphone className="size-5" />}>
-          Tocar oferta agora <SoonTag stage={5} />
+        <Button
+          size="lg"
+          disabled={offline || !playing}
+          title={!offline && !playing ? 'A oferta toca por cima da música: dê play antes.' : undefined}
+          onClick={() => setOffering(true)}
+          icon={<Megaphone className="size-5" />}
+        >
+          Tocar oferta agora…
         </Button>
       </div>
       <VolumeSlider
@@ -115,6 +125,7 @@ function Controls({ store }: { store: StoreSummary }) {
       />
       {offline && <p className="text-sm text-stone-500">Os controles voltam quando a loja se conectar ao Hub.</p>}
       {choosing && <PlayNowDialog store={store} onClose={() => setChoosing(false)} />}
+      {offering && <PlayOfferDialog store={store} onClose={() => setOffering(false)} />}
     </div>
   );
 }
@@ -222,6 +233,58 @@ function PlayNowDialog({ store, onClose }: { store: StoreSummary; onClose: () =>
                 busy={busy === 'playNow' && chosen === track.hash}
                 disabled={busy !== null}
                 onClick={() => void play(track.hash)}
+                icon={<Play className="size-4" />}
+              >
+                Tocar
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
+  );
+}
+
+/** "Tocar oferta agora" (seção 7.2): ofertas vigentes da configuração aplicada da loja (D26 g). */
+function PlayOfferDialog({ store, onClose }: { store: StoreSummary; onClose: () => void }) {
+  const offers = useStoreOffers(store.id, true);
+  const { run, busy } = useCommand(store.id);
+  const [chosen, setChosen] = useState<string | null>(null);
+
+  const play = async (key: string) => {
+    setChosen(key);
+    if (await run({ command: 'playOffer', offerKey: key })) onClose();
+  };
+
+  return (
+    <Modal title="Tocar oferta agora" onClose={onClose}>
+      <p className="mb-3 text-sm text-stone-500">
+        A música abaixa e a oferta entra em instantes, sem esperar o intervalo mínimo entre ofertas.
+      </p>
+      {offers.isPending ? (
+        <Spinner />
+      ) : offers.isError ? (
+        <ErrorNote>{errorMessage(offers.error)}</ErrorNote>
+      ) : offers.data.length === 0 ? (
+        <EmptyState icon={<Megaphone className="size-8" />} title="Nenhuma oferta valendo nesta loja agora">
+          A oferta precisa estar ativa, dentro da validade e com esta loja escolhida, e a loja precisa ter recebido a
+          configuração.
+        </EmptyState>
+      ) : (
+        <ul className="divide-y divide-stone-100 rounded-lg ring-1 ring-stone-200">
+          {offers.data.map((offer) => (
+            <li key={offer.key} className="flex items-center gap-3 px-3 py-2 text-sm">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium text-stone-900">{offer.name}</span>
+                <span className="block truncate text-xs text-stone-500">
+                  {formatDuration(offer.durationMs)} · até {formatDateTime(offer.validUntil)}
+                </span>
+              </span>
+              <Button
+                size="sm"
+                busy={busy === 'playOffer' && chosen === offer.key}
+                disabled={busy !== null}
+                onClick={() => void play(offer.key)}
                 icon={<Play className="size-4" />}
               >
                 Tocar

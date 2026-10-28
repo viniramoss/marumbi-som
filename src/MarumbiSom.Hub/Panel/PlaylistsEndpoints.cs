@@ -20,6 +20,8 @@ public static class PlaylistsEndpoints
         api.MapDelete("/playlists/{id:int}", DeleteAsync).ReturnsNothing(StatusCodes.Status204NoContent, StatusCodes.Status404NotFound, StatusCodes.Status409Conflict);
         api.MapPut("/playlists/{id:int}/items", ReplaceItemsAsync)
             .Returns<PlaylistDetail>(StatusCodes.Status200OK, StatusCodes.Status400BadRequest, StatusCodes.Status404NotFound);
+        api.MapPut("/playlists/{id:int}/anchors", ReplaceAnchorsAsync)
+            .Returns<PlaylistDetail>(StatusCodes.Status200OK, StatusCodes.Status400BadRequest, StatusCodes.Status404NotFound);
     }
 
     private static async Task<IResult> ListAsync(HubDb db, CancellationToken cancellationToken)
@@ -179,6 +181,79 @@ public static class PlaylistsEndpoints
         return Results.Ok(await DetailAsync(db, id, cancellationToken));
     }
 
+    /// <summary>
+    /// Substitui todas as âncoras de oferta da playlist (seção 11.2, D26 c). Só em playlist sequencial; o tempo da âncora
+    /// "durante" vai de 0 até a duração da música − 5 s (seção 10.3.4).
+    /// </summary>
+    private static async Task<IResult> ReplaceAnchorsAsync(
+        int id, List<AnchorInput> anchors, HubDb db, ManifestPublisher publisher, PanelHub panel, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
+    {
+        var playlist = await db.Playlists.AsNoTracking().SingleOrDefaultAsync(p => p.Id == id, cancellationToken);
+        if (playlist is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (playlist.Shuffle && anchors.Count > 0)
+        {
+            return ApiResults.BadRequest("Âncoras de oferta só existem em playlist sequencial. Desative o aleatório primeiro.");
+        }
+
+        var items = await db.PlaylistItems.AsNoTracking().Where(i => i.PlaylistId == id)
+            .Join(db.Tracks, i => i.TrackHash, t => t.Hash, (i, t) => new { i.Id, t.Title, t.DurationMs })
+            .ToDictionaryAsync(i => i.Id, StringComparer.Ordinal, cancellationToken);
+        var offerIds = anchors.Select(a => a.OfferId).Distinct().ToList();
+        var offers = await db.Offers.Where(o => offerIds.Contains(o.Id)).Select(o => o.Id).ToListAsync(cancellationToken);
+        foreach (var anchor in anchors)
+        {
+            var kind = anchor.Kind ?? PlacementKinds.AnchorDuring;
+            if (kind is not (PlacementKinds.AnchorDuring or PlacementKinds.AnchorBetween))
+            {
+                return ApiResults.BadRequest($"Tipo de âncora desconhecido: {kind}.");
+            }
+
+            if (!offers.Contains(anchor.OfferId))
+            {
+                return ApiResults.BadRequest($"Oferta {anchor.OfferId} não existe.");
+            }
+
+            if (!items.TryGetValue(anchor.ItemId, out var item))
+            {
+                return ApiResults.BadRequest($"Item {anchor.ItemId} não pertence a esta playlist.");
+            }
+
+            var maxOffset = Math.Max(0, item.DurationMs - (long)ManifestGenerator.AnchorEndMargin.TotalMilliseconds);
+            if (kind == PlacementKinds.AnchorDuring && (anchor.OffsetMs is null || anchor.OffsetMs < 0 || anchor.OffsetMs > maxOffset))
+            {
+                return ApiResults.BadRequest(
+                    $"Em \"{item.Title}\" a oferta pode entrar de 0:00 até {TimeSpan.FromMilliseconds(maxOffset):m\\:ss} (5 s antes do fim).");
+            }
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var removed = await RemoveAnchorsAsync(db, id, null, cancellationToken);
+        foreach (var anchor in anchors)
+        {
+            var kind = anchor.Kind ?? PlacementKinds.AnchorDuring;
+            db.OfferPlacements.Add(new OfferPlacement
+            {
+                OfferId = anchor.OfferId,
+                Kind = kind,
+                Mode = kind == PlacementKinds.AnchorDuring ? SpotMode.During : SpotMode.Between,
+                PlaylistId = id,
+                PlaylistItemId = anchor.ItemId,
+                OffsetMs = kind == PlacementKinds.AnchorDuring ? anchor.OffsetMs : null,
+            });
+        }
+
+        db.Audit(user, time, "playlists.anchors", id.ToString(System.Globalization.CultureInfo.InvariantCulture), new { count = anchors.Count, removed });
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        await publisher.RegenerateAllAsync(cancellationToken);
+        panel.Changed("playlists", "offers", $"playlist:{id}");
+        return Results.Ok(await DetailAsync(db, id, cancellationToken));
+    }
+
     private static async Task<int> RemoveAnchorsAsync(HubDb db, int playlistId, IReadOnlyList<string>? itemIds, CancellationToken cancellationToken)
     {
         var anchors = db.OfferPlacements.Where(p => p.PlaylistId == playlistId
@@ -204,7 +279,8 @@ public static class PlaylistsEndpoints
             .OrderBy(x => x.Position).Select(x => x.Item)
             .ToListAsync(cancellationToken);
         var usage = await UsageAsync(db, id, cancellationToken);
-        return new PlaylistDetail(playlist.Id, playlist.Name, playlist.Shuffle, items, usage[id].ToList());
+        var anchors = await OffersEndpoints.AnchorsAsync(db, id, null, cancellationToken);
+        return new PlaylistDetail(playlist.Id, playlist.Name, playlist.Shuffle, items, usage[id].ToList(), anchors);
     }
 
     /// <summary>Lojas e horários que usam cada playlist (seção 7.2, Playlists).</summary>
@@ -229,6 +305,9 @@ public static class PlaylistsEndpoints
 
     public sealed record ItemInput(string? Id, string Hash);
 
+    /// <summary>Âncora de oferta num item; <c>kind</c> ausente = <c>anchorDuring</c> (o painel só cria essa, D24).</summary>
+    public sealed record AnchorInput(int OfferId, string ItemId, long? OffsetMs, string? Kind);
+
     public sealed record PlaylistItemDetail(string Id, string Hash, string Title, string? Artist, long DurationMs);
 
     /// <summary>Uma janela da agenda de uma loja que toca esta playlist.</summary>
@@ -236,5 +315,11 @@ public static class PlaylistsEndpoints
 
     public sealed record PlaylistSummary(int Id, string Name, bool Shuffle, int ItemCount, long DurationMs, DateTimeOffset UpdatedAt, IReadOnlyList<PlaylistUsage> Usage);
 
-    public sealed record PlaylistDetail(int Id, string Name, bool Shuffle, IReadOnlyList<PlaylistItemDetail> Items, IReadOnlyList<PlaylistUsage> Usage);
+    public sealed record PlaylistDetail(
+        int Id,
+        string Name,
+        bool Shuffle,
+        IReadOnlyList<PlaylistItemDetail> Items,
+        IReadOnlyList<PlaylistUsage> Usage,
+        IReadOnlyList<OffersEndpoints.OfferAnchor> Anchors);
 }

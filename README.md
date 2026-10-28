@@ -15,7 +15,11 @@ documento; qualquer desvio é registrado na seção 18 antes de ser implementado
 | 2 — Agente offline completo | código pronto, aguardando teste no PC piloto ([roteiro](docs/etapa-2-agente-offline.md)) |
 | 3 — Hub e sincronização | código pronto, aguardando teste no escritório e no PC piloto ([roteiro](docs/etapa-3-hub-sincronizacao.md)) |
 | 4 — Painel | código pronto, aguardando teste no escritório ([roteiro](docs/etapa-4-painel.md)) |
-| 5 a 8 | não iniciadas |
+| 5 — Ofertas | código pronto, aguardando teste ([roteiro](docs/etapa-5-ofertas.md)) |
+| 6 — Segurança, instalador e atualização | código pronto, aguardando teste ([roteiro](docs/etapa-6-seguranca.md)) |
+| 7 e 8 — Piloto e demais lojas | não iniciadas |
+
+Operação: [checklist de instalação de uma loja](docs/checklist-instalacao-loja.md) e [runbook](docs/runbook.md).
 
 ## Estrutura
 
@@ -26,16 +30,18 @@ src/
   MarumbiSom.Agent/           serviço Windows da loja: guardião Bluetooth, player (agenda, mixagem, ofertas),
                               cache, estado salvo, sincronização com o Hub e a página Configurar Som (127.0.0.1:47800)
   MarumbiSom.Hub/             serviço Windows do escritório (127.0.0.1:5080): SQLite, ingestão com ffmpeg,
-                              playlists, lojas, manifestos, API do painel e das lojas, WebSocket; serve o painel
+                              playlists, ofertas, lojas, manifestos, versões do agente, API do painel e das lojas,
+                              WebSocket; serve o painel
+  MarumbiSom.Updater/         atualizador do agente: troca os arquivos e volta para a versão anterior se a nova não subir
+  MarumbiSom.Release/         ferramenta do administrador: chave Ed25519, pacote assinado e conferência
 web/panel/                    painel React (Vite, TanStack Query, Tailwind); tipos gerados do OpenAPI do Hub
 tests/                        xUnit (os testes do agente sobem um Hub de verdade em memória)
 scripts/                      instalação do agente e do Hub, hardening do PC, download do mpv/ffmpeg com SHA-256,
-                              hub-teste.ps1 (operações de teste pela API; o painel faz o mesmo pelo navegador)
+                              chave e assinatura das versões do agente, hub-teste.ps1 (operações de teste pela API)
+installer/agent.iss           instalador do agente (Inno Setup)
 infra/tailscale-acl.hujson    política de acesso do Tailscale (seção 5.2)
-docs/                         roteiros e procedimentos
+docs/                         roteiros das etapas, checklist de instalação e runbook
 ```
-
-O Updater entra na Etapa 6.
 
 ## Desenvolvimento
 
@@ -60,16 +66,24 @@ agente simulado). Detalhes em [docs/etapa-4-painel.md](docs/etapa-4-painel.md).
 Os projetos Windows compilam em qualquer sistema (`EnableWindowsTargeting`); o interop real só roda no Windows.
 O modo `--simulate` troca Bluetooth, endpoints de áudio e mpv por implementações falsas.
 
-Publicar para os PCs (o CI faz isso e anexa os pacotes `MarumbiSom.Agent-win-x64` e `MarumbiSom.Hub-win-x64`):
+Publicar para os PCs (o CI faz isso e anexa os pacotes `MarumbiSom.Agent-win-x64`, `MarumbiSom.Agent-Setup`,
+`MarumbiSom.Hub-win-x64` e `MarumbiSom.Release-win-x64`, todos na versão `0.6.<número da execução>`):
 
 ```powershell
 dotnet publish src\MarumbiSom.Agent -c Release -r win-x64 --self-contained -o publish\agent
+dotnet publish src\MarumbiSom.Updater -c Release -r win-x64 -p:DebugType=none -o publish\agent
 .\scripts\download-tools.ps1 -Destination publish\agent\tools
 dotnet publish src\MarumbiSom.Hub -c Release -r win-x64 --self-contained -o publish\hub
 .\scripts\download-tools.ps1 -For hub -Destination publish\hub\tools
 cd web\panel; npm ci; npm run build; cd ..\..
 Copy-Item -Recurse web\panel\dist publish\hub\wwwroot
 ```
+
+Ao juntar no `main` (ou em **Run workflow** com **Publicar versão do agente**), o CI assina o pacote do agente com a
+chave do secret `MARUMBI_SIGNING_KEY` e publica a Release `agente-v0.6.N`; o Hub baixa sozinho e o administrador
+atualiza as lojas pelo painel (D29). Pacotes de teste ainda são assinados no PC do administrador
+(`sign-release.ps1`). A chave privada nunca entra no repositório. Os ajustes opcionais estão em
+`appsettings.example.json` do Hub e do agente.
 
 ## Regras que o código não pode quebrar
 

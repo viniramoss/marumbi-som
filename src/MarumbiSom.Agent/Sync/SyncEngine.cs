@@ -398,46 +398,8 @@ public sealed class SyncEngine : BackgroundService
     }
 
     /// <summary>Copia respeitando o limite de banda; sem receber nada por 60 s, desiste (a retomada continua depois).</summary>
-    private async Task CopyThrottledAsync(Stream source, Stream destination, CancellationToken cancellationToken)
-    {
-        var bytesPerSecond = _options.Value.BandwidthKbps * 1000.0 / 8;
-        var buffer = new byte[64 * 1024];
-        var started = _time.GetTimestamp();
-        long total = 0;
-        while (true)
-        {
-            int read;
-            using (var stall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
-            {
-                stall.CancelAfter(StallTimeout);
-                try
-                {
-                    read = await source.ReadAsync(buffer, stall.Token);
-                }
-                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-                {
-                    throw new TimeoutException($"Download parado há {StallTimeout.TotalSeconds:0} s.");
-                }
-            }
-
-            if (read == 0)
-            {
-                return;
-            }
-
-            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-            total += read;
-            if (bytesPerSecond > 0)
-            {
-                var expected = TimeSpan.FromSeconds(total / bytesPerSecond);
-                var elapsed = _time.GetElapsedTime(started);
-                if (expected > elapsed)
-                {
-                    await Task.Delay(expected - elapsed, _time, cancellationToken);
-                }
-            }
-        }
-    }
+    private Task CopyThrottledAsync(Stream source, Stream destination, CancellationToken cancellationToken) =>
+        ThrottledCopy.CopyAsync(source, destination, _options.Value.BandwidthKbps * 1000.0 / 8, StallTimeout, _time, null, cancellationToken);
 
     private static void EnsureSuccess(HttpResponseMessage response, string what)
     {

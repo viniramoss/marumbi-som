@@ -1,12 +1,17 @@
 import { playlistDetail } from '../../test/fixtures';
 import {
   addTracks,
+  anchorsChanged,
   draftFrom,
   isDirty,
   moveItem,
+  putAnchor,
+  removeAnchor,
   removeItem,
+  setShuffle,
   settingsChanged,
   startTimes,
+  toAnchorsInput,
   toItemsInput,
 } from './playlistDraft';
 
@@ -42,5 +47,66 @@ describe('playlistDraft', () => {
     const draft = { ...draftFrom(saved), name: '  Manhã  ' };
     expect(settingsChanged(draft, saved)).toBe(false);
     expect(settingsChanged({ ...draft, shuffle: true }, saved)).toBe(true);
+  });
+
+  describe('ofertas presas (âncoras)', () => {
+    const anchored = playlistDetail({
+      anchors: [
+        {
+          id: 7,
+          offerId: 3,
+          offerName: 'Picanha',
+          playlistId: 1,
+          playlistName: 'Manhã',
+          itemId: 'item-2',
+          position: 2,
+          trackTitle: 'Fio de Cabelo',
+          kind: 'anchorDuring',
+          offsetMs: 80_000,
+        },
+      ],
+    });
+
+    it('reordenar não mexe na âncora; ajustar o tempo conta como mudança', () => {
+      const draft = moveItem(draftFrom(anchored), 'item-2', 'item-1');
+      expect(anchorsChanged(draft, anchored)).toBe(false);
+      const moved = putAnchor(draft, { ...draft.anchors[0]!, offsetMs: 90_000 });
+      expect(anchorsChanged(moved, anchored)).toBe(true);
+      expect(isDirty(removeAnchor(draftFrom(anchored), 'ancora-7'), anchored)).toBe(true);
+    });
+
+    it('o tempo fica entre 0 e 5 s antes do fim da música', () => {
+      const draft = putAnchor(draftFrom(saved), {
+        offerId: 3,
+        offerName: 'Picanha',
+        itemKey: 'item-1',
+        offsetMs: 999_000,
+      });
+      expect(draft.anchors[0]).toMatchObject({ itemKey: 'item-1', offsetMs: 235_000, kind: 'anchorDuring' });
+      expect(putAnchor(draft, { ...draft.anchors[0]!, offsetMs: -10 }).anchors[0]!.offsetMs).toBe(0);
+    });
+
+    it('tirar a música solta a oferta presa a ela', () => {
+      expect(removeItem(draftFrom(anchored), 'item-2').anchors).toEqual([]);
+      expect(removeItem(draftFrom(anchored), 'item-1').anchors).toHaveLength(1);
+    });
+
+    it('ligar o aleatório solta todas as ofertas presas', () => {
+      expect(setShuffle(draftFrom(anchored), true).anchors).toEqual([]);
+    });
+
+    it('âncora em música nova usa o id que o Hub deu ao salvar os itens', () => {
+      let draft = addTracks(draftFrom(saved), [{ hash: 'h3', title: 'Nova', artist: null, durationMs: 100_000 }]);
+      const newKey = draft.items[2]!.key;
+      draft = putAnchor(draft, { offerId: 3, offerName: 'Picanha', itemKey: newKey, offsetMs: 10_000 });
+      expect(anchorsChanged(draft, saved)).toBe(true);
+      const savedItems = [
+        ...saved.items,
+        { id: 'item-3', hash: 'h3', title: 'Nova', artist: null, durationMs: 100_000 },
+      ];
+      expect(toAnchorsInput(draft, savedItems)).toEqual([
+        { offerId: 3, itemId: 'item-3', offsetMs: 10_000, kind: 'anchorDuring' },
+      ]);
+    });
   });
 });

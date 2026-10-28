@@ -5,8 +5,10 @@ using System.Threading.Channels;
 using MarumbiSom.Agent.Bluetooth;
 using MarumbiSom.Agent.Playback;
 using MarumbiSom.Agent.Storage;
+using MarumbiSom.Agent.Updates;
 using MarumbiSom.Contracts.Json;
 using MarumbiSom.Contracts.Messages;
+using MarumbiSom.Contracts.Releases;
 
 namespace MarumbiSom.Agent.Sync;
 
@@ -32,6 +34,7 @@ public sealed class HubClient : BackgroundService
     private readonly IBluetoothConnection _bluetooth;
     private readonly AgentDataPaths _paths;
     private readonly AgentRestart _restart;
+    private readonly AgentUpdater _updater;
     private readonly TimeProvider _time;
     private readonly ILogger<HubClient> _logger;
     private readonly Channel<AgentMessage> _outbox = Channel.CreateBounded<AgentMessage>(
@@ -41,7 +44,7 @@ public sealed class HubClient : BackgroundService
 
     public HubClient(
         HubLink link, IHubTransport transport, ManifestStore manifests, SyncEngine sync, PlayerEngine player, IBluetoothConnection bluetooth,
-        IPlaybackEvents events, AgentDataPaths paths, AgentRestart restart, TimeProvider time, ILogger<HubClient> logger)
+        IPlaybackEvents events, AgentDataPaths paths, AgentRestart restart, AgentUpdater updater, TimeProvider time, ILogger<HubClient> logger)
     {
         ArgumentNullException.ThrowIfNull(events);
         _link = link;
@@ -52,11 +55,13 @@ public sealed class HubClient : BackgroundService
         _bluetooth = bluetooth;
         _paths = paths;
         _restart = restart;
+        _updater = updater;
         _time = time;
         _logger = logger;
         _startedAt = time.GetTimestamp();
         events.Published += (_, message) => Enqueue(message);
         sync.Applied += (_, version) => Enqueue(new ManifestAppliedMessage(version));
+        updater.Reported += (_, message) => Enqueue(message);
         link.Changed += (_, _) => Interlocked.Exchange(ref _linkChanged, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
     }
 
@@ -151,6 +156,8 @@ public sealed class HubClient : BackgroundService
         using var session = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         var active = _manifests.Active;
         await SendAsync(socket, new HelloMessage(hub.StoreId, HubLink.AgentVersion, active?.StoreId == hub.StoreId ? active.Version : 0), session.Token);
+        // Subiu, achou a configuração e falou com o Hub: é o que o Updater espera para não voltar a versão (D27 f).
+        _updater.Confirm();
         await SendAsync(socket, BuildStatus(), session.Token);
         var tasks = new[]
         {
@@ -300,7 +307,9 @@ public sealed class HubClient : BackgroundService
                     _restart.Request();
                     return;
                 case CommandTypes.UpdateAgent:
-                    result = PlayerCommandResult.Fail("Atualização remota ainda não disponível nesta versão.");
+                    // Responde na hora; o download segue em segundo plano e o andamento vai no status (D27 e).
+                    var refused = _updater.TryStart(command.Args?.Deserialize<AgentReleaseInfo>(ContractJson.Options));
+                    result = refused is null ? PlayerCommandResult.Success : PlayerCommandResult.Fail(refused);
                     break;
                 default:
                     var playerCommand = PlayerCommand.FromHub(command);
@@ -323,7 +332,7 @@ public sealed class HubClient : BackgroundService
         {
             result = PlayerCommandResult.Fail("O player não respondeu a tempo.");
         }
-        catch (Exception ex) when (ex is FormatException or InvalidOperationException or ArgumentException)
+        catch (Exception ex) when (ex is FormatException or InvalidOperationException or ArgumentException or JsonException)
         {
             result = PlayerCommandResult.Fail(ex.Message);
         }
@@ -348,11 +357,16 @@ public sealed class HubClient : BackgroundService
             UptimeS = (long)_time.GetElapsedTime(_startedAt).TotalSeconds,
             PlaylistId = snapshot.WindowPlaylistId,
             Queue = snapshot.UpcomingHashes,
+            NextSpot = snapshot.NextSpot,
+            Update = _updater.Progress,
         };
     }
 
     private static string StatusKey(StatusMessage status) =>
-        $"{status.Player}|{status.NowPlaying}|{status.Volume}|{status.Bluetooth}|{status.PendingVersion}|{status.SyncProgress?.Done}/{status.SyncProgress?.Total}|{status.PlaylistId}|{string.Join(',', status.Queue ?? [])}";
+        $"{status.Player}|{status.NowPlaying}|{status.Volume}|{status.Bluetooth}|{status.PendingVersion}|{status.SyncProgress?.Done}/{status.SyncProgress?.Total}|{status.PlaylistId}|{string.Join(',', status.Queue ?? [])}"
+        // A previsão anda alguns milissegundos a cada ciclo; só a troca de oferta ou de minuto conta como mudança.
+        + $"|{status.NextSpot?.OfferId}@{status.NextSpot?.At.ToUniversalTime():yyyyMMddHHmm}"
+        + $"|{status.Update?.Stage}:{status.Update?.DoneBytes}";
 
     private long DiskFreeMb()
     {

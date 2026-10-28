@@ -31,6 +31,10 @@ export function storeSummary(overrides: Partial<StoreSummary> = {}): StoreSummar
     playlistName: 'Manhã',
     open: true,
     hasSchedule: true,
+    minOfferGapS: 300,
+    nextOffer: null,
+    lastOffer: null,
+    update: null,
     alerts: [],
     ...overrides,
   };
@@ -73,6 +77,7 @@ export function playlistDetail(overrides: Partial<PlaylistDetail> = {}): Playlis
       { id: 'item-2', hash: 'h2', title: 'Fio de Cabelo', artist: null, durationMs: 200_000 },
     ],
     usage: [],
+    anchors: [],
     ...overrides,
   };
 }

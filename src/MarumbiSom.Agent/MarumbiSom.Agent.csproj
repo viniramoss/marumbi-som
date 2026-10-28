@@ -17,6 +17,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="LocalConfig\wwwroot\*" LogicalName="LocalConfig.%(Filename)%(Extension)" />
+    <!-- Chave pública das atualizações, ao lado do exe (D27 c). -->
+    <None Include="release-public-key.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

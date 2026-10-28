@@ -23,6 +23,7 @@ appsettings.Local.json
 *.key
 *.pem
 signing/
+chave-assinatura*.txt
 secrets/
 *.env
 .env*
