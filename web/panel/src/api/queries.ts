@@ -35,6 +35,7 @@ export const keys = {
   storeOffers: (id: number) => ['storeOffers', id] as const,
   releases: ['releases'] as const,
   github: ['github'] as const,
+  hubUpdate: ['hubUpdate'] as const,
 };
 
 export function useSession() {
@@ -396,6 +397,43 @@ export function useSaveGitHubToken() {
   return useMutation({
     mutationFn: (token: string | null) => call(api.PUT('/api/releases/github/token', { body: { token } })),
     onSuccess: (status) => client.setQueryData(keys.github, status),
+  });
+}
+
+/**
+ * Atualização do Hub (D32). Enquanto há um pedido, recarrega a cada 5 s: o atualizador do Windows não avisa o painel, e o
+ * Hub fica fora do ar enquanto troca de versão (o cache guarda o último estado conhecido).
+ */
+export function useHubUpdate() {
+  return useQuery({
+    queryKey: keys.hubUpdate,
+    queryFn: () => call(api.GET('/api/hub/update')),
+    refetchInterval: (query) => (query.state.data?.pending ? 5000 : false),
+    retry: false,
+  });
+}
+
+export function useRequestHubUpdate() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => call(api.POST('/api/hub/update')),
+    onSuccess: (status) => client.setQueryData(keys.hubUpdate, status),
+  });
+}
+
+export function useCancelHubUpdate() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => call(api.DELETE('/api/hub/update')),
+    onSuccess: (status) => client.setQueryData(keys.hubUpdate, status),
+  });
+}
+
+export function useSetHubAutoUpdate() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => call(api.PUT('/api/hub/update/auto', { body: { enabled } })),
+    onSuccess: (status) => client.setQueryData(keys.hubUpdate, status),
   });
 }
 

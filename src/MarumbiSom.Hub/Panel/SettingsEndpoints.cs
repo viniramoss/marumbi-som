@@ -1,4 +1,4 @@
-using System.Reflection;
+using MarumbiSom.Hub.Updates;
 
 namespace MarumbiSom.Hub.Panel;
 
@@ -16,7 +16,7 @@ public static class SettingsEndpoints
             : [];
         var last = backups.FirstOrDefault();
         return new SettingsInfo(
-            HubVersion(),
+            HubUpdates.CurrentVersion,
             paths.Data,
             DiskFreeMb(paths.Data),
             new BackupInfo(
@@ -28,13 +28,6 @@ public static class SettingsEndpoints
                 paths.Backups));
     }
 
-    private static string HubVersion()
-    {
-        var assembly = typeof(SettingsEndpoints).Assembly;
-        var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? assembly.GetName().Version?.ToString() ?? "?";
-        // O SDK acrescenta "+<commit>"; o painel mostra só o número.
-        return version.Split('+')[0];
-    }
 
     private static long? DiskFreeMb(string path)
     {

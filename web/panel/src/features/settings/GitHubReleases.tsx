@@ -8,7 +8,8 @@ import { formatBytes, formatDateTime } from '../../lib/format';
 
 /**
  * Versões publicadas pelo GitHub Actions (D29): o Hub procura sozinho de tempos em tempos e baixa a mais nova. Aqui dá
- * para procurar na hora, acompanhar o download e cadastrar o token do repositório (privado).
+ * para procurar na hora e acompanhar o download. O repositório é público (D33): o token só é preciso se ele voltar a
+ * ser privado.
  */
 export function GitHubReleases() {
   const status = useGitHubStatus();
@@ -75,7 +76,7 @@ export function GitHubReleases() {
         )
       ) : null}
 
-      {editing || !github.tokenConfigured ? (
+      {editing ? (
         <form
           className="flex flex-wrap items-end gap-2"
           onSubmit={(e) => {
@@ -86,7 +87,7 @@ export function GitHubReleases() {
           <div className="min-w-64 flex-1">
             <Field
               label="Token do GitHub"
-              hint="O repositório é privado: o Hub usa este token só para ler as versões. Ele fica guardado cifrado no Hub."
+              hint="Opcional: só é preciso se o repositório estiver privado. O Hub usa o token só para ler as versões e o guarda cifrado."
             >
               <Input
                 type="password"
@@ -102,19 +103,24 @@ export function GitHubReleases() {
             <Button type="submit" variant="primary" busy={saveToken.isPending} disabled={!token.trim()}>
               Salvar token
             </Button>
-            {github.tokenConfigured && (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setEditing(false);
-                  setToken('');
-                }}
-              >
-                Cancelar
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setEditing(false);
+                setToken('');
+              }}
+            >
+              Cancelar
+            </Button>
           </div>
         </form>
+      ) : !github.tokenConfigured ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-stone-500">
+          <span>Sem token: o repositório é público.</span>
+          <Button variant="ghost" icon={<KeyRound className="size-4" />} onClick={() => setEditing(true)}>
+            Cadastrar token
+          </Button>
+        </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <Badge tone="green" dot>

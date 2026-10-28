@@ -4,10 +4,12 @@ using System.ServiceProcess;
 
 namespace MarumbiSom.Updater;
 
-/// <summary>O serviço MarumbiSom.Agent pelo SCM do Windows.</summary>
-public sealed class WindowsServiceControl(Action<string> log) : IServiceControl
+/// <summary>O serviço MarumbiSom.Agent (ou MarumbiSom.Hub) pelo SCM do Windows.</summary>
+/// <param name="processNames">Processos que podem prender os arquivos da pasta do programa.</param>
+public sealed class WindowsServiceControl(Action<string> log, IReadOnlyList<string> processNames) : IServiceControl
 {
-    private static readonly string[] ProgramProcessNames = ["MarumbiSom.Agent", "mpv"];
+    public static readonly IReadOnlyList<string> AgentProcesses = ["MarumbiSom.Agent", "mpv"];
+    public static readonly IReadOnlyList<string> HubProcesses = ["MarumbiSom.Hub", "ffmpeg", "ffprobe"];
     private static readonly TimeSpan ExitGrace = TimeSpan.FromSeconds(15);
 
     public async Task StopAsync(string serviceName, TimeSpan timeout, CancellationToken cancellationToken)
@@ -46,7 +48,7 @@ public sealed class WindowsServiceControl(Action<string> log) : IServiceControl
     public void KillLeftovers(string programDirectory)
     {
         // O Windows marca o serviço como parado antes de o processo terminar de sair: dá um tempo para ele (e os mpv
-        // que ele fecha) saírem sozinhos antes de encerrar à força.
+        // ou ffmpeg que ele fecha) saírem sozinhos antes de encerrar à força.
         var leftovers = ProgramProcesses(programDirectory);
         var deadline = DateTime.UtcNow + ExitGrace;
         foreach (var process in leftovers)
@@ -74,8 +76,8 @@ public sealed class WindowsServiceControl(Action<string> log) : IServiceControl
                     }
 
                     log($"Encerrando {process.ProcessName} (PID {process.Id}) que ainda rodava da pasta do programa");
-                    // Só o processo: o próprio Updater é filho do agente e morreria junto com a árvore. Os mpv entram
-                    // na lista pelo nome.
+                    // Só o processo: o próprio Updater é filho do agente e morreria junto com a árvore. Os mpv (ou
+                    // ffmpeg) entram na lista pelo nome.
                     process.Kill(entireProcessTree: false);
                     process.WaitForExit(TimeSpan.FromSeconds(10));
                 }
@@ -91,7 +93,7 @@ public sealed class WindowsServiceControl(Action<string> log) : IServiceControl
     {
         var root = Path.GetFullPath(programDirectory).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var found = new List<Process>();
-        foreach (var process in ProgramProcessNames.SelectMany(Process.GetProcessesByName))
+        foreach (var process in processNames.SelectMany(Process.GetProcessesByName))
         {
             try
             {

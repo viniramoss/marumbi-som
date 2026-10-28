@@ -52,6 +52,13 @@ export const formatTime = (iso: string) => time.format(new Date(iso));
 export const formatTimeSeconds = (iso: string) => timeSeconds.format(new Date(iso));
 export const formatWeekdayDate = (iso: string) => weekdayDate.format(new Date(iso));
 
+/** "03:00" → "04:00": fim da janela de 1 hora da atualização do Hub de madrugada (HubUpdates.AutoWindow). */
+export function addOneHour(time: string): string {
+  const [hours, minutes] = time.split(':').map(Number);
+  if (hours === undefined || minutes === undefined || Number.isNaN(hours) || Number.isNaN(minutes)) return time;
+  return `${String((hours + 1) % 24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
 /** 1,5 GB, 820 MB. */
 export function formatBytes(bytes: number | null | undefined): string {
   if (bytes === null || bytes === undefined) return '–';
