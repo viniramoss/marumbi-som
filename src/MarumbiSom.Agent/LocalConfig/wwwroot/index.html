@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Configurar Som</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header>
+    <h1>Configurar Som</h1>
+    <p class="sub">Casa de Carnes Marumbi · somente neste computador</p>
+  </header>
+
+  <main>
+    <section id="login" class="card" hidden>
+      <h2>Entrar</h2>
+      <form id="login-form">
+        <label for="password">Senha da configuração local</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+        <button type="submit">Entrar</button>
+      </form>
+      <p id="login-msg" class="msg" role="alert"></p>
+    </section>
+
+    <div id="app" hidden>
+      <section class="card">
+        <div class="row">
+          <h2>Status</h2>
+          <button id="logout" class="link">Sair</button>
+        </div>
+        <dl id="status" class="grid"></dl>
+      </section>
+
+      <section class="card">
+        <h2>Caixa Bluetooth</h2>
+        <p class="hint">A caixa precisa estar pareada em Configurações do Windows → Bluetooth e dispositivos.</p>
+        <ul id="devices" class="devices"></ul>
+        <div class="row">
+          <button id="save-speaker">Usar a caixa selecionada</button>
+          <button id="test-sound" class="secondary">Tocar som de teste</button>
+        </div>
+        <p id="speaker-msg" class="msg" role="status"></p>
+      </section>
+
+      <section class="card">
+        <div class="row">
+          <h2>Últimos registros</h2>
+          <button id="refresh-logs" class="secondary">Atualizar</button>
+        </div>
+        <pre id="logs">…</pre>
+      </section>
+
+      <section class="card">
+        <h2>Trocar a senha</h2>
+        <form id="password-form">
+          <label for="current">Senha atual</label>
+          <input id="current" type="password" autocomplete="current-password" required>
+          <label for="new">Nova senha (mínimo 8 caracteres)</label>
+          <input id="new" type="password" autocomplete="new-password" minlength="8" required>
+          <label for="confirm">Repita a nova senha</label>
+          <input id="confirm" type="password" autocomplete="new-password" minlength="8" required>
+          <button type="submit">Trocar senha</button>
+        </form>
+        <p id="password-msg" class="msg" role="status"></p>
+      </section>
+    </div>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

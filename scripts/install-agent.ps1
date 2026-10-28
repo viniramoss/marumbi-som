@@ -8,13 +8,19 @@
     - Cria C:\ProgramData\MarumbiSom com acesso somente para SYSTEM e Administradores.
     - Registra o serviço como LocalSystem, início Automático (Atrasado), recuperação 10 s / 10 s / 60 s,
       zerando a contagem após 1 dia, e com permissões que impedem usuários padrão de pará-lo.
+    - Na primeira instalação pede a senha da configuração local (seção 8.4) e cria o atalho
+      "Configurar Som" na área de trabalho do administrador que está instalando.
     - Idempotente: pode ser executado de novo para atualizar.
 
 .PARAMETER SourceDir
     Pasta com o resultado do "dotnet publish" (deve conter MarumbiSom.Agent.exe e tools\mpv.exe).
 
 .PARAMETER SpeakerAddress
-    Endereço Bluetooth (MAC) da caixa, ex.: AA:BB:CC:DD:EE:FF. Veja com "MarumbiSom.Agent.exe --list-devices".
+    Opcional. Endereço Bluetooth (MAC) da caixa, ex.: AA:BB:CC:DD:EE:FF. Também dá para escolher a caixa
+    depois, na página "Configurar Som".
+
+.PARAMETER ResetLocalPassword
+    Pede uma nova senha da configuração local mesmo que já exista uma (ex.: senha esquecida).
 
 .EXAMPLE
     .\install-agent.ps1 -SourceDir ..\publish\agent -SpeakerAddress AA:BB:CC:DD:EE:FF
@@ -22,7 +28,8 @@
 [CmdletBinding()]
 param(
     [string] $SourceDir = (Join-Path $PSScriptRoot '..\publish\agent'),
-    [string] $SpeakerAddress
+    [string] $SpeakerAddress,
+    [switch] $ResetLocalPassword
 )
 
 $ErrorActionPreference = 'Stop'
@@ -47,23 +54,37 @@ if ($SpeakerAddress -and $SpeakerAddress -notmatch '^([0-9A-Fa-f]{2}[:-]){5}[0-9
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existing -and $existing.Status -ne 'Stopped') {
     Write-Step "Parando o serviço $ServiceName"
+    $servicePid = (Get-CimInstance Win32_Service -Filter "Name='$ServiceName'").ProcessId
     Stop-Service -Name $ServiceName -Force
-    (Get-Service $ServiceName).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
+    (Get-Service $ServiceName).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60))
+    # O Windows marca "Parado" antes de o processo terminar de sair; até lá os arquivos seguem em uso.
+    if ($servicePid) { Wait-Process -Id $servicePid -Timeout 30 -ErrorAction SilentlyContinue }
 }
+# mpv que tenha sobrado da pasta do programa também segura os arquivos.
+Get-Process -Name mpv -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -like (Join-Path $InstallDir '*') } |
+    Stop-Process -Force -ErrorAction SilentlyContinue
 
 Write-Step "Copiando binários para $InstallDir"
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 # /E copia subpastas; não usa /MIR para não apagar tools\ instalado separadamente.
-robocopy $SourceDir $InstallDir /E /NFL /NDL /NJH /NJS /NP /R:2 /W:2 | Out-Null
+robocopy $SourceDir $InstallDir /E /NFL /NDL /NJH /NJS /NP /R:10 /W:3 | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy falhou com código $LASTEXITCODE" }
 
 Write-Step "Preparando $DataDir (somente SYSTEM e Administradores)"
-foreach ($dir in @($DataDir, (Join-Path $DataDir 'logs'), (Join-Path $DataDir 'poc\musicas'))) {
+foreach ($dir in @($DataDir, (Join-Path $DataDir 'logs'), (Join-Path $DataDir 'manifests'), (Join-Path $DataDir 'cache'))) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 }
+# Arquivos gravados pelo serviço têm o SYSTEM como dono; os Administradores assumem para poder acertar as permissões.
+takeown /F $DataDir /A /R | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "takeown falhou com código $LASTEXITCODE" }
+# Só a pasta recebe a lista protegida; tudo dentro dela volta a herdar dela. Repetir /inheritance:r em cada arquivo
+# (com /T) deixava os arquivos que já existiam numa atualização (ex.: config.json) sem permissão nenhuma.
 # SIDs em vez de nomes, para funcionar no Windows em português: S-1-5-18 = SYSTEM, S-1-5-32-544 = Administradores.
-icacls $DataDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' /T /C /Q | Out-Null
+icacls $DataDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' /C /Q | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "icacls falhou com código $LASTEXITCODE" }
+icacls (Join-Path $DataDir '*') /reset /T /C /Q | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "icacls /reset falhou com código $LASTEXITCODE" }
 
 $configPath = Join-Path $DataDir 'config.json'
 if (Test-Path $configPath) {
@@ -81,6 +102,44 @@ $tmp = "$configPath.tmp"
 $config | ConvertTo-Json -Depth 10 | Set-Content -Path $tmp -Encoding UTF8
 Move-Item -Path $tmp -Destination $configPath -Force
 Write-Step "Configuração em $configPath"
+
+$hasPassword = $config.PSObject.Properties['LocalConfig'] -and $config.LocalConfig.PSObject.Properties['PasswordHash'] -and $config.LocalConfig.PasswordHash
+if (-not $hasPassword -or $ResetLocalPassword) {
+    Write-Step "Senha da página Configurar Som (mínimo 8 caracteres; guarde no gerenciador de senhas)"
+    while ($true) {
+        $first = Read-Host -AsSecureString 'Nova senha'
+        $second = Read-Host -AsSecureString 'Repita a senha'
+        $plain1 = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($first))
+        $plain2 = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($second))
+        if ($plain1 -ne $plain2) {
+            Write-Warning 'As senhas não são iguais. Tente de novo.'
+            continue
+        }
+        if ($plain1.Length -lt 8) {
+            Write-Warning 'A senha precisa ter pelo menos 8 caracteres.'
+            continue
+        }
+        # O agente grava só o hash PBKDF2 no config.json; a senha passa pelo stdin para não aparecer na linha de comando.
+        $previousEncoding = $OutputEncoding
+        $OutputEncoding = New-Object System.Text.UTF8Encoding $false
+        try {
+            $plain1 | & $Exe --set-local-password
+        } finally {
+            $OutputEncoding = $previousEncoding
+            $plain1 = $null
+            $plain2 = $null
+        }
+        if ($LASTEXITCODE -ne 0) { throw "Não foi possível gravar a senha (código $LASTEXITCODE)." }
+        break
+    }
+}
+
+$shortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Configurar Som.url'
+if (-not (Test-Path $shortcut)) {
+    Write-Step "Criando o atalho $shortcut"
+    # Só na área de trabalho de quem instala (administrador), nunca na pública: o funcionário não deve ver (seção 8.4).
+    Set-Content -Path $shortcut -Encoding ASCII -Value "[InternetShortcut]`r`nURL=http://127.0.0.1:47800/`r`n"
+}
 
 if (-not $existing) {
     Write-Step "Registrando o serviço $ServiceName"
@@ -103,6 +162,7 @@ Start-Service -Name $ServiceName
 (Get-Service $ServiceName).WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
 Write-Host ""
 Write-Host "Instalado. Logs em $DataDir\logs" -ForegroundColor Green
+Write-Host "Configuração local: atalho 'Configurar Som' na área de trabalho (http://127.0.0.1:47800/)."
 if (-not $config.Bluetooth.SpeakerAddress) {
-    Write-Warning "Caixa ainda não configurada. Rode '$Exe --list-devices' e depois este script com -SpeakerAddress."
+    Write-Warning "Caixa ainda não escolhida. Abra 'Configurar Som' e escolha a caixa pareada."
 }

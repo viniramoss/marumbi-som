@@ -33,31 +33,13 @@ public sealed class PlayerOptions
     /// <summary>Caminho do mpv.exe. Relativo = relativo à pasta do agente.</summary>
     public string MpvPath { get; set; } = Path.Combine("tools", "mpv.exe");
 
-    /// <summary>Volume da loja (0–100), aplicado no mpv. O endpoint da caixa fica fixo em 100%.</summary>
-    public int Volume { get; set; } = 70;
+    public string MusicAPipeName { get; set; } = "marumbisom-mpv-a";
 
-    public string MusicPipeName { get; set; } = "marumbisom-mpv-a";
+    public string MusicBPipeName { get; set; } = "marumbisom-mpv-b";
 
     public string SpotPipeName { get; set; } = "marumbisom-mpv-spot";
 
     public string ResolveMpvPath() => Path.IsPathRooted(MpvPath) ? MpvPath : Path.Combine(AppContext.BaseDirectory, MpvPath);
-}
-
-/// <summary>Configuração da prova de conceito da Etapa 1 (reprodução em loop de uma pasta local).</summary>
-public sealed class PocOptions
-{
-    public const string Section = "Poc";
-
-    public bool Enabled { get; set; } = true;
-
-    public string MusicFolder { get; set; } = Path.Combine(AgentPaths.DataDirectory, "poc", "musicas");
-
-    /// <summary>Áudio de oferta tocado periodicamente com ducking, para validar a mistura de dois mpv.</summary>
-    public string? SpotFile { get; set; } = Path.Combine(AgentPaths.DataDirectory, "poc", "oferta.m4a");
-
-    public double SpotIntervalMinutes { get; set; } = 2;
-
-    public int DuckLevel { get; set; } = 30;
 }
 
 public static class AgentPaths

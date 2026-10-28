@@ -11,8 +11,10 @@ documento; qualquer desvio é registrado na seção 18 antes de ser implementado
 | Etapa | Estado |
 |---|---|
 | 0 — Preparação (humano) | em andamento |
-| 1 — Prova de conceito Bluetooth/áudio como serviço | código pronto, aguardando teste no PC piloto ([roteiro](docs/etapa-1-prova-de-conceito.md)) |
-| 2 a 8 | não iniciadas |
+| 1 — Prova de conceito Bluetooth/áudio como serviço | música e oferta tocando como serviço no PC piloto; falta o restante do aceite ([roteiro](docs/etapa-1-prova-de-conceito.md)) |
+| 2 — Agente offline completo | código pronto, aguardando teste no PC piloto ([roteiro](docs/etapa-2-agente-offline.md)) |
+| 3 — Hub e sincronização | em desenvolvimento, em paralelo ao aceite das etapas 1 e 2 (D18) |
+| 4 a 8 | não iniciadas |
 
 ## Estrutura
 
@@ -20,14 +22,15 @@ documento; qualquer desvio é registrado na seção 18 antes de ser implementado
 src/
   MarumbiSom.Contracts/       DTOs: manifesto, mensagens WebSocket, hash canônico
   MarumbiSom.Agent.Windows/   interop: rádio, Bluetooth, KS, Core Audio, IPolicyConfig, serviços, PnP
-  MarumbiSom.Agent/           serviço Windows da loja (guardião Bluetooth, player mpv, ducking)
+  MarumbiSom.Agent/           serviço Windows da loja: guardião Bluetooth, player (agenda, mixagem, ofertas),
+                              cache, estado salvo e a página Configurar Som (127.0.0.1:47800)
 tests/                        xUnit
 scripts/                      instalação, hardening do PC, download do mpv com SHA-256
 infra/tailscale-acl.hujson    política de acesso do Tailscale (seção 5.2)
 docs/                         roteiros e procedimentos
 ```
 
-O Hub, o painel e o Updater entram nas etapas 2 a 6.
+O Hub, o painel e o Updater entram nas etapas 3 a 6.
 
 ## Desenvolvimento
 
@@ -36,7 +39,9 @@ Requer o SDK do .NET 10.
 ```bash
 dotnet build
 dotnet test
-dotnet run --project src/MarumbiSom.Agent -- --simulate --Poc:MusicFolder=/caminho/para/musicas
+dotnet run --project src/MarumbiSom.Agent -- --build-manifest --music /caminho/para/musicas --Agent:DataDirectory=/tmp/som
+echo "senha-de-teste" | dotnet run --project src/MarumbiSom.Agent -- --set-local-password --Agent:DataDirectory=/tmp/som
+dotnet run --project src/MarumbiSom.Agent -- --simulate --Agent:DataDirectory=/tmp/som   # http://127.0.0.1:47800
 ```
 
 Os projetos Windows compilam em qualquer sistema (`EnableWindowsTargeting`); o interop real só roda no Windows.

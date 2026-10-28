@@ -29,6 +29,16 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - name: Conferir a sintaxe dos scripts no Windows PowerShell 5.1 (o do PC da loja)
+        shell: powershell
+        run: |
+          $failed = $false
+          Get-ChildItem scripts -Filter *.ps1 | ForEach-Object {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errors) | Out-Null
+            foreach ($e in $errors) { $failed = $true; Write-Host "$($_.Name):$($e.Extent.StartLineNumber): $($e.Message)" }
+          }
+          if ($failed) { exit 1 }
       - run: dotnet publish src/MarumbiSom.Agent -c Release -r win-x64 --self-contained -o publish/agent
       - name: Baixar mpv (SHA-256 conferido pelo tools.lock.json)
         run: ./scripts/download-tools.ps1 -Destination publish/agent/tools

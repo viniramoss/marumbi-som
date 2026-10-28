@@ -1,5 +1,10 @@
 # Etapa 1 — Prova de conceito no PC piloto
 
+> **A partir da Etapa 2** o modo de teste deste roteiro (pasta `poc\musicas`, oferta a cada 2 min) não existe
+> mais. Para repetir os testes abaixo com a versão atual, monte a configuração com `--build-manifest` e uma
+> oferta a cada 2 min (`--offers <pasta> --offer-every-minutes 2 --min-gap 0`), como no
+> [roteiro da Etapa 2](etapa-2-agente-offline.md). Os critérios de aceite continuam os mesmos.
+
 Objetivo (seção 15): provar que um serviço Windows rodando como **LocalSystem**, sem ninguém logado, consegue
 ligar o Bluetooth, conectar a caixa, tocar música e misturar uma oferta com ducking. É a etapa de maior risco;
 nada das etapas seguintes deve começar antes de todos os critérios abaixo estarem ✅.
@@ -83,5 +88,5 @@ na sessão do usuário com logon automático). Nesse caso registre a decisão na
 
 ## Teste sem hardware
 
-`dotnet run --project src\MarumbiSom.Agent -- --simulate --Poc:MusicFolder=<pasta>` roda tudo com Bluetooth e
-mpv falsos (funciona também em Linux/macOS), útil para conferir lógica e logs.
+Veja o [roteiro da Etapa 2](etapa-2-agente-offline.md#teste-sem-hardware-qualquer-sistema-operacional): o modo
+`--simulate` roda tudo com Bluetooth e mpv falsos (funciona também em Linux/macOS).
