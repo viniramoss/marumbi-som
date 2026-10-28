@@ -67,6 +67,9 @@ public sealed class SimulatedMpvInstance : IMpvInstance
     /// <summary>A saída de áudio não abre (endpoint sumiu): todo arquivo termina com erro logo após carregar.</summary>
     public bool AudioOutputMissing { get; set; }
 
+    /// <summary>O processo não abre (ex.: DLL faltando): <see cref="StartAsync"/> falha como o pipe que nunca conecta.</summary>
+    public bool FailsToStart { get; set; }
+
     public int AudioOutputReloads { get; private set; }
 
     public IReadOnlyList<string> Playlist
@@ -127,6 +130,11 @@ public sealed class SimulatedMpvInstance : IMpvInstance
 
     public Task StartAsync(string audioEndpointId, double volume, CancellationToken cancellationToken)
     {
+        if (FailsToStart)
+        {
+            throw new TimeoutException($"mpv '{Name}' não abriu o pipe (simulado)");
+        }
+
         lock (_lock)
         {
             IsRunning = true;
