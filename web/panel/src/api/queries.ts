@@ -204,7 +204,7 @@ export function useRevokeToken(id: number) {
 }
 
 export type StoreCommand =
-  | { command: 'play' | 'pause' | 'next' | 'reconnectBluetooth' | 'restartAgent' }
+  | { command: 'play' | 'pause' | 'next' | 'reconnectBluetooth' | 'restartAudio' | 'restartAgent' }
   | { command: 'setVolume'; volume: number }
   | { command: 'playNow'; hash: string }
   | { command: 'playOffer'; offerKey: string }

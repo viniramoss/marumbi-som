@@ -300,6 +300,11 @@ public sealed class HubClient : BackgroundService
                     _bluetooth.RequestReconnect();
                     result = PlayerCommandResult.Success;
                     break;
+                case CommandTypes.RestartAudio:
+                    // Responde na hora; o andamento aparece no status ("restartingAudio" e depois a caixa conectada).
+                    _bluetooth.RequestAudioRestart();
+                    result = PlayerCommandResult.Success;
+                    break;
                 case CommandTypes.RestartAgent:
                     Enqueue(new CommandResultMessage(command.Id, true));
                     _logger.LogWarning("Reiniciando o agente a pedido do Hub");

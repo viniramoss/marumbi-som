@@ -54,6 +54,10 @@ public sealed class HubClientTests
             Assert.Equal("ok", bluetooth.GetProperty("result").GetString());
             Assert.Equal(1, h.Player.Bluetooth.ReconnectRequests);
 
+            var audio = await HubHarness.JsonAsync(await h.Admin.PostAsJsonAsync($"/api/stores/{h.StoreId}/commands", new { command = "restartAudio" }));
+            Assert.Equal("ok", audio.GetProperty("result").GetString());
+            Assert.Equal(1, h.Player.Bluetooth.AudioRestartRequests);
+
             var volume = await HubHarness.JsonAsync(await h.Admin.PostAsJsonAsync(
                 $"/api/stores/{h.StoreId}/commands", new { command = "setVolume", args = new { volume = 40 } }));
             Assert.Equal("ok", volume.GetProperty("result").GetString());

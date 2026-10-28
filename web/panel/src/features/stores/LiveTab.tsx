@@ -7,6 +7,7 @@ import {
   Pause,
   Play,
   PlayCircle,
+  RefreshCw,
   Search,
   SkipForward,
   Volume2,
@@ -14,9 +15,10 @@ import {
 import { errorMessage } from '../../api/client';
 import { useStoreOffers, useStoreTracks } from '../../api/queries';
 import type { StoreDetail, StoreSummary } from '../../api/types';
-import { Modal } from '../../components/Modal';
+import { ConfirmDialog, Modal } from '../../components/Modal';
 import { SyncProgress } from '../../components/SyncProgress';
-import { Button, Card, CardHeader, EmptyState, ErrorNote, Input, Spinner } from '../../components/ui';
+import { useToast } from '../../components/Toasts';
+import { Button, Card, CardHeader, EmptyState, ErrorNote, Input, ProgressBar, Spinner } from '../../components/ui';
 import { useCommand } from '../../hooks/useCommand';
 import { useNow } from '../../hooks/useNow';
 import { formatAgo, formatDateTime, formatDuration, formatMegabytes, matchesSearch } from '../../lib/format';
@@ -71,8 +73,11 @@ function Controls({ store }: { store: StoreSummary }) {
   const { run, busy } = useCommand(store.id);
   const [choosing, setChoosing] = useState(false);
   const [offering, setOffering] = useState(false);
+  const [confirmAudio, setConfirmAudio] = useState(false);
   const offline = !store.online;
   const playing = store.player === 'playing';
+  const restarting = store.bluetooth === 'restartingAudio';
+  useAudioRestartOutcome(store);
 
   return (
     <div className="space-y-4">
@@ -101,12 +106,26 @@ function Controls({ store }: { store: StoreSummary }) {
         </Button>
         <Button
           size="lg"
-          disabled={offline}
+          disabled={offline || restarting}
           busy={busy === 'reconnectBluetooth'}
           onClick={() => void run({ command: 'reconnectBluetooth' })}
           icon={<Bluetooth className="size-5" />}
         >
           Reconectar caixa
+        </Button>
+        <Button
+          size="lg"
+          disabled={offline || restarting}
+          busy={busy === 'restartAudio' || restarting}
+          title={
+            offline
+              ? undefined
+              : 'Para quando a caixa aparece conectada e a loja está sem som: reinicia o áudio e o Bluetooth do Windows sem reiniciar o PC.'
+          }
+          onClick={() => setConfirmAudio(true)}
+          icon={<RefreshCw className="size-5" />}
+        >
+          Reiniciar áudio
         </Button>
         <Button
           size="lg"
@@ -118,6 +137,7 @@ function Controls({ store }: { store: StoreSummary }) {
           Tocar oferta agora…
         </Button>
       </div>
+      {restarting && <AudioRestartProgress />}
       <VolumeSlider
         store={store}
         disabled={offline}
@@ -126,8 +146,58 @@ function Controls({ store }: { store: StoreSummary }) {
       {offline && <p className="text-sm text-stone-500">Os controles voltam quando a loja se conectar ao Hub.</p>}
       {choosing && <PlayNowDialog store={store} onClose={() => setChoosing(false)} />}
       {offering && <PlayOfferDialog store={store} onClose={() => setOffering(false)} />}
+      {confirmAudio && (
+        <ConfirmDialog
+          title="Reiniciar o áudio da loja?"
+          confirmLabel="Reiniciar áudio"
+          danger={false}
+          busy={busy === 'restartAudio'}
+          onCancel={() => setConfirmAudio(false)}
+          onConfirm={() => void run({ command: 'restartAudio' }).then(() => setConfirmAudio(false))}
+        >
+          <p>
+            O PC da {store.name} reinicia o áudio e o Bluetooth do Windows e reconecta a caixa, sem reiniciar o PC. A
+            música para por cerca de 30 segundos e depois volta sozinha do mesmo ponto.
+          </p>
+          <p className="text-stone-500">
+            Use quando a caixa aparece conectada e o painel diz que está tocando, mas a loja está sem som. Se não
+            resolver, reinicie o PC da loja.
+          </p>
+        </ConfirmDialog>
+      )}
     </div>
   );
+}
+
+/** Andamento do "reiniciar áudio" (D37): barra em movimento até a caixa voltar. */
+function AudioRestartProgress() {
+  return (
+    <div className="space-y-2 rounded-lg bg-sky-50 px-4 py-3 ring-1 ring-sky-200" role="status">
+      <p className="text-sm text-sky-900">
+        <span className="font-medium">Reiniciando o áudio e o Bluetooth do Windows…</span> A música volta sozinha do
+        mesmo ponto quando a caixa reconectar.
+      </p>
+      <ProgressBar label="Reiniciando o áudio da loja" />
+    </div>
+  );
+}
+
+/** Avisa como terminou o "reiniciar áudio" quando o status sai de restartingAudio com a tela aberta. */
+function useAudioRestartOutcome(store: StoreSummary) {
+  const toast = useToast();
+  const previous = useRef(store.bluetooth);
+  useEffect(() => {
+    const before = previous.current;
+    previous.current = store.bluetooth;
+    if (before !== 'restartingAudio' || store.bluetooth === 'restartingAudio') return;
+    if (store.bluetooth === 'connected') {
+      toast.success('Áudio reiniciado e caixa conectada.');
+    } else if (store.online) {
+      toast.error(
+        'A caixa não voltou depois do reinício do áudio. O agente segue tentando; se não voltar, reinicie o PC da loja.',
+      );
+    }
+  }, [store.bluetooth, store.online, toast]);
 }
 
 /** Volume ao vivo (0 a 100). Manda o valor 350 ms depois de parar de arrastar e mostra o novo até a loja confirmar. */

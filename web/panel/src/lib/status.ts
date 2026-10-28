@@ -31,6 +31,8 @@ export function bluetoothStatus(store: StoreSummary): StatusLabel {
       return { label: 'Conectando a caixa…', tone: 'amber' };
     case 'radioOff':
       return { label: 'Bluetooth desligado', tone: 'red' };
+    case 'restartingAudio':
+      return { label: 'Reiniciando o áudio…', tone: 'blue' };
     case 'disconnected':
       return { label: 'Caixa desconectada', tone: 'red' };
     default:
