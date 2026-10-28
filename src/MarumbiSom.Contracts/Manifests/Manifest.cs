@@ -43,7 +43,8 @@ public sealed record ScheduleEntry(
     TimeOnly End,
     string PlaylistId);
 
-public sealed record PlaylistDefinition(bool Shuffle, IReadOnlyList<PlaylistItemRef> Items);
+/// <summary>Playlist do manifesto. <see cref="Name"/> é só para exibição (logs e página local).</summary>
+public sealed record PlaylistDefinition(bool Shuffle, IReadOnlyList<PlaylistItemRef> Items, string? Name = null);
 
 /// <summary>Item de playlist. O <see cref="Id"/> é estável ao reordenar; âncoras de ofertas apontam para ele.</summary>
 public sealed record PlaylistItemRef(string Id, string Hash);

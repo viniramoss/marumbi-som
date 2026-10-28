@@ -11,17 +11,40 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Fixo no 24.04: o ubuntu-latest passa para o Ubuntu 26 aos poucos desde 19/10/2026, e o cache dos pacotes do ffmpeg
+    # abaixo vale para uma versão só.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      # O apt às vezes trava no espelho do Ubuntu: listas e pacotes da última instalação ficam no cache do Actions
+      # (renovado toda semana) e a instalação pela rede só acontece sem cache. Detalhes em .github/scripts/instalar-ffmpeg.sh.
+      - name: Semana do cache do ffmpeg
+        id: semana
+        run: echo "id=$(date +%G-%V)" >> "$GITHUB_OUTPUT"
+      - name: Pacotes do ffmpeg no cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/apt-ffmpeg
+          key: apt-ffmpeg-ubuntu-24.04-${{ steps.semana.outputs.id }}
+          restore-keys: apt-ffmpeg-ubuntu-24.04-
+      - name: ffmpeg para os testes de ingestão do Hub
+        id: ffmpeg
+        timeout-minutes: 25
+        run: .github/scripts/instalar-ffmpeg.sh "$RUNNER_TEMP/apt-ffmpeg"
+      - name: Guardar os pacotes do ffmpeg no cache
+        if: steps.ffmpeg.outputs.salvar == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/apt-ffmpeg
+          key: apt-ffmpeg-ubuntu-24.04-${{ steps.semana.outputs.id }}
       - run: dotnet restore
       - run: dotnet build --no-restore
       - run: dotnet test --no-build --verbosity normal
 
-  publish-agent:
+  publish:
     runs-on: windows-latest
     needs: test
     steps:
@@ -52,4 +75,15 @@ jobs:
         with:
           name: MarumbiSom.Agent-win-x64
           path: publish/agent
+          retention-days: 30
+      - run: dotnet publish src/MarumbiSom.Hub -c Release -r win-x64 --self-contained -o publish/hub
+      - name: Baixar ffmpeg e ffprobe (SHA-256 conferido pelo tools.lock.json)
+        run: ./scripts/download-tools.ps1 -For hub -Destination publish/hub/tools
+        shell: pwsh
+      - run: Copy-Item -Recurse scripts publish/hub/scripts
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarumbiSom.Hub-win-x64
+          path: publish/hub
           retention-days: 30

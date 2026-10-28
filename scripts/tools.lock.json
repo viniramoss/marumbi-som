@@ -8,6 +8,22 @@
       "sha256": "4a355f3e89c83fabc730d33fb4e759dfec747806ed2287b61a90d1681b83e8d3",
       "files": [
         "mpv.exe"
+      ],
+      "for": [
+        "agent"
+      ]
+    },
+    {
+      "name": "ffmpeg",
+      "version": "8.0.1-essentials (gyan.dev)",
+      "url": "https://github.com/GyanD/codexffmpeg/releases/download/8.0.1/ffmpeg-8.0.1-essentials_build.zip",
+      "sha256": "e2aaeaa0fdbc397d4794828086424d4aaa2102cef1fb6874f6ffd29c0b88b673",
+      "files": [
+        "ffmpeg.exe",
+        "ffprobe.exe"
+      ],
+      "for": [
+        "hub"
       ]
     },
     {

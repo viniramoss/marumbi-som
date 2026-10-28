@@ -5,6 +5,7 @@ using System.Reflection;
 using MarumbiSom.Agent.Bluetooth;
 using MarumbiSom.Agent.Playback;
 using MarumbiSom.Agent.Storage;
+using MarumbiSom.Agent.Sync;
 using MarumbiSom.Agent.Windows.Abstractions;
 
 namespace MarumbiSom.Agent.LocalConfig;
@@ -17,6 +18,9 @@ public interface ISpeakerSelection
     void SetSpeaker(BluetoothAddress? address);
 }
 
+/// <summary>Vinculação e sincronização com o Hub (Etapa 3).</summary>
+public sealed record HubContext(HubLink Link, SyncEngine Sync, HubClient Live);
+
 /// <summary>Dependências da página de configuração local.</summary>
 public sealed record LocalConfigContext(
     LocalAuth Auth,
@@ -27,7 +31,8 @@ public sealed record LocalConfigContext(
     IBluetoothSpeakerControl Speakers,
     ManifestStore Manifests,
     string LogsDirectory,
-    TimeProvider Time);
+    TimeProvider Time,
+    HubContext? Hub = null);
 
 /// <summary>
 /// Rotas da configuração local (seção 8.4). Só atende 127.0.0.1/localhost, exige o cabeçalho
@@ -147,6 +152,30 @@ public static class LocalConfigEndpoints
             return result.Ok ? Results.Ok(new { ok = true }) : Error(StatusCodes.Status409Conflict, result.Error ?? "Falha ao tocar o som de teste.");
         });
 
+        api.MapPost("/hub", async (HubLinkRequest request, CancellationToken cancellationToken) =>
+        {
+            if (context.Hub is null)
+            {
+                return Error(StatusCodes.Status404NotFound, "Sincronização com o Hub indisponível.");
+            }
+
+            try
+            {
+                var info = await context.Hub.Link.EnrollAsync(request.Url ?? string.Empty, request.Code ?? string.Empty, cancellationToken);
+                return Results.Ok(new { ok = true, storeId = info.StoreId, storeName = info.StoreName });
+            }
+            catch (HubEnrollException ex)
+            {
+                return Error(StatusCodes.Status400BadRequest, ex.Message);
+            }
+        });
+
+        api.MapPost("/hub/unlink", () =>
+        {
+            context.Hub?.Link.Unlink();
+            return Results.Ok(new { ok = true });
+        });
+
         api.MapGet("/logs", (int? lines) => Results.Text(TailLog(context.LogsDirectory, Math.Clamp(lines ?? 200, 10, 2000)), "text/plain; charset=utf-8"));
 
         api.MapPost("/password", (HttpContext http, PasswordRequest request) =>
@@ -211,12 +240,14 @@ public static class LocalConfigEndpoints
         var player = context.Player.Snapshot;
         var manifest = context.Manifests.Active;
         var now = context.Time.GetUtcNow();
+        var playlistId = player.PlaylistId ?? player.WindowPlaylistId;
         return new
         {
             agentVersion = typeof(LocalConfigEndpoints).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
             uptimeS = (long)(now - StartedAt).TotalSeconds,
             storeId = manifest?.StoreId,
             manifestVersion = manifest?.Version,
+            hub = HubStatus(context),
             bluetooth = context.Bluetooth.Status,
             speakerAddress = context.Speaker.SpeakerAddress?.ToString(),
             player = new
@@ -225,7 +256,8 @@ public static class LocalConfigEndpoints
                 reason = player.Reason,
                 title = player.Title,
                 artist = player.Artist,
-                playlist = player.PlaylistId ?? player.WindowPlaylistId,
+                playlist = playlistId,
+                playlistName = playlistId is not null && manifest?.Playlists.TryGetValue(playlistId, out var definition) == true ? definition.Name : null,
                 positionS = player.PositionS,
                 durationS = player.DurationS,
                 volume = player.Volume,
@@ -235,6 +267,30 @@ public static class LocalConfigEndpoints
                 spot = player.Spot,
                 upcoming = player.Upcoming,
             },
+        };
+    }
+
+    private static object? HubStatus(LocalConfigContext context)
+    {
+        if (context.Hub is not { } hub)
+        {
+            return null;
+        }
+
+        var link = hub.Link.Current;
+        var pending = context.Manifests.Pending;
+        return new
+        {
+            linked = link is not null,
+            url = link?.Url.ToString(),
+            storeId = link?.StoreId,
+            storeName = link?.StoreName,
+            connected = hub.Live.Connected,
+            connectedSince = hub.Live.ConnectedSince,
+            error = link is null ? null : hub.Sync.LastError ?? hub.Live.LastError,
+            lastCheckAt = hub.Sync.LastCheckAt,
+            pendingVersion = link is not null && pending?.StoreId == link.StoreId ? pending.Version : (long?)null,
+            progress = hub.Sync.Progress,
         };
     }
 
@@ -283,4 +339,6 @@ public static class LocalConfigEndpoints
     public sealed record SpeakerRequest(string? Address);
 
     public sealed record PasswordRequest(string? Current, string? New);
+
+    public sealed record HubLinkRequest(string? Url, string? Code);
 }

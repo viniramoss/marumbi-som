@@ -13,6 +13,9 @@ public sealed partial class CacheManager(AgentDataPaths paths, TimeProvider time
     public static readonly TimeSpan UnreferencedRetention = TimeSpan.FromDays(7);
     public const long DefaultMaxBytes = 10L * 1024 * 1024 * 1024;
 
+    /// <summary>Arquivo corrompido apagado; o SyncEngine baixa de novo.</summary>
+    public event EventHandler<string>? FileRemoved;
+
     public static bool IsValidHash(string? hash) => hash is not null && HashPattern().IsMatch(hash);
 
     public string PathFor(string hash)
@@ -51,6 +54,7 @@ public sealed partial class CacheManager(AgentDataPaths paths, TimeProvider time
 
         logger.LogWarning("Arquivo do cache corrompido ({Hash}, calculado {Actual}); apagado", hash, actual);
         File.Delete(path);
+        FileRemoved?.Invoke(this, hash);
         return false;
     }
 

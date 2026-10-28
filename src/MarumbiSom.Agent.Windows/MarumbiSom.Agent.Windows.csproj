@@ -13,6 +13,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="System.Management" />
     <PackageReference Include="System.ServiceProcess.ServiceController" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
   </ItemGroup>
 
 </Project>

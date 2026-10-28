@@ -5,7 +5,7 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <!-- Nomes de teste descritivos em português com sublinhados -->
-    <NoWarn>$(NoWarn);CA1707;CA1515;CA2007</NoWarn>
+    <NoWarn>$(NoWarn);CA1707;CA1515;CA2007;CA1861</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +20,12 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\MarumbiSom.Agent\MarumbiSom.Agent.csproj" />
     <ProjectReference Include="..\..\src\MarumbiSom.Agent.Windows\MarumbiSom.Agent.Windows.csproj" />
+    <!-- Hub de verdade em memória (TestServer) para os testes de sincronização. -->
+    <ProjectReference Include="..\..\src\MarumbiSom.Hub\MarumbiSom.Hub.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\MarumbiSom.Hub.Tests\HubHarness.cs" Link="Sync\HubHarness.cs" />
   </ItemGroup>
 
   <ItemGroup>

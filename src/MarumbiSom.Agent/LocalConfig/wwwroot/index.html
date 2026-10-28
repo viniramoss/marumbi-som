@@ -33,6 +33,22 @@
       </section>
 
       <section class="card">
+        <h2>Hub (escritório)</h2>
+        <p id="hub-state" class="hint">…</p>
+        <form id="hub-form">
+          <label for="hub-url">Endereço do Hub</label>
+          <input id="hub-url" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://hub-escritorio.exemplo.ts.net" required>
+          <label for="hub-code">Código de vinculação (gerado no painel, vale 30 minutos)</label>
+          <input id="hub-code" type="text" autocomplete="off" spellcheck="false" placeholder="ABCD-EFGH" maxlength="12" required>
+          <div class="row">
+            <button type="submit" id="hub-link">Vincular esta loja</button>
+            <button type="button" id="hub-unlink" class="secondary" hidden>Desvincular</button>
+          </div>
+        </form>
+        <p id="hub-msg" class="msg" role="status"></p>
+      </section>
+
+      <section class="card">
         <h2>Caixa Bluetooth</h2>
         <p class="hint">A caixa precisa estar pareada em Configurações do Windows → Bluetooth e dispositivos.</p>
         <ul id="devices" class="devices"></ul>
