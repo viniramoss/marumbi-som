@@ -474,9 +474,15 @@ public sealed class PlayerEngine
 
     private async Task<PlayerCommandResult> PlayTestSoundAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
-        if (!_bluetooth.IsConnected || !_spotDeck.IsUp(now))
+        if (!_bluetooth.IsConnected)
         {
             return PlayerCommandResult.Fail("Caixa não conectada.");
+        }
+
+        if (!_spotDeck.IsUp(now))
+        {
+            // Loja 2 (28/10/2026): com o mpv sem abrir, "caixa não conectada" mandava procurar o defeito no lugar errado.
+            return PlayerCommandResult.Fail("O mpv das ofertas não está aberto; veja os últimos registros.");
         }
 
         if (_spot is not null)
@@ -765,7 +771,8 @@ public sealed class PlayerEngine
         var deck = PickIdleDeck(now);
         if (deck is null)
         {
-            _logger.LogWarning("Nenhum mpv de música livre para {Title}", TitleOf(item.Hash));
+            // Uma vez só: com os dois mpv sem abrir, isto se repetia a cada 250 ms no log.
+            SetIdleReason("Nenhum mpv de música aberto; tentando de novo");
             return false;
         }
 
