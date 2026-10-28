@@ -9,6 +9,7 @@ import { useToast } from '../../components/Toasts';
 import { Card, EmptyState, ErrorNote, IconButton, Input, PageHeader, Spinner } from '../../components/ui';
 import { usePreview } from '../../hooks/usePreview';
 import { formatDateTime, formatDuration, formatLongDuration, matchesSearch } from '../../lib/format';
+import { TrackSubtitle } from './TrackSubtitle';
 import { UploadPanel } from './UploadPanel';
 
 export function LibraryPage() {
@@ -82,10 +83,11 @@ export function LibraryPage() {
             </EmptyState>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-sm">
+              <table className="w-full min-w-[820px] text-sm">
                 <thead>
                   <tr className="border-b border-stone-100 text-left text-xs font-medium tracking-wide text-stone-500 uppercase">
                     <th className="w-12 px-5 py-2.5" />
+                    <th className="w-14 py-2.5 pr-3 text-right">Nº</th>
                     <th className="py-2.5 pr-4">Música</th>
                     <th className="w-20 py-2.5 pr-4 text-right">Duração</th>
                     <th className="w-36 py-2.5 pr-4" title="Volume do arquivo enviado, antes de igualar em −16 LUFS">
@@ -171,10 +173,12 @@ function TrackRow({
           {playing ? <Pause className="size-4 text-brand-700" /> : <Play className="size-4" />}
         </IconButton>
       </td>
+      <td className="py-2 pr-3 text-right text-stone-500 tabular-nums">{track.number ?? '–'}</td>
       <td className="py-2 pr-4">
         {editing ? (
           <form
-            className="flex flex-wrap gap-2"
+            title={track.originalName}
+            className="flex flex-wrap items-center gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               void save();
@@ -208,11 +212,12 @@ function TrackRow({
             >
               <X className="size-4" />
             </IconButton>
+            <span className="w-full truncate text-xs text-stone-400">{track.originalName}</span>
           </form>
         ) : (
-          <div className="min-w-0" title={track.originalName}>
+          <div className="min-w-0">
             <p className="truncate font-medium text-stone-900">{track.title}</p>
-            <p className="truncate text-stone-500">{track.artist ?? 'Artista desconhecido'}</p>
+            <TrackSubtitle track={track} />
           </div>
         )}
       </td>
@@ -243,7 +248,7 @@ function TrackRow({
       <td className="py-2 pr-5">
         {!editing && (
           <div className="flex justify-end">
-            <IconButton label="Editar título e artista" onClick={() => setEditing(true)}>
+            <IconButton label="Renomear" onClick={() => setEditing(true)}>
               <Pencil className="size-4" />
             </IconButton>
             <IconButton label="Remover da biblioteca" onClick={onRemove}>

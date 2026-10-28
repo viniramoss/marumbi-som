@@ -39,8 +39,9 @@ public sealed class IngestionTests : IAsyncLifetime
 
         Assert.Equal(IngestionStatus.Done, job.Status);
         var track = await _hub.WithDbAsync(db => db.Tracks.SingleAsync(t => t.Hash == job.Hash));
-        Assert.Equal("Corte Seco", track.Title);
-        Assert.Equal("Banda X", track.Artist);
+        // D31: o título é o número de importação; o nome do arquivo fica guardado.
+        Assert.Equal((1, "001", null), (track.Number, track.Title, track.Artist));
+        Assert.Equal("01 - Banda X - Corte Seco.mp3", track.OriginalName);
         Assert.InRange(track.DurationMs, 39_500, 40_500);
         var output = _hub.Paths.LibraryFile(track.Hash);
         Assert.True(File.Exists(output));
@@ -75,7 +76,8 @@ public sealed class IngestionTests : IAsyncLifetime
         }
 
         var tracks = await _hub.WithDbAsync(db => db.Tracks.ToListAsync());
-        Assert.Contains(tracks, t => t.Title == "Meio" && t.Artist == "Artista Y");
+        Assert.Equal(["001", "002", "003"], tracks.OrderBy(t => t.Number).Select(t => t.Title));
+        Assert.Equal("Artista Y - Meio.flac", tracks.Single(t => t.Number == 3).OriginalName);
         Assert.True(tracks.Single(t => t.OriginalName == "baixinho.wav").LoudnessLufs < tracks.Single(t => t.OriginalName == "altao.ogg").LoudnessLufs);
     }
 
@@ -91,6 +93,24 @@ public sealed class IngestionTests : IAsyncLifetime
         Assert.Equal(IngestionStatus.Duplicate, second.Status);
         Assert.Equal(first.Hash, second.Hash);
         Assert.Equal(1, await _hub.WithDbAsync(db => db.Tracks.CountAsync()));
+    }
+
+    [Fact]
+    public async Task Numero_da_musica_removida_so_volta_com_o_mesmo_audio()
+    {
+        var first = await UploadAndWaitAsync(await GenerateAsync("primeira.mp3", toneSeconds: 31, amplitude: 0.5, frequency: 330));
+        var removed = await UploadAndWaitAsync(await GenerateAsync("removida.mp3", toneSeconds: 31, amplitude: 0.5, frequency: 550));
+        (await _admin.DeleteAsync($"/api/tracks/{removed.Hash}")).EnsureSuccessStatusCode();
+
+        // Outra música depois de remover a 002 ganha a 003; a 002 fica guardada para o mesmo áudio (D31).
+        var other = await UploadAndWaitAsync(await GenerateAsync("outra.mp3", toneSeconds: 31, amplitude: 0.5, frequency: 660));
+        var back = await UploadAndWaitAsync(await GenerateAsync("removida de novo.mp3", toneSeconds: 31, amplitude: 0.5, frequency: 550));
+
+        Assert.All(new[] { first, removed, other, back }, j => Assert.Equal(IngestionStatus.Done, j.Status));
+        Assert.Equal(removed.Hash, back.Hash);
+        var tracks = await _hub.WithDbAsync(db => db.Tracks.ToDictionaryAsync(t => t.Hash));
+        Assert.Equal((1, 2, 3), (tracks[first.Hash!].Number, tracks[removed.Hash!].Number, tracks[other.Hash!].Number));
+        Assert.Null(tracks[removed.Hash!].DeletedAt);
     }
 
     [Fact]

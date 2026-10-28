@@ -2390,6 +2390,8 @@ export interface components {
     TrackDto: {
       hash: string;
       kind: components['schemas']['TrackKind'];
+      /** Format: int32 */
+      number: null | number;
       title: string;
       artist: null | string;
       /** Format: int64 */

@@ -6,6 +6,7 @@ import type { Track } from '../../api/types';
 import { Modal } from '../../components/Modal';
 import { Button, EmptyState, ErrorNote, Input, Spinner } from '../../components/ui';
 import { formatDuration, formatLongDuration, matchesSearch } from '../../lib/format';
+import { TrackSubtitle } from '../library/TrackSubtitle';
 
 type Picked = Pick<Track, 'hash' | 'title' | 'artist' | 'durationMs'>;
 
@@ -115,9 +116,7 @@ export function AddTracksDialog({
                     />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium text-stone-900">{track.title}</span>
-                      <span className="block truncate text-xs text-stone-500">
-                        {track.artist ?? 'Artista desconhecido'}
-                      </span>
+                      <TrackSubtitle track={track} />
                     </span>
                     {existing.has(track.hash) && (
                       <span className="shrink-0 rounded bg-stone-100 px-1.5 py-0.5 text-[11px] text-stone-600">
