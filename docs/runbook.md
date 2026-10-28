@@ -62,6 +62,16 @@ Pastas de pacotes baixados da internet: antes de rodar scripts, no PowerShell
 4. Se o **Testar** do Windows sai e o agente continua mudo: Loja → Ajustes → **Reiniciar agente** e mande o log do dia
    (`agent-AAAAMMDD.log`) para o desenvolvimento.
 
+## Player parado: "Nenhum mpv de música aberto"
+
+O motivo aparece na página Configurar Som e no log do agente. Procure no log do dia:
+
+- "falta uma DLL no Windows (… STATUS_DLL_NOT_FOUND)": a pasta `tools\` do agente está sem o `vulkan-1.dll` (D38).
+  Atualize o agente pelo painel; a versão com a D38 leva o arquivo junto do `mpv.exe`.
+- "terminou inesperadamente com código -1073741819" logo depois de "Failed to create swapchain": é o mpv tentando usar
+  a placa de vídeo. A versão com a D38 abre o mpv com `--vo=null`; se ainda acontecer, mande o log para o
+  desenvolvimento.
+
 ## Música nova ou playlist não chega na loja
 
 1. Painel → Início: o cartão mostra "Baixando x/y" ou "Sincronizado". O download respeita o limite de 2 Mbps; muitas

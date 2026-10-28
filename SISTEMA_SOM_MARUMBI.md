@@ -1,6 +1,6 @@
 # Sistema de Som Remoto — Casa de Carnes Marumbi
 
-> Documento de arquitetura e execução. Versão 1.18 — outubro/2026 (inclui ofertas com ducking, mixagem entre músicas e as decisões D17 a D37 da implementação).
+> Documento de arquitetura e execução. Versão 1.19 — outubro/2026 (inclui ofertas com ducking, mixagem entre músicas e as decisões D17 a D38 da implementação).
 > Este documento é a fonte da verdade do projeto. Toda implementação DEVE segui-lo. Qualquer desvio DEVE ser registrado na seção 18 (Registro de Decisões) antes de ser implementado.
 
 ---
@@ -573,7 +573,7 @@ O nível 3 só pode ser executado no máximo 1 vez a cada 10 minutos.
 Parâmetros de inicialização:
 
 ```
-mpv --idle=yes --no-video --no-terminal --gapless-audio=yes
+mpv --idle=yes --no-video --vo=null --audio-display=no --no-terminal --gapless-audio=yes
     --input-ipc-server=\\.\pipe\marumbisom-mpv-a
     --audio-device=wasapi/{endpoint}
     --volume=<volume da loja> --volume-max=100
@@ -872,7 +872,7 @@ marumbi-som/
     install-hub.ps1
     install-agent.ps1               (usado pelo instalador)
     harden-store-pc.ps1
-    download-tools.ps1              (baixa ffmpeg e mpv com verificação de hash)
+    download-tools.ps1              (baixa ffmpeg, mpv e o vulkan-1.dll do mpv com verificação de hash, D38)
     sign-release.ps1
     new-signing-key.ps1
     uninstall-agent.ps1
@@ -1190,6 +1190,7 @@ Aceite:
 | D35 | Buscar atualizações num clique e publicação de toda versão (pedido do proprietário em 27/10/2026: "sempre que tiver uma ATT eu preciso ir no git, baixar um arquivo" e "Pode publicar sempre, mas a gente adiciona dai no hub um botão de buscar atualizações, clico la e ja era"; complementa a D32): (a) toda versão nova entregue pelo desenvolvimento é publicada no GitHub Releases assim que o CI passa (Run workflow com **Publicar**; fora do `main` sai como pré-lançamento), e o Hub a encontra sozinho como na D32; ninguém precisa baixar nem assinar pacote à mão; (b) em Configurações → Atualização do Hub, sem versão baixada, o botão **Buscar atualizações** procura no GitHub na hora (`POST /api/hub/update/check`), baixa com a barra de andamento e já pede a troca, sem outra confirmação; se não houver versão mais nova, o cartão diz isso; (c) com versão já baixada continua **Atualizar o Hub agora**; (d) a madrugada (03:00), a cópia e a volta do banco e o atualizador continuam os da D32; (e) **Enviar pacote…** fica para testes e para o GitHub fora do ar |
 | D36 | Saída de áudio que falha e mpv travado (seções 9.5 e 10.1, ajuste de campo): (a) quando o mpv encerra o arquivo com `file_error` de saída de áudio (`audio output initialization failed`, ex.: endpoint da caixa desativado), a faixa não é pulada nem conta como defeito: o mpv reinicia e ela continua do ponto onde parou, com espera de 2, 5, 15 e 30 s entre as tentativas (volta a 2 s depois de 5 s tocando); (b) comando do IPC sem resposta em 5 s com o processo vivo conta como mpv travado: mata, reinicia e a faixa segue no outro mpv; (c) a cada reconexão da caixa o agente reabre a saída dos três mpv, mesmo com o mesmo id de endpoint, e o mpv que travar ao reabrir é reiniciado | No PC piloto (27/10/2026), com a caixa desativada no Windows, o agente pulou três músicas em 1 s; depois o mpv travou no `set_property` e ficou mudo até reiniciar o serviço, porque a leitura da posição tratava o tempo esgotado como "nada carregado" e o watchdog de 30 s nunca disparava |
 | D37 | Botão "Reiniciar áudio" (pedido do proprietário em 27/10/2026: "Vamos fazer o botão sim!", sobre reiniciar o Bluetooth e o áudio do Windows sem reiniciar o PC; complementa as seções 9.2, 9.5 e 11.2): (a) comando `restartAudio`, no painel em Loja → Ao vivo, ao lado de "Reconectar caixa", com confirmação que avisa que a música para por cerca de 30 s; (b) no agente, o guardião entra no estado `ReiniciandoÁudio` (status `restartingAudio`, "Reiniciando o áudio…" no painel e na configuração local): o player pausa como na queda da caixa e fecha os três mpv, guardando a faixa e a posição; (c) 2 s depois o agente reinicia o serviço `AudioEndpointBuilder` (que para e religa o `Audiosrv` junto), o `bthserv` e o adaptador Bluetooth pelo PnP; o reinício do adaptador pedido pelo administrador não respeita o limite de 10 minutos do nível 3, mas conta como o último reinício para o limite automático; uma etapa que falhar é registrada no log e as seguintes continuam; (d) depois o guardião volta para `Inicializando`, que inicia o que ficou parado, liga o rádio e conecta a caixa pelo escalonamento normal; com a caixa conectada, a música continua do mesmo ponto em mpv novos; (e) reiniciar um serviço com dependentes religa os dependentes que estavam rodando (antes só o próprio serviço voltava, também no nível 2); (f) agente antigo que não conhece o comando responde "Comando desconhecido" e o Hub traduz para "atualize o agente desta loja" | Na Loja 1 (27/10/2026) a caixa aparecia conectada, o agente tocava e mesmo o teste de som do Windows saía mudo; só reiniciar o PC resolveu. Reiniciar o áudio e o Bluetooth do Windows pelo painel resolve a maioria desses casos sem ir até a loja nem derrubar o PC |
+| D38 | mpv em PC sem driver de vídeo (Loja 2, ajuste de campo em 28/10/2026; complementa as seções 10.1 e 13.1 e a D15): (a) o `mpv.exe` do shinchiro importa o `vulkan-1.dll`, que só existe com driver de vídeo instalado; o pacote do agente passa a levar em `tools\` o carregador oficial da Khronos (Apache-2.0), tirado do pacote NuGet `Silk.NET.Vulkan.Loader.Native` com SHA-256 no `tools.lock.json`; (b) os três mpv abrem com `--vo=null` e `--audio-display=no`, para nunca criar saída de vídeo; (c) o CI lê as importações de tudo em `tools\` (`dumpbin /dependents`) e falha se alguma DLL não vem com o Windows 10 nem está em `tools\`; (d) o agente registra a saída `0xC0000135` do mpv como "falta uma DLL"; o "tocar som de teste" com o mpv das ofertas fechado diz isso em vez de "caixa não conectada"; e o player sem mpv de música aberto registra o motivo uma vez, em vez de a cada ciclo | Na Loja 2 (Windows 10 22H2, Intel HD de 2016 e o adaptador virtual do Parsec) os três mpv morriam ao abrir com 0xC0000135 por falta do `vulkan-1.dll`; com ele instalado à mão, morriam com 0xC0000005 ao carregar cada faixa depois de o vo `gpu-next` falhar na swapchain do d3d11. No PC piloto o driver de vídeo instala o Vulkan e o problema não aparecia |
 
 Novas decisões DEVEM ser adicionadas aqui com número sequencial.
 
