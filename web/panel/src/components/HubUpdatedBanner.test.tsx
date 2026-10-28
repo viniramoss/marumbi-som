@@ -12,6 +12,7 @@ const status = (currentVersion: string): HubUpdateStatus => ({
   download: null,
   message: null,
   problem: false,
+  searching: false,
   autoUpdate: true,
   autoUpdateTime: '03:00',
   pending: null,

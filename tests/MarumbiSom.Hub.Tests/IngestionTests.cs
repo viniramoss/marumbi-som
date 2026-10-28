@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 using MarumbiSom.Contracts.Manifests;
 using MarumbiSom.Hub.Library;
@@ -114,6 +115,88 @@ public sealed class IngestionTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Edicao_tira_o_trecho_e_a_musica_editada_toma_o_lugar_nas_playlists_e_ancoras()
+    {
+        // 15 s alto, 10 s quase mudo, 25 s alto: tirar 15–25 s deixa só o som alto.
+        var input = await GenerateSectionsAsync("com-trecho.mp3", (15, 0.5), (10, 0.02), (25, 0.5));
+        var original = await UploadAndWaitAsync(input);
+        var hash = original.Hash!;
+        await _hub.WithDbAsync(async db =>
+        {
+            db.Tracks.Add(new Data.Track { Hash = "oferta-teste", Kind = TrackKind.Offer, Title = "Oferta", OriginalName = "oferta.mp3", DurationMs = 8_000 });
+            var playlist = new Data.Playlist { Name = "Manhã" };
+            db.Playlists.Add(playlist);
+            await db.SaveChangesAsync();
+            db.PlaylistItems.Add(new Data.PlaylistItem { Id = "item-1", PlaylistId = playlist.Id, Position = 0, TrackHash = hash });
+            var offer = new Data.Offer { Name = "Picanha", AudioHash = "oferta-teste", ValidFrom = DateTimeOffset.UtcNow, ValidUntil = DateTimeOffset.UtcNow.AddDays(7) };
+            db.Offers.Add(offer);
+            await db.SaveChangesAsync();
+            foreach (var offset in new long[] { 5_000, 20_000, 30_000 })
+            {
+                db.OfferPlacements.Add(new Data.OfferPlacement
+                {
+                    OfferId = offer.Id, Kind = PlacementKinds.AnchorDuring, PlaylistId = playlist.Id, PlaylistItemId = "item-1", OffsetMs = offset,
+                });
+            }
+
+            await db.SaveChangesAsync();
+        });
+
+        var job = await EditAndWaitAsync(hash, new { cuts = new[] { new { startMs = 15_000, endMs = 25_000 } } });
+
+        Assert.Equal(IngestionStatus.Done, job.Status);
+        Assert.NotEqual(hash, job.Hash);
+        var list = (await HubHarness.JsonAsync(await _admin.GetAsync("/api/tracks"))).EnumerateArray().ToArray();
+        var edited = Assert.Single(list);
+        Assert.Equal((job.Hash, 1, "001", true), (edited.GetProperty("hash").GetString(), edited.GetProperty("number").GetInt32(),
+            edited.GetProperty("title").GetString(), edited.GetProperty("edited").GetBoolean()));
+        Assert.InRange(edited.GetProperty("durationMs").GetInt64(), 39_700, 40_300);
+        Assert.Equal(10_000, edited.GetProperty("removedMs").GetInt64());
+        Assert.Equal("Manhã", edited.GetProperty("playlists")[0].GetProperty("name").GetString());
+
+        var tracks = await _hub.WithDbAsync(db => db.Tracks.ToDictionaryAsync(t => t.Hash));
+        Assert.NotNull(tracks[hash].DeletedAt);
+        Assert.Null(tracks[hash].Number);
+        Assert.Equal((hash, "[[15000,25000]]"), (tracks[job.Hash!].SourceHash, tracks[job.Hash!].CutsJson));
+        Assert.Equal(job.Hash, await _hub.WithDbAsync(db => db.PlaylistItems.Select(i => i.TrackHash).SingleAsync()));
+        // A âncora dentro do trecho tirado vai para a emenda; a de depois anda 10 s.
+        Assert.Equal([5_000L, 15_000L, 20_000L], await _hub.WithDbAsync(db => db.OfferPlacements.OrderBy(p => p.Id).Select(p => p.OffsetMs!.Value).ToListAsync()));
+
+        // Onde era o trecho quase mudo agora toca o som alto.
+        var before = await MeanVolumeAsync(_hub.Paths.LibraryFile(hash), 17, 3);
+        var after = await MeanVolumeAsync(_hub.Paths.LibraryFile(job.Hash!), 17, 3);
+        Assert.True(after - before > 15, $"antes {before} dB, depois {after} dB");
+    }
+
+    [Fact]
+    public async Task Editar_de_novo_soma_os_cortes_e_voltar_para_a_original_traz_o_mesmo_arquivo()
+    {
+        var input = await GenerateAsync("longa.mp3", toneSeconds: 60, amplitude: 0.5);
+        var original = (await UploadAndWaitAsync(input)).Hash!;
+
+        var first = await EditAndWaitAsync(original, new { cuts = new[] { new { startMs = 0, endMs = 5_000 } } });
+        var second = await EditAndWaitAsync(first.Hash!, new { cuts = new[] { new { startMs = 10_000, endMs = 20_000 } } });
+
+        var edited = await _hub.WithDbAsync(db => db.Tracks.SingleAsync(t => t.Hash == second.Hash));
+        Assert.Equal((1, original, "[[0,5000],[15000,25000]]"), (edited.Number, edited.SourceHash, edited.CutsJson));
+        Assert.InRange(edited.DurationMs, 44_700, 45_300);
+
+        // O arquivo enviado de uma música editada continua sendo ela.
+        Assert.Equal(IngestionStatus.Duplicate, (await UploadAndWaitAsync(input)).Status);
+
+        var tooMuch = await _admin.PostAsJsonAsync($"/api/tracks/{second.Hash}/edit", new { cuts = new[] { new { startMs = 0, endMs = 40_000 } } });
+        Assert.Equal(HttpStatusCode.BadRequest, tooMuch.StatusCode);
+        Assert.Contains("mínimo é 30 s", await tooMuch.Content.ReadAsStringAsync());
+
+        var back = await EditAndWaitAsync(second.Hash!, new { original = true });
+
+        Assert.Equal(original, back.Hash);
+        var tracks = await _hub.WithDbAsync(db => db.Tracks.ToDictionaryAsync(t => t.Hash));
+        Assert.Equal((1, (string?)null, (string?)null, (DateTimeOffset?)null), (tracks[original].Number, tracks[original].SourceHash, tracks[original].CutsJson, tracks[original].DeletedAt));
+        Assert.All(new[] { first.Hash!, second.Hash! }, h => Assert.Null(tracks[h].Number));
+    }
+
+    [Fact]
     public async Task Audio_curto_ou_invalido_e_recusado_com_motivo()
     {
         var shortInput = await GenerateAsync("curta.mp3", toneSeconds: 10, amplitude: 0.5);
@@ -153,9 +236,21 @@ public sealed class IngestionTests : IAsyncLifetime
 
     private async Task<IngestionJob> UploadAndWaitAsync(string path, string kind = "music")
     {
-        var queue = _hub.App.Services.GetRequiredService<IngestionWorker>();
         var jobs = await UploadRawAsync(path, null, kind);
-        var id = jobs[0].GetProperty("id").GetString()!;
+        return await WaitAsync(jobs[0].GetProperty("id").GetString()!);
+    }
+
+    private async Task<IngestionJob> EditAndWaitAsync(string hash, object body)
+    {
+        var response = await _admin.PostAsJsonAsync($"/api/tracks/{hash}/edit", body);
+        Assert.True(response.StatusCode == HttpStatusCode.Accepted, await response.Content.ReadAsStringAsync());
+        var id = (await HubHarness.JsonAsync(response)).GetProperty("id").GetString()!;
+        return await WaitAsync(id);
+    }
+
+    private async Task<IngestionJob> WaitAsync(string id)
+    {
+        var queue = _hub.App.Services.GetRequiredService<IngestionWorker>();
         var stopwatch = Stopwatch.StartNew();
         while (stopwatch.Elapsed < TimeSpan.FromSeconds(60))
         {
@@ -167,7 +262,18 @@ public sealed class IngestionTests : IAsyncLifetime
             await Task.Delay(50);
         }
 
-        throw new TimeoutException($"Ingestão de {path} não terminou.");
+        throw new TimeoutException($"O trabalho {id} não terminou.");
+    }
+
+    private async Task<string> GenerateSectionsAsync(string name, params (double Seconds, double Amplitude)[] sections)
+    {
+        var output = Path.Combine(_inputs, name);
+        var inv = CultureInfo.InvariantCulture;
+        var parts = sections.Select((section, i) => string.Format(inv, "sine=frequency=440:sample_rate=48000:duration={0},volume={1}[s{2}]", section.Seconds, section.Amplitude, i));
+        var filter = string.Join(';', parts) + ";" + string.Concat(sections.Select((_, i) => $"[s{i}]")) + $"concat=n={sections.Length}:v=0:a=1,aformat=channel_layouts=stereo";
+        var result = await RunAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-filter_complex", filter, output]);
+        Assert.True(result.ExitCode == 0, result.Error);
+        return output;
     }
 
     private async Task<JsonElement[]> UploadRawAsync(string path, string? content, string kind = "music")

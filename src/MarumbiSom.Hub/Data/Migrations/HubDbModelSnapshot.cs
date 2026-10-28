@@ -705,6 +705,10 @@ namespace MarumbiSom.Hub.Data.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("CutsJson")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("cuts_json");
+
                     b.Property<long?>("DeletedAt")
                         .HasColumnType("INTEGER")
                         .HasColumnName("deleted_at");
@@ -734,6 +738,10 @@ namespace MarumbiSom.Hub.Data.Migrations
                     b.Property<long>("SizeBytes")
                         .HasColumnType("INTEGER")
                         .HasColumnName("size_bytes");
+
+                    b.Property<string>("SourceHash")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("source_hash");
 
                     b.Property<string>("Title")
                         .IsRequired()

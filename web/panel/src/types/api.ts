@@ -383,6 +383,74 @@ export interface paths {
     };
     trace?: never;
   };
+  '/api/tracks/{hash}/edit': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          hash: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['TrackEditInput'];
+        };
+      };
+      responses: {
+        /** @description Accepted */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['IngestionJob'];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+        /** @description Not Found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+        /** @description Conflict */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/tracks/{hash}/audio': {
     parameters: {
       query?: never;
@@ -2108,6 +2176,50 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/hub/update/check': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Accepted */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['HubUpdateStatus'];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/hub/update/package': {
     parameters: {
       query?: never;
@@ -2196,6 +2308,12 @@ export interface components {
     CurrentReleaseInput: {
       version: string;
     };
+    CutInput: {
+      /** Format: int64 */
+      startMs: number;
+      /** Format: int64 */
+      endMs: number;
+    };
     EnrollCodeResult: {
       code: string;
       /** Format: date-time */
@@ -2275,6 +2393,7 @@ export interface components {
       download: null | components['schemas']['GitHubDownload'];
       message: null | string;
       problem: boolean;
+      searching: boolean;
       autoUpdate: boolean;
       /** @example 07:30 */
       autoUpdateTime: string;
@@ -2293,6 +2412,12 @@ export interface components {
       status: components['schemas']['IngestionStatus'];
       error: null | string;
       hash: null | string;
+      /** Format: double */
+      progress: number;
+      editOf: null | string;
+      sourceHash: null | string;
+      cuts: null | components['schemas']['TrackCut'][];
+      inputExtension: null | string;
     };
     /** @enum {unknown} */
     IngestionStatus: 'queued' | 'processing' | 'done' | 'duplicate' | 'rejected' | 'failed';
@@ -2606,6 +2731,12 @@ export interface components {
       /** Format: int64 */
       durationMs: number;
     };
+    TrackCut: {
+      /** Format: int64 */
+      startMs: number;
+      /** Format: int64 */
+      endMs: number;
+    };
     TrackDto: {
       hash: string;
       kind: components['schemas']['TrackKind'];
@@ -2623,6 +2754,13 @@ export interface components {
       /** Format: date-time */
       createdAt: string;
       playlists: components['schemas']['PlaylistRef'][];
+      edited: boolean;
+      /** Format: int64 */
+      removedMs: number;
+    };
+    TrackEditInput: {
+      cuts?: null | components['schemas']['CutInput'][];
+      original: boolean;
     };
     /** @enum {unknown} */
     TrackKind: 'music' | 'offer';

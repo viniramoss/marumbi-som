@@ -3,6 +3,7 @@ import { api, call } from './client';
 import type {
   AnchorInput,
   CommandOutcome,
+  IngestionJob,
   ItemInput,
   OfferDetail,
   OfferInput,
@@ -245,6 +246,23 @@ export function useUpdateTrack() {
   });
 }
 
+/** Edição de música (D34): o Hub refaz a música sem os trechos; o andamento vem na lista de envios. */
+export function useEditTrack() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      hash,
+      cuts,
+      original = false,
+    }: {
+      hash: string;
+      cuts: { startMs: number; endMs: number }[];
+      original?: boolean;
+    }) => call(api.POST('/api/tracks/{hash}/edit', { params: { path: { hash } }, body: { cuts, original } })),
+    onSuccess: (job) => client.setQueryData<IngestionJob[]>(keys.uploads, (list) => [job, ...(list ?? [])]),
+  });
+}
+
 export function useDeleteTrack() {
   const client = useQueryClient();
   return useMutation({
@@ -417,6 +435,15 @@ export function useRequestHubUpdate() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: () => call(api.POST('/api/hub/update')),
+    onSuccess: (status) => client.setQueryData(keys.hubUpdate, status),
+  });
+}
+
+/** "Buscar atualizações" (D35): o Hub procura no GitHub agora e já pede a troca se vier versão nova. */
+export function useSearchHubUpdate() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => call(api.POST('/api/hub/update/check')),
     onSuccess: (status) => client.setQueryData(keys.hubUpdate, status),
   });
 }
