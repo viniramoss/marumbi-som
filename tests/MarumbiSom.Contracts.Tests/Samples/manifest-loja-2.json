@@ -1,0 +1,37 @@
+{
+  "storeId": "loja-2",
+  "version": 47,
+  "contentHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "generatedAt": "2026-10-22T16:20:00-03:00",
+  "timezone": "America/Sao_Paulo",
+  "volume": 70,
+  "crossfadeS": 5,
+  "schedules": [
+    { "days": [1,2,3,4,5,6], "start": "08:00", "end": "12:00", "playlistId": "manha" },
+    { "days": [1,2,3,4,5,6], "start": "12:00", "end": "20:00", "playlistId": "tarde" }
+  ],
+  "playlists": {
+    "manha": { "shuffle": true,  "items": [{ "id": "it-10", "hash": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb" }, { "id": "it-11", "hash": "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d" }] },
+    "tarde": { "shuffle": false, "items": [{ "id": "it-88", "hash": "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6" }, { "id": "it-90", "hash": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb" }] }
+  },
+  "tracks": {
+    "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb": { "kind": "music", "size": 4213377, "durationMs": 211000, "title": "Música A", "artist": "Artista A" },
+    "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d": { "kind": "music", "size": 3987211, "durationMs": 198000, "title": "Música B", "artist": "Artista B" },
+    "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6": { "kind": "music", "size": 4500100, "durationMs": 225000, "title": "Música C" },
+    "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4": { "kind": "offer", "size": 310442, "durationMs": 14000, "title": "Picanha R$ 69,90" }
+  },
+  "spots": {
+    "minOfferGapS": 300,
+    "offers": {
+      "of-12": { "hash": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4", "name": "Picanha R$ 69,90", "duckLevel": 30,
+                 "validFrom": "2026-10-23T07:00:00-03:00", "validUntil": "2026-10-25T20:00:00-03:00" }
+    },
+    "placements": [
+      { "id": "pl-1", "offerId": "of-12", "kind": "anchorBetween", "playlistId": "tarde", "afterItemId": "it-88" },
+      { "id": "pl-2", "offerId": "of-12", "kind": "anchorDuring",  "playlistId": "tarde", "itemId": "it-90", "offsetMs": 80000 },
+      { "id": "pl-3", "offerId": "of-12", "kind": "everyMinutes",  "minutes": 15, "mode": "during" },
+      { "id": "pl-4", "offerId": "of-12", "kind": "clock", "time": "12:00", "days": [1,2,3,4,5,6], "mode": "during" },
+      { "id": "pl-5", "offerId": "of-12", "kind": "everyTracks", "n": 4, "playlistIds": ["tarde"] }
+    ]
+  }
+}

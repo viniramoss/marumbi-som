@@ -1,0 +1,25 @@
+// Política de acesso do Tailscale (seção 5.2). Cole no console: Access controls → editar arquivo.
+// Substitua 100.X.Y.Z pelo IP Tailscale do PC do escritório (Hub).
+{
+  "tagOwners": {
+    "tag:loja": ["autogroup:admin"],
+  },
+
+  "hosts": {
+    "hub": "100.X.Y.Z",
+  },
+
+  "grants": [
+    // Dispositivos do admin → painel do Hub
+    { "src": ["autogroup:member"], "dst": ["hub"], "ip": ["443"] },
+    // Agentes das lojas → Hub
+    { "src": ["tag:loja"], "dst": ["hub"], "ip": ["443"] },
+    // Dispositivos do admin → Área de Trabalho Remota das lojas (manutenção emergencial)
+    { "src": ["autogroup:member"], "dst": ["tag:loja"], "ip": ["3389"] },
+    // Loja → loja e loja → outros dispositivos do admin: proibido (nenhuma regra concede).
+  ],
+
+  "tests": [
+    { "src": "tag:loja", "accept": ["hub:443"], "deny": ["tag:loja:3389", "tag:loja:443"] },
+  ],
+}

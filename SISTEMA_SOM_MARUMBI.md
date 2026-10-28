@@ -1,6 +1,6 @@
 # Sistema de Som Remoto — Casa de Carnes Marumbi
 
-> Documento de arquitetura e execução. Versão 1.1 — outubro/2026 (inclui ofertas com ducking).
+> Documento de arquitetura e execução. Versão 1.2 — outubro/2026 (inclui ofertas com ducking e mixagem entre músicas).
 > Este documento é a fonte da verdade do projeto. Toda implementação DEVE segui-lo. Qualquer desvio DEVE ser registrado na seção 18 (Registro de Decisões) antes de ser implementado.
 
 ---
@@ -43,6 +43,7 @@ Controlar, a partir do escritório (ou do celular), a música ambiente das lojas
 - agenda de playlists por horário e dia da semana;
 - controle ao vivo (tocar, pausar, pular, volume, tocar uma música agora);
 - ofertas faladas (spots) entre músicas ou durante a música, com a música abaixada automaticamente (ducking);
+- transição natural entre músicas, com fade e mixagem (crossfade), sem silêncio e sem cortes secos;
 - conexão automática e permanente com uma caixa de som Bluetooth em cada loja;
 - computador da loja sem controle do sistema pelos funcionários;
 - custo zero em serviços.
@@ -128,7 +129,7 @@ Consequências:
    │  ├─ HubClient (WS + HTTP)  │  └──────────────────┘        └──────────────────┘
    │  ├─ SyncEngine + Cache     │
    │  ├─ Scheduler (agenda)     │
-   │  ├─ Player (2× mpv)        │
+   │  ├─ Player (3× mpv)        │
    │  ├─ SpotScheduler (ofertas)│
    │  ├─ BluetoothGuardian      │
    │  ├─ AudioEndpointManager   │
@@ -257,7 +258,7 @@ C:\MarumbiSom\Hub\
 | `tracks` | hash (PK), kind, title, artist, duration_ms, size_bytes, loudness_lufs, original_name, created_at, deleted_at | `kind`: `music` ou `offer`. `deleted_at` = exclusão lógica |
 | `playlists` | id, name, shuffle (bool), created_at, updated_at | |
 | `playlist_items` | id (UUID estável), playlist_id, position, track_hash | Único (playlist_id, position). O `id` é preservado ao reordenar; âncoras de ofertas apontam para ele |
-| `stores` | id, slug, name, volume (0–100), bt_device_name, timezone, min_offer_gap_s, token_hash, created_at | `timezone` padrão `America/Sao_Paulo`; `min_offer_gap_s` padrão 300 |
+| `stores` | id, slug, name, volume (0–100), bt_device_name, timezone, min_offer_gap_s, crossfade_s, token_hash, created_at | `timezone` padrão `America/Sao_Paulo`; `min_offer_gap_s` padrão 300; `crossfade_s` padrão 5 (0 = sem mixagem) |
 | `schedules` | id, store_id, playlist_id, days_mask, start_time, end_time | `days_mask`: bit 0 = domingo … bit 6 = sábado |
 | `store_manifests` | store_id, version, content_hash, json, created_at | Mantém as últimas 20 versões |
 | `store_state` | store_id, applied_version, pending_version, sync_progress, now_playing_hash, position_ms, player_state, bt_state, volume, disk_free_mb, agent_version, last_seen_at | Atualizado pela telemetria |
@@ -288,11 +289,12 @@ Executado em fila (uma música por vez, em segundo plano) para cada arquivo envi
 1. **Validação:** extensão permitida (`mp3, m4a, aac, flac, wav, ogg, opus, wma`), tamanho ≤ 100 MB, `ffprobe` confirma que é áudio válido e com duração entre 30 s e 15 min. Falha → rejeita com motivo.
 2. **Metadados:** título e artista das tags. Sem tags, usa o nome do arquivo no formato `Artista - Título`.
 3. **Corte de silêncio** no início e no fim (`silenceremove`, limiar −50 dB), para transições curtas entre faixas.
-4. **Normalização de volume** em duas passadas (`loudnorm`): alvo **−16 LUFS integrado, pico real −1,5 dBTP**. Todas as músicas DEVEM sair com o mesmo volume percebido.
-5. **Codificação:** AAC-LC 160 kbps, 44,1 kHz, estéreo, `.m4a`, com `+faststart`.
-6. **Hash:** SHA-256 do arquivo final. Se o hash já existe na biblioteca, a música é considerada duplicata e não é armazenada de novo.
-7. **Armazenamento:** move para `library\<2 chars>\<hash>.m4a` e guarda o original em `originals\`.
-8. **Registro** na tabela `tracks` e notificação ao painel via WebSocket.
+4. **Fade:** fade-in de 0,5 s no início e fade-out de 3 s no fim (`afade`), para que músicas cortadas no fim terminem suavemente. Os tempos ficam em `settings` e valem para novas ingestões.
+5. **Normalização de volume** em duas passadas (`loudnorm`): alvo **−16 LUFS integrado, pico real −1,5 dBTP**. Todas as músicas DEVEM sair com o mesmo volume percebido.
+6. **Codificação:** AAC-LC 160 kbps, 44,1 kHz, estéreo, `.m4a`, com `+faststart`.
+7. **Hash:** SHA-256 do arquivo final. Se o hash já existe na biblioteca, a música é considerada duplicata e não é armazenada de novo.
+8. **Armazenamento:** move para `library\<2 chars>\<hash>.m4a` e guarda o original em `originals\`.
+9. **Registro** na tabela `tracks` e notificação ao painel via WebSocket.
 
 **Perfil de ofertas.** Áudios enviados pela tela de Ofertas passam pelo mesmo pipeline, com estas diferenças:
 
@@ -302,6 +304,7 @@ Executado em fila (uma música por vez, em segundo plano) para cada arquivo envi
 | Alvo de volume | −16 LUFS | **−14 LUFS** (a voz DEVE se destacar sobre a música abaixada) |
 | Pico real | −1,5 dBTP | −1,5 dBTP |
 | `tracks.kind` | `music` | `offer` |
+| Fade (passo 4) | 0,5 s / 3 s | Não (a locução fica intacta) |
 | Aparece na Biblioteca | Sim | Não (só na tela de Ofertas) |
 
 Os binários `ffmpeg.exe` e `ffprobe.exe` ficam em `app\tools\` e são baixados pelo script de instalação, nunca commitados.
@@ -378,7 +381,7 @@ Cada alerta é enviado uma única vez por ocorrência e gera uma mensagem de "re
 - Fila atual (próximas 10 faixas).
 - Histórico do que tocou, músicas e ofertas (hoje / 7 dias).
 - Eventos e logs recentes do agente.
-- Configurações da loja: nome, volume padrão.
+- Configurações da loja: nome, volume padrão, tempo de mixagem entre músicas (padrão 5 s; 0 desativa).
 - Manutenção: gerar código de vinculação, reiniciar agente, atualizar agente.
 
 **Configurações**
@@ -438,7 +441,7 @@ C:\ProgramData\MarumbiSom\
 | `SyncEngine` | Diferença manifesto × cache, fila de download (1 por vez), retomada via HTTP Range, verificação SHA-256, promoção do pendente a ativo |
 | `CacheManager` | Remove arquivos não referenciados há mais de 7 dias; limite total de 10 GB; NUNCA remove arquivo referenciado |
 | `Scheduler` | A cada 15 s determina a playlist ativa conforme agenda, dia da semana e fuso horário |
-| `PlayerController` | Gerencia os dois processos mpv (música e ofertas), a fila, o estado e as rampas de volume; watchdog de ambos |
+| `PlayerController` | Gerencia os três processos mpv (dois de música, alternados na mixagem, e um de ofertas), a fila, o estado, a mixagem e as rampas de volume; watchdog de todos |
 | `SpotScheduler` | Avalia âncoras e regras de ofertas, aplica prioridade, intervalo mínimo e validade, e dispara as ofertas (seção 10.3) |
 | `BluetoothGuardian` | Mantém o rádio ligado e a caixa conectada (seção 9) |
 | `AudioEndpointManager` | Localiza o endpoint de áudio da caixa, impõe volume, fixa a saída padrão do Windows |
@@ -485,7 +488,7 @@ Na inicialização, o agente DEVE verificar a existência de todos os arquivos d
 
 - O funcionário DEVE usar uma conta Windows **padrão** (sem administrador). Sem isso, a regra 11 é impossível de cumprir.
 - O agente não tem janela nem ícone na bandeja na v1.
-- Consumo-alvo: < 200 MB de RAM e < 2% de CPU médio (agente + dois mpv).
+- Consumo-alvo: < 200 MB de RAM e < 2% de CPU médio (agente + três mpv).
 
 ---
 
@@ -539,7 +542,7 @@ O nível 3 só pode ser executado no máximo 1 vez a cada 10 minutos.
 
 ### 9.5 Comportamento de áudio
 
-- Os dois processos mpv (música e ofertas) são iniciados com `--audio-device=wasapi/{id-do-endpoint-da-caixa}`. O áudio vai **somente** para a caixa, e o Windows mistura os dois fluxos.
+- Os três processos mpv (dois de música e um de ofertas) são iniciados com `--audio-device=wasapi/{id-do-endpoint-da-caixa}`. O áudio vai **somente** para a caixa, e o Windows mistura os fluxos.
 - Quando a caixa conecta, o Windows tende a torná-la a saída padrão (e os sons do sistema do caixa passam a sair na caixa da loja). O `AudioEndpointManager` DEVE restaurar a saída padrão anterior (via interface `IPolicyConfig`, não documentada). Se a interface falhar em alguma versão do Windows, registrar aviso e seguir sem essa função.
 - Volume do endpoint da caixa fixado em 100%. O volume da loja é controlado pelo volume do mpv (0–100, definido no painel). O agente reaplica ambos a cada 10 s, desfazendo alterações feitas por funcionários. Durante uma oferta, o valor imposto à música é o do ducking em andamento.
 - Sem caixa conectada: o player pausa e guarda a posição. Ao reconectar, retoma da mesma posição.
@@ -563,14 +566,15 @@ Parâmetros de inicialização:
 
 ```
 mpv --idle=yes --no-video --no-terminal --gapless-audio=yes
-    --input-ipc-server=\\.\pipe\marumbisom-mpv
+    --input-ipc-server=\\.\pipe\marumbisom-mpv-a
     --audio-device=wasapi/{endpoint}
     --volume=<volume da loja> --volume-max=100
 ```
 
-- O `PlayerController` envia uma faixa por vez (`loadfile`) e deixa a próxima pré-carregada (`loadfile … append`) para transição sem pausa.
+- Há dois processos de música, A e B (`marumbisom-mpv-a` e `marumbisom-mpv-b`), que se alternam: enquanto um toca, o outro espera a próxima faixa para a mixagem (seção 10.2.1).
+- Com a mixagem desativada (`crossfadeS = 0`), só o processo A é usado: o `PlayerController` envia uma faixa por vez (`loadfile`) e deixa a próxima pré-carregada (`loadfile … append`) para transição sem pausa.
 - Watchdog: se o processo mpv morrer, reinicia em 2 s. Se estiver "tocando" sem a posição avançar por 30 s, mata e reinicia.
-- Um segundo processo mpv, exclusivo para ofertas, usa os mesmos parâmetros, com `--input-ipc-server=\\.\pipe\marumbisom-mpv-spot`. Ele fica ocioso fora das ofertas e tem o mesmo watchdog.
+- Um terceiro processo mpv, exclusivo para ofertas, usa os mesmos parâmetros, com `--input-ipc-server=\\.\pipe\marumbisom-mpv-spot`. Ele fica ocioso fora das ofertas e tem o mesmo watchdog.
 
 ### 10.2 Regras de reprodução
 
@@ -583,6 +587,18 @@ mpv --idle=yes --no-video --no-terminal --gapless-audio=yes
 7. **"Tocar agora":** interrompe a atual, toca a escolhida e depois segue a fila normal.
 8. **"Pausar" pelo admin:** vale até "tocar" ou até a próxima janela de agenda começar.
 9. Toda faixa iniciada é registrada (`track.started`) para o histórico.
+
+### 10.2.1 Mixagem entre músicas (crossfade)
+
+1. A `crossfadeS` segundos do fim da faixa atual (padrão 5, configurável por loja), a próxima faixa começa no processo de música ocioso e as duas trocam de volume ao mesmo tempo, em rampa de potência constante (*equal-power*), durante `crossfadeS`.
+2. O fim da faixa é o fim real do arquivo, que já vem sem silêncio e com fade-out (seção 6.5).
+3. Faixa mais curta que 3 × `crossfadeS`: a mixagem usa um terço da duração da faixa.
+4. Não há mixagem: (a) antes de oferta `between` ou âncora `anchorBetween` (a música termina, a oferta toca, a próxima começa 300 ms depois, seção 10.3.2); (b) no fim do horário (fade-out de 3 s, item 3 da seção 10.2); (c) com `crossfadeS = 0` (emenda sem pausa, seção 10.1).
+5. "Pular" e "tocar agora" fazem a transição em 1 s, nunca em degrau.
+6. Troca de janela de agenda: a primeira faixa da nova playlist entra com mixagem.
+7. Volume de cada processo de música = volume da loja × ganho da mixagem × ganho do ducking (quando há oferta `during`). Uma oferta durante a mixagem abaixa os dois processos.
+8. `track.started` é enviado quando a próxima faixa começa (início da mixagem); a posição salva em `state.json` passa a ser a da nova faixa nesse momento.
+9. Se um dos processos de música morrer durante a mixagem, a faixa que entrava continua no outro, com o volume levado ao alvo em rampa de 1 s.
 
 ### 10.3 Ofertas (spots) e ducking
 
@@ -604,7 +620,7 @@ Oferta é um áudio curto de locução (ex.: "Picanha R$ 69,90 até sábado"). E
 3. **Fim da oferta:** rampa da música de volta a 100% em 1.500 ms.
 4. Se a música terminar durante a oferta, a próxima música começa já em `duckLevel` e só sobe quando a oferta terminar.
 5. Rampas são feitas em passos de no máximo 40 ms. NUNCA alterar o volume em degrau.
-6. `duckLevel` é relativo ao volume da loja. Exemplo: loja em 70 e ducking de 30% → música em 21 durante a oferta.
+6. `duckLevel` é a fração da amplitude da música em relação ao volume da loja (30% ≈ −10,5 dB). Como o volume do mpv é cúbico (ganho = (volume/100)³), o volume aplicado ao mpv durante a oferta é volume da loja × ∛(duckLevel/100). Exemplo: loja em 70 e ducking de 30% → mpv da música em 46,9 durante a oferta (decisão D17).
 7. O volume da oferta é o volume da loja. O destaque da voz vem da normalização mais alta da locução (−14 LUFS, seção 6.5).
 
 #### 10.3.4 Posicionamento
@@ -674,6 +690,7 @@ Todos os contratos (DTOs) ficam em `MarumbiSom.Contracts`, compartilhados entre 
   "generatedAt": "2026-10-22T16:20:00-03:00",
   "timezone": "America/Sao_Paulo",
   "volume": 70,
+  "crossfadeS": 5,
   "schedules": [
     { "days": [1,2,3,4,5,6], "start": "08:00", "end": "12:00", "playlistId": "manha" },
     { "days": [1,2,3,4,5,6], "start": "12:00", "end": "20:00", "playlistId": "tarde" }
@@ -966,6 +983,9 @@ Aceite:
 - [ ] Após reiniciar, continua da faixa seguinte, não da primeira.
 - [ ] Matar o mpv pelo Gerenciador de Tarefas: volta a tocar em ≤ 5 s.
 - [ ] Funcionário (conta padrão) não consegue parar o serviço.
+- [ ] Transição entre músicas com mixagem de 5 s: sem silêncio, sem salto de volume, sem estalo.
+- [ ] Com mixagem em 0, as faixas emendam sem pausa.
+- [ ] Oferta entre músicas suspende a mixagem naquela transição.
 - [ ] Testes automatizados do `Scheduler` e das regras da seção 10.2 passando.
 
 ### Etapa 3 — Hub backend + sincronização
@@ -978,6 +998,7 @@ Aceite:
 - [ ] Cabo de rede puxado no meio do download: retoma de onde parou.
 - [ ] Arquivo do cache corrompido manualmente: detectado e baixado de novo.
 - [ ] Hub desligado por 24 h: loja toca normalmente o tempo todo.
+- [ ] Música enviada cortada no fim sai processada com fade-out de 3 s.
 
 ### Etapa 4 — Painel
 Entrega: todas as telas da seção 7.
@@ -1030,8 +1051,8 @@ Aceite:
 |---|---|
 | Contracts | Serialização/desserialização do manifesto; hash canônico estável |
 | Hub | Geração de manifesto; versão só sobe quando o conteúdo muda; enrollment; autorização das rotas; Range nos downloads; validação de agenda sem sobreposição |
-| Ingestão | Arquivo inválido rejeitado; duplicata detectada; saída com loudness dentro de ±1 LU do alvo |
-| Agente | Diferença manifesto × cache; nunca ativar pendente incompleto; nunca apagar arquivo referenciado; retomada de download; regras de reprodução da seção 10.2 com relógio simulado |
+| Ingestão | Arquivo inválido rejeitado; duplicata detectada; saída com loudness dentro de ±1 LU do alvo; fade-in/fade-out aplicados em músicas e não em ofertas |
+| Agente | Diferença manifesto × cache; nunca ativar pendente incompleto; nunca apagar arquivo referenciado; retomada de download; regras de reprodução da seção 10.2 com relógio simulado; linha do tempo da mixagem (início a `crossfadeS` do fim, potência constante, faixas curtas e exceções da seção 10.2.1) |
 | SpotScheduler | Prioridade; intervalo mínimo; fila máx. 3 e descarte após 10 min; validade com relógio simulado; âncoras presas ao item; `offsetMs` limitado; linha do tempo do ducking (800 ms / 1.500 ms) |
 | Painel | Fluxos principais (login, editar playlist, editor de duas colunas, criar oferta, comando ao vivo) |
 
@@ -1059,6 +1080,7 @@ Aceite:
 - [ ] Oferta vencida não toca.
 - [ ] Conta do funcionário não é administradora e não consegue parar o serviço.
 - [ ] Sons do PC do caixa não saem na caixa da loja.
+- [ ] Passagem de uma música para outra sem silêncio nem corte seco.
 - [ ] Alerta de teste do Telegram recebido.
 
 ---
@@ -1095,6 +1117,11 @@ Aceite:
 | D10 | Ofertas em um segundo processo mpv, misturado pelo Windows | Ducking sem processamento de áudio próprio; o player de música não é interrompido |
 | D11 | Âncoras presas ao item da playlist e só em playlist sequencial | Reordenar mantém a oferta junto da música; no aleatório não existe posição fixa |
 | D12 | Ducking padrão de 30% com rampas de 800 ms / 1.500 ms e locução a −14 LUFS | Voz inteligível sem corte seco da música |
+| D13 | O `contentHash` do manifesto exclui `version`, `contentHash` e `generatedAt` (JSON canônico: chaves em ordem ordinal, sem espaços) | Com `generatedAt` no hash, a regeneração diária das 00:05 incrementaria a versão de todas as lojas sem mudança real |
+| D14 | Guardião Bluetooth com estado "Verificando" (4 s após cada método antes de contar falha), checagem do endpoint a cada 2 s durante o backoff, e nova tentativa do nível 1 após os níveis 2 e 3 | Detalha a seção 9.1: caixa que volta sozinha é detectada sem esperar o backoff de 60 s (meta de 30 s); reiniciar `bthserv` ou o adaptador devolve o rádio no último estado salvo |
+| D15 | Hash SHA-256 de binários de terceiros (mpv, ffmpeg) gravado em `scripts/tools.lock.json` e versionado; o valor vem do digest exibido na página de releases do GitHub ou, se não houver, de conferência humana (`download-tools.ps1 -AcceptNewHash`) | Os builds do mpv para Windows são de terceiros; todo download (scripts e CI) é verificado contra o lock |
+| D16 | Fade-in de 0,5 s e fade-out de 3 s na ingestão das músicas, e mixagem (crossfade) de 5 s entre músicas no agente, com dois processos mpv de música alternados (seções 6.5, 10.1 e 10.2.1) | Decisão do proprietário: músicas cortadas no fim e transição natural, sem parar a música. Reaproveita as rampas de volume e a mistura de fluxos pelo Windows (D10) |
+| D17 | `duckLevel` é fração de amplitude; o volume do mpv durante a oferta é volume da loja × ∛(duckLevel/100) | O mpv aplica curva cúbica ao volume. Com a conta linear (70 × 30% = 21) a música caía cerca de 31 dB e parecia parar durante a oferta no teste do PC piloto (23/10/2026) |
 
 Novas decisões DEVEM ser adicionadas aqui com número sequencial.
 
@@ -1111,7 +1138,7 @@ Novas decisões DEVEM ser adicionadas aqui com número sequencial.
 | Atualização do Windows reiniciar no expediente | Média | Baixo | Horário ativo; serviço sobe sozinho |
 | Funcionário com conta de administrador | Média | Médio | Script de hardening alerta; checklist exige conta padrão |
 | Mudança nos planos gratuitos do Tailscale | Baixa | Médio | Alternativa gratuita: Headscale (servidor de coordenação próprio, open source) |
-| Dois fluxos simultâneos no endpoint Bluetooth causarem falha ou atraso | Baixa | Médio | Validado na Etapa 1 |
+| Até três fluxos simultâneos no endpoint Bluetooth (mixagem + oferta) causarem falha ou atraso | Baixa | Médio | Dois fluxos validados na Etapa 1; três na Etapa 2 |
 | Preço vencido anunciado na loja | Média | Alto | Validade conferida no Hub e no agente (regra 14); aviso de vencimento em 24 h no painel |
 | Âncoras perdidas ao remover músicas | Média | Baixo | Aviso obrigatório no painel antes de salvar |
 | Perda do PC do escritório | Baixa | Médio | Lojas seguem tocando; backup externo da pasta `data\` |
@@ -1148,6 +1175,7 @@ Novas decisões DEVEM ser adicionadas aqui com número sequencial.
 | Ducking | Abaixar automaticamente a música enquanto uma oferta toca |
 | Âncora | Posição fixa de uma oferta presa a uma música específica de uma playlist |
 | Regra de oferta | Recorrência automática: a cada N músicas, a cada X minutos ou em horário fixo |
+| Mixagem (crossfade) | Transição em que a próxima música começa enquanto a atual termina, com os volumes trocando em rampa |
 
 ---
 
