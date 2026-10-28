@@ -78,10 +78,15 @@ foreach ($tool in $lock.tools) {
     }
 
     foreach ($file in $tool.files) {
-        $found = Get-ChildItem -Path $extractDir -Recurse -Filter $file | Select-Object -First 1
+        # "pasta/arquivo" escolhe um caminho dentro do pacote quando o mesmo nome aparece em várias pastas
+        # (ex.: runtimes/win-x64 e win-x86); o arquivo vai para o destino só com o nome.
+        $name = Split-Path $file -Leaf
+        $found = Get-ChildItem -Path $extractDir -Recurse -Filter $name |
+            Where-Object { $_.FullName.Replace('\', '/').EndsWith('/' + $file, [StringComparison]::OrdinalIgnoreCase) } |
+            Select-Object -First 1
         if (-not $found) { throw "$file não encontrado dentro de $archive" }
-        Copy-Item $found.FullName -Destination (Join-Path $Destination $file) -Force
-        Write-Host "  $file -> $Destination"
+        Copy-Item $found.FullName -Destination (Join-Path $Destination $name) -Force
+        Write-Host "  $name -> $Destination"
     }
 }
 
