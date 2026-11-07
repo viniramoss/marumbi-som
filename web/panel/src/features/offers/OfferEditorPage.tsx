@@ -118,7 +118,11 @@ function Editor({ saved, defaultStoreIds }: { saved: OfferDetail | null; default
         setDraft(next);
         setCreated({ id: detail.offer.id, draft: next });
       }
-      toast.success(draft.storeIds.length > 0 ? 'Oferta salva e publicada para as lojas escolhidas.' : 'Oferta salva.');
+      toast.success(
+        draft.storeIds.length > 0
+          ? 'Oferta salva e publicada para as lojas escolhidas.'
+          : 'Oferta salva e publicada para todas as lojas.',
+      );
     } catch (error) {
       toast.error(errorMessage(error));
     }
@@ -196,7 +200,8 @@ function Editor({ saved, defaultStoreIds }: { saved: OfferDetail | null; default
           <RulesCard
             rules={draft.rules}
             hasAnchors={(saved?.anchors.length ?? 0) > 0}
-            stores={(stores.data ?? []).filter((s) => draft.storeIds.includes(s.id))}
+            // Sem loja marcada a oferta vale para todas (seção 6.3, offer_stores).
+            stores={(stores.data ?? []).filter((s) => draft.storeIds.length === 0 || draft.storeIds.includes(s.id))}
             onChange={(rules) => change({ rules })}
           />
           <AnchorsCard saved={saved} />
@@ -212,13 +217,29 @@ function Editor({ saved, defaultStoreIds }: { saved: OfferDetail | null; default
                   onChange={(e) => change({ validFrom: e.target.value })}
                 />
               </Field>
-              <Field label="Termina" hint="Depois disso a oferta para de tocar sozinha, sem precisar apagar.">
-                <Input
-                  type="datetime-local"
-                  value={draft.validUntil}
-                  onChange={(e) => change({ validUntil: e.target.value })}
+              <label className="flex cursor-pointer items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={draft.endless}
+                  onChange={(e) => change({ endless: e.target.checked })}
+                  className="mt-0.5 size-4 accent-brand-700"
                 />
-              </Field>
+                <span>
+                  <span className="font-medium text-stone-800">Não termina</span>
+                  <span className="block text-xs text-stone-500">
+                    Toca até você desativar ou apagar. Para horário de atendimento, QR Code e produtos fixos.
+                  </span>
+                </span>
+              </label>
+              {!draft.endless && (
+                <Field label="Termina" hint="Depois disso a oferta para de tocar sozinha, sem precisar apagar.">
+                  <Input
+                    type="datetime-local"
+                    value={draft.validUntil}
+                    onChange={(e) => change({ validUntil: e.target.value })}
+                  />
+                </Field>
+              )}
               <label className="flex cursor-pointer items-start gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -697,9 +718,9 @@ function StoresCard({
           </ul>
         )}
         {storeIds.length === 0 && all.length > 0 && (
-          <p className="flex items-start gap-1.5 text-xs text-amber-800">
+          <p className="flex items-start gap-1.5 text-xs text-stone-600">
             <CircleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
-            Sem loja escolhida a oferta não toca em lugar nenhum.
+            Sem loja marcada a oferta vale para todas as lojas, inclusive as cadastradas depois.
           </p>
         )}
         {savedStoreIds.length > 0 && (

@@ -3,6 +3,7 @@ import { Lock, Maximize2, Megaphone, Music, Volume2, ZoomIn, ZoomOut } from 'luc
 import type { OfferSummary } from '../../api/types';
 import { Card, CardHeader, IconButton } from '../../components/ui';
 import { formatDuration, formatLongDuration } from '../../lib/format';
+import type { AnchorIssue } from './anchorIssue';
 import { startTimes, totalDuration, type DraftAnchor, type DraftItem } from './playlistDraft';
 import { anchorTime, assignRows, fitZoom, locate, minorTicks, nextZoom, pxPerMs, snapToStart, ticks } from './timeline';
 
@@ -28,19 +29,23 @@ const musicHeight = 58;
 /** Oferta sem duração conhecida (removida do cadastro) aparece com 10 s. */
 const fallbackOfferMs = 10_000;
 /** Largura aproximada do rótulo da oferta (ícone, nome e horário), para os rótulos não se encavalarem. */
-const chipWidth = (name: string) => Math.min(240, Math.round(name.length * 6.6) + 68);
+const chipWidth = (name: string, issue?: AnchorIssue) =>
+  Math.min(240 + (issue ? 90 : 0), Math.round(name.length * 6.6) + 68 + (issue ? issue.label.length * 6 + 14 : 0));
+const noIssues: ReadonlyMap<number, AnchorIssue> = new Map();
 
 /**
  * Linha do tempo da playlist inteira (D30), como num editor de vídeo: as músicas em sequência do começo ao fim e as
  * ofertas presas marcadas no ponto em que entram. Abre mostrando a playlist toda; as lupas (ou Ctrl + rolar o mouse)
  * aproximam para posicionar com precisão. Soltar uma oferta da coluna da direita num ponto a prende ali; arrastar o
  * rótulo muda o ponto; clicar abre o ajuste fino; com o rótulo selecionado, as setas movem 1 s (com Shift, 10 s).
- * Por baixo continua sendo a âncora da D26: a oferta fica presa à música daquele ponto e ao "entra aos".
+ * Por baixo continua sendo a âncora da D26: a oferta fica presa à música daquele ponto e ao "entra aos". Oferta presa
+ * que não vai tocar (vencida, desativada, fora das lojas) aparece em cinza com o motivo.
  */
 export function PlaylistTimeline({
   items,
   anchors,
   offers,
+  issues = noIssues,
   shuffle,
   playing,
   onMove,
@@ -50,6 +55,8 @@ export function PlaylistTimeline({
   items: DraftItem[];
   anchors: DraftAnchor[];
   offers: OfferSummary[];
+  /** Ofertas presas que não vão tocar, pelo id da oferta. */
+  issues?: ReadonlyMap<number, AnchorIssue>;
   shuffle: boolean;
   playing: PlayingNow[];
   onMove: (anchor: DraftAnchor, to: TimelineTarget) => void;
@@ -96,7 +103,8 @@ export function PlaylistTimeline({
     if (start === null) return [];
     const duration = offers.find((o) => o.id === anchor.offerId)?.durationMs ?? fallbackOfferMs;
     // Perto do fim da linha o rótulo fica do lado esquerdo do ponto, para não sair da tela.
-    const chip = chipWidth(anchor.offerName);
+    const issue = issues.get(anchor.offerId);
+    const chip = chipWidth(anchor.offerName, issue);
     const flip = x(start) + chip > contentWidth;
     return [
       {
@@ -105,6 +113,7 @@ export function PlaylistTimeline({
         start,
         duration,
         flip,
+        issue,
         from: flip ? x(start) - chip : x(start),
         to: flip ? x(start) : x(start) + chip,
       },
@@ -341,13 +350,15 @@ export function PlaylistTimeline({
                   <Lock className="size-3.5" aria-hidden /> Sem ofertas presas no aleatório.
                 </p>
               ) : (
-                blocks.map(({ anchor, shown, start, duration, flip }) => {
+                blocks.map(({ anchor, shown, start, duration, flip, issue }) => {
                   const top = rulerHeight + 5 + (rows.get(anchor.key) ?? 0) * rowHeight;
                   const dragging = drag?.key === anchor.key;
                   return (
                     <div key={anchor.key}>
                       <div
-                        className={`pointer-events-none absolute ${dragging ? 'z-20 w-0.5 bg-amber-600' : 'z-[5] w-px bg-amber-500'}`}
+                        className={`pointer-events-none absolute ${dragging ? 'z-20 w-0.5' : 'z-[5] w-px'} ${
+                          issue ? 'bg-stone-400' : dragging ? 'bg-amber-600' : 'bg-amber-500'
+                        }`}
                         style={{
                           left: x(start),
                           top: top + rowHeight - 6,
@@ -356,20 +367,24 @@ export function PlaylistTimeline({
                         aria-hidden
                       />
                       <div
-                        className="pointer-events-none absolute z-[6] rounded-b-sm bg-amber-500/85"
+                        className={`pointer-events-none absolute z-[6] rounded-b-sm ${issue ? 'bg-stone-400/70' : 'bg-amber-500/85'}`}
                         style={{ left: x(start), top: musicTop + 4, width: Math.max(3, duration * scale), height: 5 }}
                         aria-hidden
                       />
                       <button
                         type="button"
-                        aria-label={`${anchor.offerName}: entra aos ${formatDuration(shown.offsetMs)} de ${itemTitle(shown.itemKey)}`}
-                        title={`${describe({ itemKey: shown.itemKey, offsetMs: shown.offsetMs ?? 0 })}. Arraste para mudar; clique para ajustar`}
-                        className={`absolute flex max-w-[240px] touch-none items-center gap-1 border-amber-600 bg-amber-100 pr-2 pl-1.5 text-[11px] font-medium whitespace-nowrap text-amber-950 ring-1 ring-amber-300 ring-inset focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:outline-none ${
-                          flip ? 'rounded-l-md rounded-r-sm border-r-2' : 'rounded-l-sm rounded-r-md border-l-2'
-                        } ${
+                        aria-label={`${anchor.offerName}: entra aos ${formatDuration(shown.offsetMs)} de ${itemTitle(shown.itemKey)}${
+                          issue ? `. ${issue.label}: ${issue.detail}` : ''
+                        }`}
+                        title={`${issue ? `${issue.label}: ${issue.detail}\n` : ''}${describe({ itemKey: shown.itemKey, offsetMs: shown.offsetMs ?? 0 })}. Arraste para mudar; clique para ajustar`}
+                        className={`absolute flex touch-none items-center gap-1 pr-2 pl-1.5 text-[11px] font-medium whitespace-nowrap ring-1 ring-inset focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:outline-none ${
+                          issue
+                            ? 'max-w-[330px] border-stone-400 text-stone-600 ring-stone-300'
+                            : 'max-w-[240px] border-amber-600 text-amber-950 ring-amber-300'
+                        } ${flip ? 'rounded-l-md rounded-r-sm border-r-2' : 'rounded-l-sm rounded-r-md border-l-2'} ${
                           dragging
-                            ? 'z-20 cursor-grabbing bg-amber-200 shadow-lg'
-                            : 'z-10 cursor-grab shadow-sm hover:bg-amber-200'
+                            ? `z-20 cursor-grabbing shadow-lg ${issue ? 'bg-stone-200' : 'bg-amber-200'}`
+                            : `z-10 cursor-grab shadow-sm ${issue ? 'bg-stone-100 hover:bg-stone-200' : 'bg-amber-100 hover:bg-amber-200'}`
                         }`}
                         style={{
                           left: x(start),
@@ -426,8 +441,17 @@ export function PlaylistTimeline({
                         }}
                       >
                         <Megaphone className="size-3 shrink-0" aria-hidden />
-                        <span className="truncate">{anchor.offerName}</span>
-                        <span className="shrink-0 font-normal text-amber-800/80 tabular-nums">
+                        <span className={`truncate ${issue ? 'line-through decoration-stone-400' : ''}`}>
+                          {anchor.offerName}
+                        </span>
+                        {issue && (
+                          <span className="shrink-0 rounded bg-stone-600 px-1 text-[10px] font-semibold text-white">
+                            {issue.label}
+                          </span>
+                        )}
+                        <span
+                          className={`shrink-0 font-normal tabular-nums ${issue ? 'text-stone-500' : 'text-amber-800/80'}`}
+                        >
                           {formatDuration(start)}
                         </span>
                       </button>
