@@ -29,7 +29,7 @@ describe('anchorIssue', () => {
   it('vencida diz quando venceu e o que fazer', () => {
     const issue = anchorIssue(offer({ status: 'expired' }), [loja3]);
     expect(issue?.label).toBe('Vencida');
-    expect(issue?.detail).toMatch(/^Venceu em .*04\/11\/2026.* e não toca mais\. Abra a oferta e mude o Termina/);
+    expect(issue?.detail).toMatch(/^Venceu em .*04\/11\/2026.* e não toca mais\. Em Ofertas, marque e use Prorrogar/);
   });
 
   it('desativada vem antes de vencida', () => {
