@@ -118,7 +118,11 @@ function Editor({ saved, defaultStoreIds }: { saved: OfferDetail | null; default
         setDraft(next);
         setCreated({ id: detail.offer.id, draft: next });
       }
-      toast.success(draft.storeIds.length > 0 ? 'Oferta salva e publicada para as lojas escolhidas.' : 'Oferta salva.');
+      toast.success(
+        draft.storeIds.length > 0
+          ? 'Oferta salva e publicada para as lojas escolhidas.'
+          : 'Oferta salva e publicada para todas as lojas.',
+      );
     } catch (error) {
       toast.error(errorMessage(error));
     }
@@ -196,7 +200,8 @@ function Editor({ saved, defaultStoreIds }: { saved: OfferDetail | null; default
           <RulesCard
             rules={draft.rules}
             hasAnchors={(saved?.anchors.length ?? 0) > 0}
-            stores={(stores.data ?? []).filter((s) => draft.storeIds.includes(s.id))}
+            // Sem loja marcada a oferta vale para todas (seção 6.3, offer_stores).
+            stores={(stores.data ?? []).filter((s) => draft.storeIds.length === 0 || draft.storeIds.includes(s.id))}
             onChange={(rules) => change({ rules })}
           />
           <AnchorsCard saved={saved} />
@@ -697,9 +702,9 @@ function StoresCard({
           </ul>
         )}
         {storeIds.length === 0 && all.length > 0 && (
-          <p className="flex items-start gap-1.5 text-xs text-amber-800">
+          <p className="flex items-start gap-1.5 text-xs text-stone-600">
             <CircleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
-            Sem loja escolhida a oferta não toca em lugar nenhum.
+            Sem loja marcada a oferta vale para todas as lojas, inclusive as cadastradas depois.
           </p>
         )}
         {savedStoreIds.length > 0 && (
