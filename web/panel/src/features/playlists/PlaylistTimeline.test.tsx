@@ -1,6 +1,7 @@
-import { createEvent, fireEvent, render, screen } from '@testing-library/react';
+import { createEvent, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { OfferSummary } from '../../api/types';
+import type { AnchorIssue } from './anchorIssue';
 import type { DraftAnchor, DraftItem } from './playlistDraft';
 import { OfferDrag, PlaylistTimeline, type PlayingNow } from './PlaylistTimeline';
 
@@ -24,13 +25,18 @@ const anchor: DraftAnchor = {
 
 const offer = { id: 5, name: 'Picanha', durationMs: 12_000 } as OfferSummary;
 
-function renderTimeline({ shuffle = false, playing = [] as PlayingNow[] } = {}) {
+function renderTimeline({
+  shuffle = false,
+  playing = [] as PlayingNow[],
+  issues = new Map<number, AnchorIssue>(),
+} = {}) {
   const props = { onMove: vi.fn(), onDropOffer: vi.fn(), onEdit: vi.fn() };
   render(
     <PlaylistTimeline
       items={items}
       anchors={[anchor]}
       offers={[offer]}
+      issues={issues}
       shuffle={shuffle}
       playing={playing}
       {...props}
@@ -113,6 +119,21 @@ describe('PlaylistTimeline', () => {
     expect(screen.getByText('Loja 1')).toBeInTheDocument();
     expect(screen.getByTitle('2. 002 (4:00)')).toHaveClass('bg-brand-50');
     expect(screen.getByTitle('1. 001 (3:00)')).not.toHaveClass('bg-brand-50');
+  });
+
+  it('oferta presa que não vai tocar aparece em cinza com o motivo, e continua dando para mover', () => {
+    const issue = { label: 'Vencida', detail: 'Venceu em 03/11/2026 e não toca mais.' };
+    const { onEdit } = renderTimeline({ issues: new Map([[5, issue]]) });
+    const block = screen.getByRole('button', {
+      name: 'Picanha: entra aos 0:30 de 001. Vencida: Venceu em 03/11/2026 e não toca mais.',
+    });
+
+    expect(block).toHaveClass('bg-stone-100');
+    expect(block).not.toHaveClass('bg-amber-100');
+    expect(within(block).getByText('Vencida')).toBeInTheDocument();
+    expect(block.title).toMatch(/^Vencida: Venceu em 03\/11\/2026/);
+    fireEvent.click(block);
+    expect(onEdit).toHaveBeenCalledWith(anchor);
   });
 
   it('no aleatório não mostra ofertas presas nem aceita soltar', () => {

@@ -25,6 +25,7 @@ import { formatAgo, formatDateTime, formatDuration, formatMegabytes, matchesSear
 import { bluetoothStatus, syncStatus } from '../../lib/status';
 import { NowPlaying } from '../dashboard/NowPlaying';
 import { OfferInfo } from '../dashboard/OfferInfo';
+import { isEndless } from '../offers/offerDraft';
 import { NoScheduleNotice, StoreAlerts } from '../dashboard/StoreAlerts';
 import { EnrollCard } from './EnrollCode';
 
@@ -347,7 +348,8 @@ function PlayOfferDialog({ store, onClose }: { store: StoreSummary; onClose: () 
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium text-stone-900">{offer.name}</span>
                 <span className="block truncate text-xs text-stone-500">
-                  {formatDuration(offer.durationMs)} · até {formatDateTime(offer.validUntil)}
+                  {formatDuration(offer.durationMs)} ·{' '}
+                  {isEndless(offer.validUntil) ? 'sem data para acabar' : `até ${formatDateTime(offer.validUntil)}`}
                 </span>
               </span>
               <Button
