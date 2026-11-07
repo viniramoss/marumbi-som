@@ -22,6 +22,9 @@ public sealed class Track
 
     public TrackKind Kind { get; set; }
 
+    /// <summary>Número da música em ordem de importação (D31), que também é o título inicial; nulo nos áudios de oferta.</summary>
+    public int? Number { get; set; }
+
     public required string Title { get; set; }
 
     public string? Artist { get; set; }
@@ -38,6 +41,9 @@ public sealed class Track
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset? DeletedAt { get; set; }
+
+    /// <summary>Título que a música recebe ao ser importada: o número com três dígitos ("007"), D31.</summary>
+    public static string NumberTitle(int number) => number.ToString("000", System.Globalization.CultureInfo.InvariantCulture);
 }
 
 public sealed class Playlist

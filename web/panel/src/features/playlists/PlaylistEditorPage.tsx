@@ -19,6 +19,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   ArrowLeft,
+  ChevronRight,
+  CircleAlert,
   GripVertical,
   ListPlus,
   Lock,
@@ -29,21 +31,27 @@ import {
   Save,
   Shuffle,
   Trash2,
+  Volume2,
   X,
 } from 'lucide-react';
 import { errorMessage } from '../../api/client';
-import { useDeletePlaylist, useOffers, usePlaylist, useSavePlaylist } from '../../api/queries';
+import { useDeletePlaylist, useOffers, usePlaylist, useSavePlaylist, useStores } from '../../api/queries';
 import type { OfferSummary, PlaylistDetail } from '../../api/types';
 import { AppliedStatus } from '../../components/AppliedStatus';
 import { ConfirmDialog } from '../../components/Modal';
 import { useToast } from '../../components/Toasts';
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorNote, IconButton, Spinner } from '../../components/ui';
+import { useDragAutoScroll } from '../../hooks/useDragAutoScroll';
+import { useNow } from '../../hooks/useNow';
 import { usePreview } from '../../hooks/usePreview';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { formatDuration, formatLongDuration } from '../../lib/format';
+import { currentPositionMs } from '../../lib/position';
 import { offerStatus } from '../offers/offerDraft';
 import { AddTracksDialog } from './AddTracksDialog';
 import { AnchorDialog, type AnchorChoice } from './AnchorDialog';
+import { anchorIssues, type AnchorIssue } from './anchorIssue';
+import { OfferDrag, PlaylistTimeline, type PlayingNow } from './PlaylistTimeline';
 import {
   addTracks,
   anchorsChanged,
@@ -64,9 +72,6 @@ import {
   type DraftAnchor,
   type DraftItem,
 } from './playlistDraft';
-
-/** Tipo do arrastar de uma oferta da coluna da direita para cima de uma música. */
-const OfferDrag = 'application/x-marumbi-oferta';
 import { usageText } from './usage';
 
 export function PlaylistEditorPage() {
@@ -86,6 +91,8 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
   const [removing, setRemoving] = useState<DraftItem | null>(null);
   const [shuffling, setShuffling] = useState(false);
   const offers = useOffers();
+  const stores = useStores();
+  const now = useNow();
   const save = useSavePlaylist(saved.id);
   const remove = useDeletePlaylist();
   const toast = useToast();
@@ -94,6 +101,32 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
   const dirty = isDirty(draft, saved);
   const starts = useMemo(() => startTimes(draft.items), [draft.items]);
   const storeIds = [...new Set(saved.usage.map((u) => u.storeId))];
+  // Oferta presa que o Hub deixa fora das lojas (vencida, desativada, fora das lojas) aparece em cinza, com o motivo.
+  const issues = useMemo(
+    () =>
+      anchorIssues(
+        draft.anchors.map((a) => a.offerId),
+        offers.data ?? [],
+        saved.usage,
+      ),
+    [draft.anchors, offers.data, saved.usage],
+  );
+  // Lojas tocando esta playlist agora (D31 e): a música delas fica marcada na lista e na linha do tempo.
+  const playing: PlayingNow[] = (stores.data ?? []).flatMap((store) =>
+    store.online && store.playlistId === `p${saved.id}` && store.nowPlaying
+      ? [
+          {
+            storeName: store.name,
+            hash: store.nowPlaying.hash,
+            positionMs: currentPositionMs(store.nowPlaying, store.player, now),
+          },
+        ]
+      : [],
+  );
+  const playingAt = (hash: string, index: number) =>
+    draft.items.findIndex((i) => i.hash === hash) === index ? playing.filter((p) => p.hash === hash) : [];
+  // Oferta arrastada da coluna até a linha do tempo (no topo) ou até uma música mais abaixo: a página rola junto.
+  useDragAutoScroll(OfferDrag);
 
   // Nada vai para as lojas sem "Salvar e publicar".
   const leaveDialog = useUnsavedChanges(
@@ -202,7 +235,31 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
         </div>
       </div>
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0 xl:col-span-2">
+          {!draft.shuffle && <AnchorIssuesNote anchors={draft.anchors} issues={issues} />}
+          <PlaylistTimeline
+            items={draft.items}
+            anchors={draft.anchors}
+            offers={offers.data ?? []}
+            issues={issues}
+            shuffle={draft.shuffle}
+            playing={playing}
+            onMove={(anchor, to) => setDraft((d) => putAnchor(d, { ...anchor, ...to }))}
+            onDropOffer={(offerId, to) => {
+              const offer = offers.data?.find((o) => o.id === offerId);
+              if (offer) setDraft((d) => putAnchor(d, { offerId, offerName: offer.name, ...to }));
+            }}
+            onEdit={(anchor) =>
+              setAnchoring({
+                key: anchor.key,
+                offerId: anchor.offerId,
+                itemKey: anchor.itemKey,
+                offsetMs: anchor.offsetMs ?? 0,
+              })
+            }
+          />
+        </div>
         <Card>
           <CardHeader
             title="Músicas"
@@ -230,7 +287,9 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
                       index={index}
                       start={starts[index]!}
                       playing={preview.playing === item.hash}
+                      live={playingAt(item.hash, index)}
                       anchors={anchorsOf(draft, item.key)}
+                      issues={issues}
                       canAnchor={!draft.shuffle}
                       onPreview={() => preview.toggle(item.hash)}
                       onRemove={() =>
@@ -273,6 +332,7 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
           </Card>
           <OffersColumn
             offers={offers.data ?? []}
+            issues={issues}
             loading={offers.isPending}
             shuffle={draft.shuffle}
             anchorCount={draft.anchors.length}
@@ -381,7 +441,9 @@ function SortableRow({
   index,
   start,
   playing,
+  live,
   anchors,
+  issues,
   canAnchor,
   onPreview,
   onRemove,
@@ -392,7 +454,10 @@ function SortableRow({
   index: number;
   start: number;
   playing: boolean;
+  /** Lojas tocando esta música agora. */
+  live: PlayingNow[];
   anchors: DraftAnchor[];
+  issues: ReadonlyMap<number, AnchorIssue>;
   canAnchor: boolean;
   onPreview: () => void;
   onRemove: () => void;
@@ -426,7 +491,11 @@ function SortableRow({
         onAnchor(offerId);
       }}
       className={`flex items-center gap-2 px-3 py-2 text-sm sm:gap-3 sm:px-5 ${
-        dropping ? 'bg-brand-50 ring-2 ring-brand-400 ring-inset' : 'bg-white'
+        dropping
+          ? 'bg-brand-50 ring-2 ring-brand-400 ring-inset'
+          : live.length > 0
+            ? 'bg-brand-50/60 shadow-[inset_3px_0_0_var(--color-brand-600)]'
+            : 'bg-white'
       } ${isDragging ? 'relative z-10 shadow-lg ring-1 ring-stone-200' : ''}`}
     >
       <button
@@ -448,24 +517,50 @@ function SortableRow({
       </IconButton>
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium text-stone-900">{item.title}</p>
-        <p className="truncate text-xs text-stone-500">{item.artist ?? 'Artista desconhecido'}</p>
+        {item.artist && <p className="truncate text-xs text-stone-500">{item.artist}</p>}
+        {live.map((p) => (
+          <p key={p.storeName} className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-brand-800">
+            <Volume2 className="size-3.5 shrink-0" aria-hidden />
+            Tocando agora em {p.storeName}
+            {p.positionMs !== null && (
+              <span className="font-normal text-brand-700 tabular-nums">
+                {formatDuration(p.positionMs)} de {formatDuration(item.durationMs)}
+              </span>
+            )}
+          </p>
+        ))}
         {anchors.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1">
-            {anchors.map((anchor) => (
-              <button
-                key={anchor.key}
-                type="button"
-                onClick={() => onEditAnchor(anchor)}
-                title="Ajustar ou soltar a oferta"
-                className="inline-flex max-w-full items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100"
-              >
-                <Megaphone className="size-3 shrink-0" aria-hidden />
-                <span className="truncate">{anchor.offerName}</span>
-                <span className="shrink-0 tabular-nums">
-                  {anchor.offsetMs === null ? 'entre músicas' : `aos ${formatDuration(anchor.offsetMs)}`}
-                </span>
-              </button>
-            ))}
+            {anchors.map((anchor) => {
+              const issue = issues.get(anchor.offerId);
+              return (
+                <button
+                  key={anchor.key}
+                  type="button"
+                  onClick={() => onEditAnchor(anchor)}
+                  title={issue ? `${issue.label}: ${issue.detail}` : 'Ajustar ou soltar a oferta'}
+                  className={`inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ${
+                    issue
+                      ? 'bg-stone-100 text-stone-600 ring-stone-300 hover:bg-stone-200'
+                      : 'bg-amber-50 text-amber-900 ring-amber-200 hover:bg-amber-100'
+                  }`}
+                >
+                  <Megaphone className="size-3 shrink-0" aria-hidden />
+                  <span className={`truncate ${issue ? 'line-through decoration-stone-400' : ''}`}>
+                    {anchor.offerName}
+                  </span>
+                  {/* No celular só o nome cabe; o ponto exato fica na linha do tempo e o motivo, no aviso do topo. */}
+                  {issue && (
+                    <span className="hidden shrink-0 rounded-full bg-stone-600 px-1.5 text-[10px] font-semibold text-white sm:inline">
+                      {issue.label}
+                    </span>
+                  )}
+                  <span className="hidden shrink-0 tabular-nums sm:inline">
+                    {anchor.offsetMs === null ? 'entre músicas' : `aos ${formatDuration(anchor.offsetMs)}`}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -488,6 +583,7 @@ function SortableRow({
 /** Coluna de ofertas (seção 7.2): arrastar uma oferta para cima de uma música a prende ali (âncora "durante"). */
 function OffersColumn({
   offers,
+  issues,
   loading,
   shuffle,
   anchorCount,
@@ -495,6 +591,7 @@ function OffersColumn({
   onPick,
 }: {
   offers: OfferSummary[];
+  issues: ReadonlyMap<number, AnchorIssue>;
   loading: boolean;
   shuffle: boolean;
   anchorCount: number;
@@ -502,6 +599,8 @@ function OffersColumn({
   onPick: (offerId: number) => void;
 }) {
   const usable = offers.filter((o) => o.status !== 'expired');
+  const expired = offers.length - usable.length;
+  const anchorsNotPlaying = issues.size > 0;
   return (
     <Card>
       <CardHeader
@@ -514,8 +613,10 @@ function OffersColumn({
           shuffle
             ? undefined
             : anchorCount === 0
-              ? 'Arraste uma oferta para cima de uma música.'
-              : `${anchorCount} ${anchorCount === 1 ? 'oferta presa' : 'ofertas presas'} nesta playlist.`
+              ? 'Arraste uma oferta para a linha do tempo ou para cima de uma música.'
+              : `${anchorCount} ${anchorCount === 1 ? 'oferta presa' : 'ofertas presas'} nesta playlist${
+                  anchorsNotPlaying ? '; as em cinza não estão tocando' : ''
+                }.`
         }
       />
       {shuffle ? (
@@ -528,6 +629,15 @@ function OffersColumn({
         <Spinner />
       ) : usable.length === 0 ? (
         <EmptyState title="Nenhuma oferta valendo">
+          {expired > 0 && (
+            <p className="mb-2">
+              {expired === 1 ? 'Há 1 oferta vencida.' : `Há ${expired} ofertas vencidas.`} Para voltar a tocar, abra em{' '}
+              <Link to="/ofertas" className="font-medium text-brand-800 hover:underline">
+                Ofertas
+              </Link>
+              , marque as vencidas e use Prorrogar.
+            </p>
+          )}
           <Link to="/ofertas/nova" className="font-medium text-brand-800 hover:underline">
             Criar uma oferta
           </Link>
@@ -568,5 +678,45 @@ function OffersColumn({
         </ul>
       )}
     </Card>
+  );
+}
+
+/** Ofertas presas que não vão tocar, com atalho para abrir cada uma em Ofertas e resolver. */
+function AnchorIssuesNote({ anchors, issues }: { anchors: DraftAnchor[]; issues: ReadonlyMap<number, AnchorIssue> }) {
+  if (issues.size === 0) return null;
+  const rows = [...issues].map(([offerId, issue]) => {
+    const points = anchors.filter((a) => a.offerId === offerId);
+    return { offerId, issue, name: points[0]?.offerName ?? '', count: points.length };
+  });
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
+  return (
+    <div role="status" className="mb-4 rounded-xl bg-amber-50 px-3 py-3 ring-1 ring-amber-200 sm:px-5">
+      <p className="flex items-center gap-2 px-2 text-sm font-semibold text-amber-950">
+        <CircleAlert className="size-4 shrink-0" aria-hidden />
+        {total === 1
+          ? '1 oferta presa nesta playlist não está tocando'
+          : `${total} ofertas presas nesta playlist não estão tocando`}
+      </p>
+      <ul className="mt-1">
+        {rows.map((row) => (
+          <li key={row.offerId}>
+            <Link
+              to={`/ofertas/${row.offerId}`}
+              className="flex items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-amber-100"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <span className="font-medium text-stone-900">{row.name}</span>
+                  <Badge tone="gray">{row.issue.label}</Badge>
+                  {row.count > 1 && <span className="text-xs text-stone-500">presa em {row.count} pontos</span>}
+                </span>
+                <span className="block text-xs text-stone-600">{row.issue.detail}</span>
+              </span>
+              <ChevronRight className="size-4 shrink-0 text-amber-700" aria-hidden />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

@@ -41,10 +41,11 @@ export function NowPlaying({ store, large = false }: { store: StoreSummary; larg
           >
             {track.title ?? 'Música fora da biblioteca'}
           </p>
-          <p className="truncate text-sm text-stone-500">
-            {track.artist ?? 'Artista desconhecido'}
-            {store.playlistName && <span className="text-stone-400"> · {store.playlistName}</span>}
-          </p>
+          {(track.artist || store.playlistName) && (
+            <p className="truncate text-sm text-stone-500">
+              {[track.artist, store.playlistName].filter(Boolean).join(' · ')}
+            </p>
+          )}
         </div>
       </div>
       {position !== null && (

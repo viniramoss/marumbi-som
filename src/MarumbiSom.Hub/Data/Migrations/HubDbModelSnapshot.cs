@@ -722,6 +722,10 @@ namespace MarumbiSom.Hub.Data.Migrations
                         .HasColumnType("REAL")
                         .HasColumnName("loudness_lufs");
 
+                    b.Property<int?>("Number")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("number");
+
                     b.Property<string>("OriginalName")
                         .IsRequired()
                         .HasColumnType("TEXT")
@@ -739,6 +743,9 @@ namespace MarumbiSom.Hub.Data.Migrations
                     b.HasKey("Hash");
 
                     b.HasIndex("Kind");
+
+                    b.HasIndex("Number")
+                        .IsUnique();
 
                     b.ToTable("tracks", (string)null);
                 });

@@ -3482,6 +3482,7 @@
         "required": [
           "hash",
           "kind",
+          "number",
           "title",
           "artist",
           "durationMs",
@@ -3498,6 +3499,13 @@
           },
           "kind": {
             "$ref": "#/components/schemas/TrackKind"
+          },
+          "number": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           },
           "title": {
             "type": "string"

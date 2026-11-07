@@ -30,7 +30,7 @@ public static class TracksEndpoints
     }
 
     public static TrackDto ToDto(Data.Track track, IReadOnlyList<PlaylistRef> playlists) =>
-        new(track.Hash, track.Kind, track.Title, track.Artist, track.DurationMs, track.SizeBytes, track.LoudnessLufs, track.OriginalName, track.CreatedAt, playlists);
+        new(track.Hash, track.Kind, track.Number, track.Title, track.Artist, track.DurationMs, track.SizeBytes, track.LoudnessLufs, track.OriginalName, track.CreatedAt, playlists);
 
     /// <param name="kind"><c>music</c> (padrão) ou <c>offer</c>, como no JSON (o enum na query só aceitaria "Offer").</param>
     private static async Task<IResult> ListAsync(HubDb db, string? q, string? kind, CancellationToken cancellationToken)
@@ -47,7 +47,8 @@ public static class TracksEndpoints
         }
 
         var usage = await UsageAsync(db, cancellationToken);
-        return Results.Ok(tracks.OrderBy(t => t.Artist ?? t.Title, StringComparer.CurrentCultureIgnoreCase).ThenBy(t => t.Title, StringComparer.CurrentCultureIgnoreCase)
+        // D31: pelo número de importação; áudios de oferta (sem número) pelo nome.
+        return Results.Ok(tracks.OrderBy(t => t.Number ?? int.MaxValue).ThenBy(t => t.Title, StringComparer.CurrentCultureIgnoreCase)
             .Select(t => ToDto(t, usage[t.Hash].ToList())));
     }
 
@@ -168,9 +169,11 @@ public static class TracksEndpoints
         return Results.File(paths.LibraryFile(hash), "audio/mp4", enableRangeProcessing: true);
     }
 
+    /// <param name="Number">Número da música em ordem de importação (D31); nulo nos áudios de oferta.</param>
     public sealed record TrackDto(
         string Hash,
         TrackKind Kind,
+        int? Number,
         string Title,
         string? Artist,
         long DurationMs,

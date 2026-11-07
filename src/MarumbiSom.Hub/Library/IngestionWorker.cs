@@ -169,12 +169,15 @@ public sealed class IngestionWorker(
 
                 if (existing is null)
                 {
+                    // D31: a música ganha o próximo número como título (as tags costumam vir iguais); oferta usa o nome.
+                    int? number = job.Kind == TrackKind.Music ? (await db.Tracks.MaxAsync(t => t.Number, cancellationToken) ?? 0) + 1 : null;
                     db.Tracks.Add(new Data.Track
                     {
                         Hash = processed.Hash,
                         Kind = job.Kind,
-                        Title = processed.Title,
-                        Artist = processed.Artist,
+                        Number = number,
+                        Title = number is { } n ? Data.Track.NumberTitle(n) : processed.Title,
+                        Artist = number is null ? processed.Artist : null,
                         DurationMs = processed.DurationMs,
                         SizeBytes = processed.SizeBytes,
                         LoudnessLufs = processed.InputLufs,

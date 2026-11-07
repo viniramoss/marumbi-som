@@ -68,6 +68,7 @@ public sealed class HubDb(DbContextOptions<HubDb> options) : DbContext(options)
             e.ToTable("tracks");
             e.HasKey(t => t.Hash);
             e.HasIndex(t => t.Kind);
+            e.HasIndex(t => t.Number).IsUnique();
         });
         modelBuilder.Entity<Playlist>(e =>
         {
