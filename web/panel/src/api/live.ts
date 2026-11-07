@@ -31,6 +31,8 @@ export function topicKeys(topic: string): QueryKey[] {
       return [keys.releases];
     case 'github':
       return [keys.github];
+    case 'hub':
+      return [keys.hubUpdate];
     default:
       return [];
   }

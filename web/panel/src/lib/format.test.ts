@@ -1,4 +1,12 @@
-import { formatAgo, formatDays, formatDuration, formatIn, formatLongDuration, matchesSearch } from './format';
+import {
+  addOneHour,
+  formatAgo,
+  formatDays,
+  formatDuration,
+  formatIn,
+  formatLongDuration,
+  matchesSearch,
+} from './format';
 
 describe('formatDuration', () => {
   it('mostra minutos e segundos, e horas quando passa de uma', () => {
@@ -61,5 +69,13 @@ describe('matchesSearch', () => {
     expect(matchesSearch('xororo', 'Evidências', 'Chitãozinho & Xororó')).toBe(true);
     expect(matchesSearch('samba', 'Evidências', null)).toBe(false);
     expect(matchesSearch('  ', 'qualquer')).toBe(true);
+  });
+});
+
+describe('addOneHour', () => {
+  it('soma 1 hora ao horário da madrugada, virando o dia', () => {
+    expect(addOneHour('03:00')).toBe('04:00');
+    expect(addOneHour('23:30')).toBe('00:30');
+    expect(addOneHour('xx')).toBe('xx');
   });
 });

@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using MarumbiSom.Contracts.Releases;
 using MarumbiSom.Hub.Data;
+using MarumbiSom.Hub.Updates;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -15,6 +16,7 @@ namespace MarumbiSom.Hub.Panel;
 /// Versões do agente publicadas pelo GitHub Actions (D29): procura a Release mais nova com o pacote assinado a cada
 /// <see cref="HubOptions.ReleaseCheckHours"/> horas (ou quando o painel pede), baixa com andamento e a deixa como versão de
 /// distribuição. Nenhuma loja atualiza sem o administrador mandar; a assinatura continua sendo conferida pelo agente.
+/// Na mesma procura baixa o pacote do Hub mais novo que o instalado, que o <see cref="HubUpdates"/> confere e instala (D32 b).
 /// </summary>
 public sealed partial class GitHubReleaseWatcher(
     IHttpClientFactory httpClients,
@@ -23,6 +25,7 @@ public sealed partial class GitHubReleaseWatcher(
     IOptions<HubOptions> options,
     IDataProtectionProvider protection,
     PanelHub panel,
+    HubUpdates hubUpdates,
     TimeProvider time,
     ILogger<GitHubReleaseWatcher> logger) : BackgroundService
 {
@@ -206,7 +209,15 @@ public sealed partial class GitHubReleaseWatcher(
             return ($"Não foi possível falar com o GitHub: {(ex is OperationCanceledException ? "sem resposta em 30 s" : ex.Message)}", true);
         }
 
-        var newest = (releases ?? [])
+        var agent = await CheckAgentAsync(client, token, releases ?? [], cancellationToken);
+        await CheckHubAsync(client, token, releases ?? [], cancellationToken);
+        return agent;
+    }
+
+    private async Task<(string Message, bool Problem)> CheckAgentAsync(
+        HttpClient client, string? token, IReadOnlyList<GitHubRelease> releases, CancellationToken cancellationToken)
+    {
+        var newest = releases
             .Where(r => !r.Draft)
             .SelectMany(r => r.Assets.Select(a => (Asset: a, Match: PackageName().Match(a.Name), Release: r)))
             .Where(x => x.Match.Success)
@@ -297,6 +308,109 @@ public sealed partial class GitHubReleaseWatcher(
         }
     }
 
+    /// <summary>Pacote do Hub (D32 b): a versão mais nova que a instalada, se ainda não foi baixada; a conferência é do <see cref="HubUpdates"/>.</summary>
+    private async Task CheckHubAsync(HttpClient client, string? token, IReadOnlyList<GitHubRelease> releases, CancellationToken cancellationToken)
+    {
+        if (!hubUpdates.Supported || hubUpdates.UpdateInProgress)
+        {
+            return;
+        }
+
+        var newest = releases
+            .Where(r => !r.Draft)
+            .SelectMany(r => r.Assets.Select(a => (Asset: a, Match: HubPackageName().Match(a.Name), Release: r)))
+            .Where(x => x.Match.Success)
+            .Select(x => (x.Asset, Version: x.Match.Groups[1].Value, Signature: x.Release.Assets.FirstOrDefault(a => a.Name == $"MarumbiSom.Hub-{x.Match.Groups[1].Value}.sig.json")))
+            .Where(x => x.Signature is not null)
+            .OrderByDescending(x => x.Version, Comparer<string>.Create(ReleaseSigning.CompareVersions))
+            .FirstOrDefault();
+        if (newest.Asset is null)
+        {
+            hubUpdates.SetMessage("Nenhum pacote do Hub assinado no GitHub ainda.", problem: false);
+            return;
+        }
+
+        if (ReleaseSigning.CompareVersions(newest.Version, HubUpdates.CurrentVersion) <= 0)
+        {
+            hubUpdates.SetMessage($"O Hub já está na versão mais nova do GitHub ({HubUpdates.CurrentVersion}).", problem: false);
+            return;
+        }
+
+        if (hubUpdates.AvailableVersion == newest.Version)
+        {
+            hubUpdates.SetMessage($"A versão {newest.Version} do Hub já foi baixada e conferida.", problem: false);
+            return;
+        }
+
+        if (newest.Asset.Size > ReleasesEndpoints.MaxPackageBytes)
+        {
+            hubUpdates.SetMessage($"O pacote da versão {newest.Version} do Hub no GitHub passa de 300 MB.", problem: true);
+            return;
+        }
+
+        using var downloadTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        downloadTimeout.CancelAfter(DownloadTimeout);
+        var downloadToken = downloadTimeout.Token;
+        try
+        {
+            ReleaseSignature? signature;
+            using (var request = Request(HttpMethod.Get, newest.Signature!.Url, token, "application/octet-stream"))
+            using (var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, downloadToken))
+            {
+                if (Explain(response.StatusCode, token is not null) is { } refused)
+                {
+                    hubUpdates.SetMessage(refused, problem: true);
+                    return;
+                }
+
+                await using var stream = await response.Content.ReadAsStreamAsync(downloadToken);
+                signature = await ReleasesEndpoints.ReadSignatureAsync(new LimitedStream(stream, ReleasesEndpoints.MaxSignatureBytes), downloadToken);
+            }
+
+            if (signature is null || signature.Version != newest.Version)
+            {
+                hubUpdates.SetMessage($"A assinatura da versão {newest.Version} do Hub no GitHub não está no formato esperado.", problem: true);
+                return;
+            }
+
+            logger.LogInformation("Baixando a versão {Version} do Hub do GitHub ({Size} bytes)", newest.Version, newest.Asset.Size);
+            hubUpdates.SetDownload(new GitHubDownload(newest.Version, 0, newest.Asset.Size));
+            using var package = Request(HttpMethod.Get, newest.Asset.Url, token, "application/octet-stream");
+            using var download = await client.SendAsync(package, HttpCompletionOption.ResponseHeadersRead, downloadToken);
+            if (Explain(download.StatusCode, token is not null) is { } denied)
+            {
+                hubUpdates.SetMessage(denied, problem: true);
+                return;
+            }
+
+            await using var content = await download.Content.ReadAsStreamAsync(downloadToken);
+            var lastReport = time.GetTimestamp();
+            var (_, problem) = await hubUpdates.ImportAsync(
+                content, signature, done =>
+                {
+                    if (time.GetElapsedTime(lastReport) >= TimeSpan.FromMilliseconds(500))
+                    {
+                        lastReport = time.GetTimestamp();
+                        hubUpdates.SetDownload(new GitHubDownload(newest.Version, done, newest.Asset.Size));
+                    }
+                },
+                user: null, "hub.update.github", downloadToken);
+            hubUpdates.SetMessage(
+                problem is null ? $"Versão {newest.Version} do Hub baixada do GitHub e conferida." : $"A versão {newest.Version} do Hub no GitHub foi recusada: {problem}",
+                problem is not null);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            hubUpdates.SetMessage(
+                $"O download da versão {newest.Version} do Hub falhou: {(ex is OperationCanceledException ? "passou de 1 hora" : ex.Message)}. O Hub tenta de novo na próxima procura.",
+                problem: true);
+        }
+        finally
+        {
+            hubUpdates.SetDownload(null);
+        }
+    }
+
     private static HttpRequestMessage Request(HttpMethod method, string url, string? token, string accept)
     {
         var request = new HttpRequestMessage(method, url);
@@ -315,7 +429,7 @@ public sealed partial class GitHubReleaseWatcher(
     {
         HttpStatusCode.OK => null,
         HttpStatusCode.Unauthorized => "O GitHub recusou o token (vencido ou inválido). Gere outro e cadastre em Configurações.",
-        HttpStatusCode.NotFound when !hasToken => "O GitHub não mostrou o repositório. Como ele é privado, cadastre o token do GitHub em Configurações.",
+        HttpStatusCode.NotFound when !hasToken => "O GitHub não mostrou o repositório. Se ele estiver privado, cadastre o token do GitHub em Configurações.",
         HttpStatusCode.NotFound => "O GitHub não mostrou o repositório: confira se o token dá acesso de leitura ao marumbi-som.",
         HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests => "O GitHub limitou as consultas agora; o Hub tenta de novo mais tarde.",
         _ => $"O GitHub respondeu {(int)status}.",
@@ -391,6 +505,9 @@ public sealed partial class GitHubReleaseWatcher(
 
     [GeneratedRegex(@"^MarumbiSom\.Agent-(\d+\.\d+\.\d+)\.zip$")]
     private static partial Regex PackageName();
+
+    [GeneratedRegex(@"^MarumbiSom\.Hub-(\d+\.\d+\.\d+)\.zip$")]
+    private static partial Regex HubPackageName();
 
     /// <summary>Lê no máximo <c>limit</c> bytes (o .sig.json é pequeno; um arquivo enorme não vai para a memória).</summary>
     private sealed class LimitedStream(Stream inner, int limit) : Stream

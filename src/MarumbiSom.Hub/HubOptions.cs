@@ -27,6 +27,16 @@ public sealed class HubOptions
     /// <summary>De quantas em quantas horas o Hub procura versão nova no GitHub (1 a 168).</summary>
     public int ReleaseCheckHours { get; set; } = 6;
 
+    /// <summary>Hora local (fuso <see cref="Timezone"/>) em que o Hub instala sozinho a versão nova dele (D32 f).</summary>
+    public TimeOnly HubUpdateTime { get; set; } = new(3, 0);
+
+    /// <summary>
+    /// Chave pública que o Hub usa para conferir o pacote do Hub antes de pedir a troca. Vazio = o
+    /// <c>release-public-key.txt</c> ao lado do exe. Só os testes trocam: quem instala confere de novo com a chave de
+    /// <c>app\</c> (D32 d).
+    /// </summary>
+    public string? UpdatePublicKeyFile { get; set; }
+
     public static string ResolveTool(string configured, string fallbackName)
     {
         var path = Path.IsPathRooted(configured) ? configured : Path.Combine(AppContext.BaseDirectory, configured);

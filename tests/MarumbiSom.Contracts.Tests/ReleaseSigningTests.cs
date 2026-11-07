@@ -2,7 +2,7 @@ using MarumbiSom.Contracts.Releases;
 
 namespace MarumbiSom.Contracts.Tests;
 
-/// <summary>Assinatura Ed25519 dos pacotes do agente (seção 12.2, D27 a).</summary>
+/// <summary>Assinatura Ed25519 dos pacotes do agente e do Hub (seção 12.2, D27 a, D32 a).</summary>
 public sealed class ReleaseSigningTests
 {
     private const string Sha = "ad9be2eacc2a5404ab8b5fa4db84049fd6f1f163214d9af159684cd0cb47c659";
@@ -25,6 +25,19 @@ public sealed class ReleaseSigningTests
         Assert.False(ReleaseSigning.Verify(publicKey, "0.6.41", Sha, Convert.ToBase64String(tampered)));
         Assert.False(ReleaseSigning.Verify(publicKey, "0.6.41", Sha, "não é base64"));
         Assert.False(ReleaseSigning.Verify("AAAA", "0.6.41", Sha, signature));
+    }
+
+    [Fact]
+    public void Assinatura_do_agente_nao_vale_para_o_hub_nem_o_contrario()
+    {
+        var (privateKey, publicKey) = ReleaseSigning.NewKeyPair();
+        var agent = ReleaseSigning.Sign(privateKey, "0.6.41", Sha);
+        var hub = ReleaseSigning.Sign(privateKey, "0.6.41", Sha, ReleaseProducts.Hub);
+
+        Assert.True(ReleaseSigning.Verify(publicKey, "0.6.41", Sha, hub, ReleaseProducts.Hub));
+        Assert.False(ReleaseSigning.Verify(publicKey, "0.6.41", Sha, agent, ReleaseProducts.Hub));
+        Assert.False(ReleaseSigning.Verify(publicKey, "0.6.41", Sha, hub));
+        Assert.Throws<ArgumentException>(() => ReleaseSigning.Sign(privateKey, "0.6.41", Sha, "painel"));
     }
 
     [Fact]

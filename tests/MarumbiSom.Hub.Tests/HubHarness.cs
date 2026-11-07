@@ -41,8 +41,10 @@ public sealed class HubHarness : IAsyncDisposable
     /// <param name="webRoot">Pasta com o build do painel (padrão: nenhuma).</param>
     /// <param name="gitHubRepository">Repositório das versões do agente no GitHub (padrão: procura desligada).</param>
     /// <param name="configureServices">Troca serviços depois do Hub montado (ex.: o HTTP do GitHub).</param>
+    /// <param name="beforeStart">Prepara a raiz do Hub (com <c>data\</c> e <c>updater\</c>) antes de abrir o banco.</param>
     public static async Task<HubHarness> StartAsync(
-        DateTimeOffset? now = null, string? webRoot = null, string? gitHubRepository = null, Action<IServiceCollection>? configureServices = null)
+        DateTimeOffset? now = null, string? webRoot = null, string? gitHubRepository = null, Action<IServiceCollection>? configureServices = null,
+        Action<string>? beforeStart = null)
     {
         var root = Path.Combine(Path.GetTempPath(), "marumbi-hub-tests", Guid.NewGuid().ToString("N"));
         var time = new FakeTimeProvider(now ?? new DateTimeOffset(2026, 10, 23, 13, 0, 0, TimeSpan.FromHours(-3)));
@@ -54,6 +56,7 @@ public sealed class HubHarness : IAsyncDisposable
         builder.Services.PostConfigure<HubOptions>(o => o.GitHubRepository = gitHubRepository);
         configureServices?.Invoke(builder.Services);
         var app = builder.Build();
+        beforeStart?.Invoke(root);
         await HubApp.InitializeDatabaseAsync(app.Services);
         app.MapMarumbiHub();
         await app.StartAsync();

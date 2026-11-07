@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { api } from '../api/client';
 import { keys, useSession } from '../api/queries';
 import { useLiveState } from '../hooks/useLive';
+import { HubUpdatedBanner } from './HubUpdatedBanner';
 
 interface NavItem {
   to: string;
@@ -110,6 +111,7 @@ export function Layout() {
 
       <main className="min-w-0 flex-1 px-4 pt-5 pb-24 md:ml-60 md:px-8 md:pt-8 md:pb-10">
         <div className="mx-auto max-w-7xl">
+          <HubUpdatedBanner />
           <Outlet />
         </div>
       </main>

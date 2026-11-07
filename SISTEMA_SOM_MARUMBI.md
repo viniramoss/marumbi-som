@@ -1,6 +1,6 @@
 # Sistema de Som Remoto — Casa de Carnes Marumbi
 
-> Documento de arquitetura e execução. Versão 1.12 — outubro/2026 (inclui ofertas com ducking, mixagem entre músicas e as decisões D17 a D31 da implementação).
+> Documento de arquitetura e execução. Versão 1.14 — outubro/2026 (inclui ofertas com ducking, mixagem entre músicas e as decisões D17 a D33 da implementação).
 > Este documento é a fonte da verdade do projeto. Toda implementação DEVE segui-lo. Qualquer desvio DEVE ser registrado na seção 18 (Registro de Decisões) antes de ser implementado.
 
 ---
@@ -175,7 +175,7 @@ Se o WebSocket estiver indisponível, o agente consulta a versão do manifesto a
 | Logs | Serilog (arquivos rotativos) | Padrão .NET |
 | Instalador | Inno Setup | Gratuito, gera `.exe` de instalação |
 | Wrapper de serviço | Nativo .NET (`UseWindowsService()`) | Sem ferramenta extra |
-| Repositório | GitHub (privado, gratuito) | Versionamento |
+| Repositório | GitHub (público desde 26/10/2026, D33; gratuito) | Versionamento e CI sem custo |
 | Testes | xUnit (C#), Vitest (frontend) | Padrão |
 
 ---
@@ -241,12 +241,14 @@ Modelo (o IP do Hub é preenchido na instalação):
 ```
 C:\MarumbiSom\Hub\
   app\                 binários
+  updater\             cópia do MarumbiSom.Updater.exe, pacote em conferência, backup de app\ e resultado (D32)
   data\
     marumbi.db         SQLite
     library\ab\abcdef…1234.m4a     biblioteca processada (2 primeiros caracteres do hash como subpasta)
     originals\         arquivos originais enviados (para reprocessar se necessário)
     releases\          pacotes assinados do agente
     backups\           backups diários do banco
+    updates\           pacote do Hub baixado, pedido de atualização e cópia do banco antes de atualizar (D32)
   logs\
 ```
 
@@ -822,7 +824,7 @@ Agente → Hub:
 | Token no PC da loja | DPAPI escopo máquina + ACL da pasta restrita a SYSTEM/Administradores |
 | Configuração local | Apenas `127.0.0.1`, senha com bloqueio após 5 erros |
 | Arquivos de música | Identificados e verificados por SHA-256; upload validado com ffprobe; arquivos NUNCA executados |
-| Atualização do agente | Pacote `.zip` assinado com Ed25519. Chave privada SOMENTE no PC do admin e no secret `MARUMBI_SIGNING_KEY` do GitHub Actions (D29); nunca no Hub, nunca no Git. Chave pública embutida no agente |
+| Atualização do agente e do Hub | Pacote `.zip` assinado com Ed25519. Chave privada SOMENTE no PC do admin e no secret `MARUMBI_SIGNING_KEY` do GitHub Actions (D29); nunca no Hub, nunca no Git. Chave pública embutida no agente e no Hub; o pacote do Hub tem assinatura própria e é conferido de novo pelo atualizador, que roda como SYSTEM fora do Hub (D32) |
 | Auditoria | Toda alteração feita no painel vai para `audit_log` |
 | Segredos | `appsettings.Production.json` e chaves fora do Git (`.gitignore`); exemplo versionado como `appsettings.example.json` |
 
@@ -834,6 +836,10 @@ Agente → Hub:
 4. Agente baixa, verifica SHA-256 e assinatura. Falha → descarta e reporta.
 5. Agente inicia `MarumbiSom.Updater.exe` (processo separado), que para o serviço, faz backup da versão atual, substitui os binários e inicia o serviço.
 6. Se o novo agente não enviar `hello` ao Hub em 2 minutos, o Updater restaura a versão anterior e inicia o serviço.
+
+O Hub se atualiza pelo mesmo caminho (D32): a Release traz também o pacote do Hub assinado; o Hub baixa e confere,
+e instala às 03:00 (ou em **Atualizar o Hub agora**) pedindo a troca a uma tarefa agendada do Windows, que roda o
+Updater como SYSTEM, guarda a versão atual e volta sozinha, com o banco de antes, se o Hub novo não subir em 2 minutos.
 
 ---
 
@@ -899,13 +905,13 @@ marumbi-som/
 - [ ] Ativar MagicDNS e certificados HTTPS no console do Tailscale.
 - [ ] Colar a política de ACL (escrita pelo agente de IA em `infra/tailscale-acl.hujson`) no console do Tailscale.
 - [ ] Desativar a expiração de chave do Hub e confirmar nas lojas.
-- [ ] Criar o repositório privado no GitHub.
+- [ ] Criar o repositório no GitHub (público pela D33).
 - [ ] ~~Criar o bot do Telegram (BotFather), obter o token e o chat ID, e cadastrar no painel.~~ (adiado pela D21)
 - [ ] Gerar a chave de assinatura (`scripts/new-signing-key.ps1`) e guardar a chave privada em local seguro, com cópia offline.
 
 **PC do escritório (Hub)**
 - [ ] Instalar o Tailscale e fazer login.
-- [ ] Executar `install-hub.ps1` como administrador.
+- [ ] Executar `install-hub.ps1` como administrador (de novo uma vez com a versão que traz a D32, que cria a tarefa do atualizador do Hub).
 - [ ] Executar `tailscale serve --bg 5080`.
 - [ ] Definir a senha do admin no primeiro acesso ao painel.
 - [ ] Configurar o plano de energia para não suspender.
@@ -1058,6 +1064,18 @@ Aceite:
 - [ ] Renomear pela Biblioteca muda o nome em todas as telas; o nome do arquivo continua aparecendo em letra menor.
 - [ ] A música tocando aparece no Início, em Loja → Ao vivo, marcada na lista do editor e no marcador da linha do tempo.
 
+### Próximo item — Atualização automática do Hub (D32)
+Entrega: o pacote do Hub assinado na Release, o Hub baixando e conferindo a versão nova, a tarefa agendada que instala
+como SYSTEM com volta automática (arquivos e banco) e o cartão do Hub em Configurações. Pedido do proprietário em
+26/10/2026. Roteiro técnico: `docs/atualizacao-do-hub.md`.
+
+Aceite:
+- [ ] Depois de rodar uma vez o `install-hub.ps1` desta versão, uma versão nova publicada no GitHub aparece como disponível em Configurações → Atualização do Hub, com barra de andamento enquanto baixa.
+- [ ] **Atualizar o Hub agora** troca a versão; o painel volta em cerca de 1 minuto e pede para recarregar; as lojas não param de tocar.
+- [ ] Com **Atualizar sozinho de madrugada** ligado, a versão nova é instalada às 03:00 sem ninguém mexer.
+- [ ] Pacote do Hub com assinatura inválida é recusado (não chega a parar o Hub).
+- [ ] Versão quebrada do Hub é revertida sozinha em até ~4 minutos, com o banco de antes.
+
 ### Etapa 7 — Piloto (1 loja, 7 dias)
 Aceite:
 - [ ] Música tocando em ≥ 99% do horário de funcionamento.
@@ -1119,6 +1137,7 @@ Aceite:
 | Bluetooth 🔴 persistente | Painel → "Reconectar Bluetooth"; se falhar, Área de Trabalho Remota pelo Tailscale e verificar o adaptador; em último caso, pedir para alguém desligar e religar a caixa |
 | Música não atualiza | Ver progresso de sincronização e eventos da loja no painel |
 | Atualizar o agente | Publicar release assinada → atualizar loja piloto → aguardar 1 dia → atualizar as demais |
+| Atualizar o Hub | Sozinho às 03:00 depois que a Release chega (D32), ou Configurações → Atualização do Hub → **Atualizar o Hub agora** |
 | Trocar a caixa de som | Parear a nova no Windows (presencial ou remoto) → configuração local → escolher a nova caixa |
 | PC da loja formatado | Reinstalar seguindo a seção 14.1 e o checklist; gerar novo código de vinculação (o token antigo é revogado automaticamente) |
 | Restaurar o Hub | Reinstalar o Hub e copiar de volta a pasta `data\` do backup |
@@ -1162,6 +1181,9 @@ Aceite:
 | D29 | Atualização do agente pelo GitHub (pedido do proprietário em 24/10/2026; muda a seção 12.2 e o envio da D27 d): (a) o GitHub Actions monta o agente e, ao juntar no `main` ou numa execução manual com **publicar**, assina o pacote com a chave privada guardada no secret `MARUMBI_SIGNING_KEY` do repositório e publica a Release `agente-v<versão>` com o `.zip`, o `.sig.json`, o instalador e o pacote do Hub (fora do `main`, como pré-lançamento); a ferramenta recusa assinar se a chave não for a do `release-public-key.txt` do build; (b) o Hub procura a Release mais nova a cada `Hub:ReleaseCheckHours` horas (padrão 6, 30 s depois de iniciar e no botão **Procurar agora**), baixa com barra de andamento no painel, confere SHA-256 e conteúdo como no envio manual e deixa a versão como a de distribuição; uma versão que o administrador removeu não é baixada de novo; (c) nenhuma loja atualiza sozinha: o Início mostra "Versão X disponível" quando há lojas numa versão anterior, e o administrador atualiza a piloto (tela da loja) e depois as demais (Configurações); (d) como o repositório é privado, o Hub usa um token *fine-grained* só de leitura (Contents: read) deste repositório, cadastrado em Configurações, guardado cifrado com a Data Protection do Hub (`data\keys`) e nunca devolvido ao painel; `Hub:GitHubRepository` vazio desliga a procura; (e) o envio manual (`sign-release.ps1` e **Enviar arquivo…**) continua, para os pacotes de teste e para quando o GitHub estiver fora | O proprietário pediu o fluxo que usa nos outros projetos, sem baixar zip nem rodar script no PC; troca de segurança aceita: a chave privada passa a existir também nos secrets do GitHub (continua fora do Git e do Hub, regra 9), e quem tiver escrita no repositório consegue publicar uma versão assinada, então o repositório fica só com o proprietário, com verificação em duas etapas; o agente continua conferindo a assinatura; o token só lê e, se o Hub for restaurado sem `data\keys`, basta cadastrar outro |
 | D30 | Timeline visual das ofertas (pedido do proprietário em 24/10/2026): no editor de playlist (desktop), a playlist vira uma faixa de tempo como num editor de vídeo, com as músicas em sequência, e as ofertas viram blocos arrastáveis; soltar uma oferta num ponto da faixa cria a âncora `anchorDuring` daquele ponto (música + "entra aos", D26). Próximo item depois do aceite das Etapas 5 e 6; adiantado a pedido do proprietário em 26/10/2026 e implementado junto da D31: a linha mostra a playlist inteira e abre ajustada à tela (pedido do proprietário em 26/10/2026: "a linha do tempo da playlist inteira, juntando todas as músicas"), com zoom, régua no tempo da playlist, rótulos das ofertas com o horário e setas de 1 s / 10 s | Posicionar a oferta vendo o tempo é mais natural que escolher música e segundo; a âncora da D26 já guarda exatamente esse dado, então a timeline é uma tela nova sobre o mesmo modelo e não muda o agente |
 | D31 | Número no lugar do nome das tags e música tocando visível (pedido do proprietário em 24/10/2026, entra junto com a D30): (a) toda música importada (`kind = music`) recebe como título um número em ordem crescente com três dígitos (`001`, `002`, …, e segue normalmente depois de `999`), em vez do título e do artista das tags (passo 2 da seção 6.5); o número nunca é reaproveitado, mesmo que a música seja excluída, e um arquivo repetido (mesmo SHA-256) continua sendo a mesma música, com o mesmo número; (b) o nome original do arquivo continua guardado (`original_name`) e aparece em letra menor na Biblioteca e na busca; o proprietário renomeia qualquer música na Biblioteca quando quiser (`PATCH /api/tracks/{hash}`, que já existe); a Biblioteca e a lista de músicas do editor de playlist passam a ordenar pelo número; (c) as músicas já importadas são numeradas uma vez, pela ordem de importação, menos as que já foram renomeadas no painel (registro `tracks.update` na auditoria); (d) os áudios de oferta continuam com o nome da oferta; (e) a música que está tocando em cada loja fica destacada: número (ou nome) e posição no cartão do Início e em Loja → Ao vivo, a linha da música marcada no editor de playlist e um marcador de "tocando agora" na timeline da D30 | As músicas do piloto vieram com as mesmas tags e ficaram todas com o mesmo nome, então não dá para saber o que está tocando; um número curto e único resolve, continua editável e o nome do arquivo não se perde |
+
+| D32 | Atualização automática do Hub (pedido do proprietário em 26/10/2026: "N da pra deixar a att do hub automatica?"; muda a seção 12.2 e o "Atualizar o Hub" do runbook): (a) o CI assina também o pacote do Hub (`MarumbiSom.Hub-<versão>.zip` e `.sig.json`, com `MarumbiSom.Updater.exe` e `release-public-key.txt` dentro) com a mesma chave, mas a mensagem assinada é `marumbi-som-hub\|<versão>\|<sha256 do .zip>` (`MarumbiSom.Release pack --hub`), e a Release leva os dois pacotes assinados; (b) o Hub procura o pacote do Hub junto com o do agente (D29), baixa para `data\updates\download` com barra de andamento e confere SHA-256 e assinatura com o `release-public-key.txt` da pasta `app\`; o painel também aceita enviar o pacote à mão (pacotes de teste); (c) o Hub não troca os próprios arquivos: ele só grava o pedido `data\updates\pending.json`, e uma tarefa agendada do Windows criada pelo `install-hub.ps1` ("MarumbiSom Hub - atualizador", como SYSTEM, a cada minuto e na inicialização) copia o `MarumbiSom.Updater.exe` de `app\` para `updater\` e o roda com `--hub`, que sai na hora quando não há pedido; (d) o Updater não confia no Hub: lê os arquivos de `data\` só depois de conferir que o caminho não passa por junção nem link simbólico, copia o pacote para `updater\work`, confere de novo SHA-256 e assinatura, recusa versão igual ou mais antiga que a instalada e só grava em `app\` e `updater\`, onde só SYSTEM e Administradores escrevem; (e) instalação: para o serviço e encerra ffmpeg e ffprobe que tenham sobrado, guarda `app\` em `updater\work\backup`, troca os arquivos (mantendo `appsettings.Production.json`) e inicia; o Hub novo, antes de abrir o banco, copia `marumbi.db` para `data\updates\banco-antes\<pedido>` e, depois de subir, grava `data\updates\confirmed.json`; sem isso em 2 minutos o Updater devolve `app\` e o Hub antigo, ao subir, devolve o banco da cópia; uma troca interrompida (queda de energia) é desfeita na execução seguinte da tarefa; o resultado fica em `updater\result.json` e o log em `updater\hub-updater.log`; (f) painel: Configurações → Atualização do Hub mostra a versão instalada e a disponível, **Atualizar o Hub agora**, a chave **Atualizar sozinho de madrugada** (ligada por padrão: instala às 03:00, hora do escritório, a versão nova já conferida; uma versão que falhou não é tentada de novo sozinha), o andamento e o último resultado; se o atualizador não pegar o pedido em 3 minutos o painel avisa para rodar uma vez o `install-hub.ps1` desta versão, e o pedido expira em 30 minutos; quando o Hub muda de versão o painel pede para recarregar a página; (g) o `install-hub.ps1` continua sendo a instalação manual: cria a pasta `updater\` e a tarefa e cancela um pedido pendente | Pedido do proprietário; atualizar o Hub não para a música das lojas, porque o agente funciona sem o Hub (seção 8). O Hub roda com a conta do serviço, sem poder parar o próprio serviço nem gravar em `app\` (Etapa 3), e isso continua: a tarefa como SYSTEM faz a troca, e por isso confere tudo de novo e não segue links, para um Hub invadido não virar administrador do PC; pelo mesmo motivo a cópia e a volta do banco são feitas pelo próprio Hub, com a conta dele, e o SYSTEM nunca grava em `data\`. A mensagem com `hub` impede usar a assinatura de um pacote do agente como pacote do Hub. A madrugada evita derrubar o painel no horário de uso |
+| D33 | Repositório público (pedido do proprietário em 26/10/2026, depois de o GitHub Actions recusar os pacotes por cota de armazenamento: "É inviavel para um sistema assim eu pagar por actions!"): (a) o `marumbi-som` passa a ser público, e com isso o GitHub Actions e o armazenamento dos pacotes ficam sem custo; (b) nada muda na segurança: segredos já não entravam no Git (regra 9; histórico conferido sem tokens nem chaves), a chave de assinatura segue só no secret `MARUMBI_SIGNING_KEY` e os workflows de PRs vindos de forks não recebem secrets nem publicam versões; (c) as Releases ficam públicas, protegidas pela assinatura (D27); instalar um agente não dá acesso sem o código de vínculo do painel; (d) o token do GitHub no Hub (D29) passa a ser opcional: a procura funciona sem ele (uma consulta a cada 6 horas, bem abaixo do limite do GitHub para acesso sem login) e o painel só mostra o campo quando pedido; (e) os pacotes do CI ficam guardados por 7 dias (antes 30) | Custo zero de CI para o proprietário, sem montar outro repositório nem executor no PC do escritório. A segurança do sistema não depende do código ser secreto: o Hub só é alcançável pelo Tailscale (seção 5) e o painel exige senha |
 
 Novas decisões DEVEM ser adicionadas aqui com número sequencial.
 

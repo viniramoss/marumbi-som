@@ -16,8 +16,9 @@ Os alertas pelo Telegram ficaram para depois (D21).
 - **Versões pelo GitHub** (D29): ao juntar no `main`, ou em **Actions → CI → Run workflow** com **Publicar versão do
   agente**, o CI assina o pacote com o secret e publica a Release **Agente 0.6.N** (pacote, assinatura, instalador e
   Hub). O Hub procura a cada 6 horas (ou em **Procurar agora**), baixa com barra de andamento e deixa a versão como
-  a de distribuição; o Início mostra "Versão X do agente disponível". O repositório é privado: o Hub lê com um token
-  só de leitura cadastrado em Configurações (guardado cifrado, nunca volta para a tela).
+  a de distribuição; o Início mostra "Versão X do agente disponível". O repositório é público desde a D33, e o Hub
+  lê as Releases sem token; um token só de leitura em Configurações continua opcional (guardado cifrado, nunca volta
+  para a tela).
 - **Versão do agente para distribuição** (painel → Configurações): mostra a procura no GitHub, quantas lojas estão em
   cada versão e atualiza todas as lojas conectadas de uma vez. **Enviar arquivo…** recebe o `.zip` e o `.sig.json`
   gerados pelo `sign-release.ps1` (pacotes de teste). Na loja (Loja → Ajustes), **Atualizar agente** atualiza só

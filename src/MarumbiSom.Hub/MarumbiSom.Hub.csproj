@@ -24,6 +24,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- A mesma chave pública do agente: confere o pacote do Hub e vai no pacote para o atualizador (D32 b, d). -->
+    <None Include="..\MarumbiSom.Agent\release-public-key.txt" Link="release-public-key.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="MarumbiSom.Hub.Tests" />
   </ItemGroup>
 

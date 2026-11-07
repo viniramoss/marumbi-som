@@ -9,6 +9,9 @@
       privilégios de administrador), início Automático e recuperação 10 s / 10 s / 60 s.
     - Protege C:\MarumbiSom\Hub: só SYSTEM e Administradores têm controle; o serviço lê app\ e grava em data\
       e logs\. Usuários comuns do PC não leem o banco nem trocam os binários.
+    - Cria a tarefa agendada "MarumbiSom Hub - atualizador" (SYSTEM, a cada minuto e na inicialização), que instala
+      as versões novas do Hub pedidas pelo painel ou às 03:00 e volta sozinha se a versão nova não subir (D32). A
+      cópia do atualizador fica em C:\MarumbiSom\Hub\updater, onde o serviço só lê.
     - Na primeira instalação pede a senha do usuário "admin" do painel (mínimo 10 caracteres).
     - Ajusta o plano de energia para o PC não suspender nem hibernar na tomada (seção 6.1).
     - O Hub escuta só em 127.0.0.1:5080; o acesso das lojas e do celular é pelo Tailscale Serve.
@@ -48,8 +51,10 @@ $Root = 'C:\MarumbiSom\Hub'
 $AppDir = Join-Path $Root 'app'
 $DataDir = Join-Path $Root 'data'
 $LogsDir = Join-Path $Root 'logs'
+$UpdaterDir = Join-Path $Root 'updater'
 $Exe = Join-Path $AppDir 'MarumbiSom.Hub.exe'
 $Port = 5080
+$UpdaterTask = 'MarumbiSom Hub - atualizador'
 
 function Write-Step([string] $Message) { Write-Host "==> $Message" -ForegroundColor Cyan }
 
@@ -62,6 +67,16 @@ foreach ($tool in 'ffmpeg.exe', 'ffprobe.exe') {
         throw "tools\$tool não encontrado. Rode scripts\download-tools.ps1 -For hub -Destination $SourceDir\tools."
     }
 }
+
+# A instalação à mão substitui uma atualização do painel (D32 g): a pedida que ainda não rodou e a que a tarefa esteja
+# fazendo ou tenha deixado pela metade (o atualizador não pode desfazer esta instalação depois).
+if (Get-ScheduledTask -TaskName $UpdaterTask -ErrorAction SilentlyContinue) {
+    Stop-ScheduledTask -TaskName $UpdaterTask -ErrorAction SilentlyContinue
+}
+Get-Process -Name MarumbiSom.Updater -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -like (Join-Path $UpdaterDir '*') } |
+    Stop-Process -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $DataDir 'updates\pending.json'), (Join-Path $UpdaterDir 'state.json') -Force -ErrorAction SilentlyContinue
 
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existing -and $existing.Status -ne 'Stopped') {
@@ -78,7 +93,7 @@ Get-Process -Name ffmpeg, ffprobe -ErrorAction SilentlyContinue |
     Stop-Process -Force -ErrorAction SilentlyContinue
 
 Write-Step "Copiando binários para $AppDir"
-foreach ($dir in @($Root, $AppDir, $DataDir, $LogsDir)) {
+foreach ($dir in @($Root, $AppDir, $DataDir, $LogsDir, $UpdaterDir)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 }
 # /E copia subpastas; não usa /MIR para não apagar tools\ instalado separadamente.
@@ -110,7 +125,9 @@ if ($LASTEXITCODE -ne 0) { throw "sc.exe sdset falhou com código $LASTEXITCODE"
 
 Write-Step "Protegendo $Root"
 # Pastas na raiz do C:\ herdam "Usuários autenticados: Modificar"; a herança é cortada para nenhum usuário comum
-# trocar os binários (que rodam como serviço) nem ler o banco. SIDs em vez de nomes para o Windows em português:
+# trocar os binários (que rodam como serviço) nem ler o banco. A pasta updater\ (que a tarefa roda como SYSTEM) fica
+# com a permissão da raiz: o serviço só lê, para um Hub invadido não conseguir trocar o atualizador (D32 d). SIDs em
+# vez de nomes para o Windows em português:
 # S-1-5-18 = SYSTEM, S-1-5-32-544 = Administradores. A conta virtual do serviço só existe depois do sc.exe create.
 # Arquivos gravados pelo serviço têm a conta dele como dona; os Administradores assumem para acertar as permissões.
 takeown /F $Root /A /R | Out-Null
@@ -158,6 +175,40 @@ if (-not (Test-Path $database) -or $ResetAdminPassword) {
     }
 }
 
+Write-Step "Tarefa do atualizador do Hub ($UpdaterTask)"
+$appUpdater = Join-Path $AppDir 'MarumbiSom.Updater.exe'
+if (Test-Path $appUpdater) {
+    Copy-Item $appUpdater (Join-Path $UpdaterDir 'MarumbiSom.Updater.exe') -Force
+    # A cada minuto: copia o Updater de app\ quando mudou (robocopy só copia o diferente) e roda; sem pedido do Hub ele
+    # sai na hora sem gravar nada. Na inicialização, desfaz uma troca interrompida por queda de energia.
+    $command = "robocopy `"$AppDir`" `"$UpdaterDir`" MarumbiSom.Updater.exe /R:1 /W:1 /NJH /NJS /NFL /NDL /NP >nul & `"$UpdaterDir\MarumbiSom.Updater.exe`" --hub `"$Root`""
+    $action = New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'System32\cmd.exe') -Argument "/d /c $command"
+    $triggers = @(
+        (New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes 1)),
+        (New-ScheduledTaskTrigger -AtStartup)
+    )
+    $taskSettings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 1) `
+        -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+    $registered = $false
+    $lastError = $null
+    # "SYSTEM" funciona no Windows em português; o SID fica de reserva.
+    foreach ($account in 'SYSTEM', 'S-1-5-18') {
+        try {
+            $principal = New-ScheduledTaskPrincipal -UserId $account -LogonType ServiceAccount -RunLevel Highest
+            Register-ScheduledTask -TaskName $UpdaterTask -Action $action -Trigger $triggers -Settings $taskSettings -Principal $principal `
+                -Description 'Instala as versões novas do Marumbi Som Hub pedidas pelo painel e volta sozinho se a versão nova não subir (D32).' `
+                -Force -ErrorAction Stop | Out-Null
+            $registered = $true
+            break
+        } catch {
+            $lastError = $_
+        }
+    }
+    if (-not $registered) { throw "Não foi possível criar a tarefa '$UpdaterTask': $lastError" }
+} else {
+    Write-Warning "Pacote sem o MarumbiSom.Updater.exe: o Hub não vai conseguir se atualizar sozinho. Use o pacote do CI (MarumbiSom.Hub-win-x64)."
+}
+
 if (-not $SkipPowerSettings) {
     Write-Step 'Plano de energia: nunca suspender nem hibernar na tomada'
     powercfg /change standby-timeout-ac 0 | Out-Null
@@ -194,6 +245,9 @@ if ($TailscaleServe) {
 Write-Host ""
 Write-Host "Hub instalado e respondendo em http://127.0.0.1:$Port (só neste PC)." -ForegroundColor Green
 Write-Host "Dados em $DataDir, logs em $LogsDir. Copie a pasta data\ para fora do PC (ex.: Google Drive para desktop)."
+if (Test-Path $appUpdater) {
+    Write-Host "Versões novas do Hub: instaladas sozinhas às 03:00 ou em Configurações > Atualização do Hub (log em $UpdaterDir\hub-updater.log)."
+}
 if (-not $TailscaleServe) {
     Write-Host "Para as lojas e o celular alcançarem o Hub: tailscale serve --bg $Port"
 }

@@ -18,6 +18,7 @@ documento; qualquer desvio é registrado na seção 18 antes de ser implementado
 | 5 — Ofertas | código pronto, aguardando teste ([roteiro](docs/etapa-5-ofertas.md)) |
 | 6 — Segurança, instalador e atualização | código pronto, aguardando teste ([roteiro](docs/etapa-6-seguranca.md)) |
 | Linha do tempo das ofertas e músicas numeradas (D30, D31) | código pronto, aguardando teste ([roteiro](docs/timeline-e-numeracao.md)) |
+| Atualização automática do Hub (D32) | código pronto, aguardando teste ([roteiro](docs/atualizacao-do-hub.md)) |
 | 7 e 8 — Piloto e demais lojas | não iniciadas |
 
 Operação: [checklist de instalação de uma loja](docs/checklist-instalacao-loja.md) e [runbook](docs/runbook.md).

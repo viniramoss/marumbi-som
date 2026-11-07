@@ -7,14 +7,14 @@ using MarumbiSom.Contracts.Releases;
 
 namespace MarumbiSom.Updater;
 
-/// <summary>Controle do serviço do agente; nos testes, um falso que simula o agente novo subindo (ou não).</summary>
+/// <summary>Controle do serviço do agente ou do Hub; nos testes, um falso que simula a versão nova subindo (ou não).</summary>
 public interface IServiceControl
 {
     Task StopAsync(string serviceName, TimeSpan timeout, CancellationToken cancellationToken);
 
     Task StartAsync(string serviceName, TimeSpan timeout, CancellationToken cancellationToken);
 
-    /// <summary>Encerra processos que ainda rodam da pasta do programa (agente ou mpv) e prenderiam os arquivos.</summary>
+    /// <summary>Encerra processos que ainda rodam da pasta do programa (agente e mpv, ou Hub e ffmpeg) e prenderiam os arquivos.</summary>
     void KillLeftovers(string programDirectory);
 }
 
@@ -22,6 +22,10 @@ public interface IServiceControl
 [JsonSerializable(typeof(PendingUpdate))]
 [JsonSerializable(typeof(UpdateConfirmation))]
 [JsonSerializable(typeof(UpdateResult))]
+[JsonSerializable(typeof(HubUpdateRequest))]
+[JsonSerializable(typeof(HubUpdateState))]
+[JsonSerializable(typeof(HubUpdateConfirmation))]
+[JsonSerializable(typeof(HubUpdateResult))]
 internal sealed partial class UpdaterJson : JsonSerializerContext;
 
 /// <summary>
@@ -158,38 +162,47 @@ public sealed class UpdateRunner(UpdatePaths paths, IServiceControl service, Tim
                 return "O pacote mudou depois de conferido pelo agente (SHA-256 diferente).";
             }
 
-            if (Directory.Exists(paths.Staging))
-            {
-                Directory.Delete(paths.Staging, recursive: true);
-            }
-
-            Directory.CreateDirectory(paths.Staging);
-            var root = Path.GetFullPath(paths.Staging) + Path.DirectorySeparatorChar;
-            using var zip = ZipFile.OpenRead(pending.PackagePath);
-            foreach (var entry in zip.Entries)
-            {
-                var target = Path.GetFullPath(Path.Combine(root, entry.FullName));
-                if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-                {
-                    return $"O pacote tem um caminho que sai da pasta ({entry.FullName}).";
-                }
-
-                if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\'))
-                {
-                    Directory.CreateDirectory(target);
-                    continue;
-                }
-
-                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                entry.ExtractToFile(target, overwrite: true);
-            }
-
-            return File.Exists(Path.Combine(paths.Staging, AgentExe)) ? null : $"O pacote não tem o {AgentExe}.";
+            return Extract(pending.PackagePath, paths.Staging, AgentExe);
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
         {
             return $"Não foi possível abrir o pacote: {ex.Message}";
         }
+    }
+
+    /// <summary>
+    /// Extrai o pacote para <paramref name="staging"/> (do zero), recusando caminhos que saiam da pasta. Devolve o
+    /// problema, ou nulo se o pacote tem todos os <paramref name="requiredFiles"/>.
+    /// </summary>
+    internal static string? Extract(string package, string staging, params string[] requiredFiles)
+    {
+        if (Directory.Exists(staging))
+        {
+            Directory.Delete(staging, recursive: true);
+        }
+
+        Directory.CreateDirectory(staging);
+        var root = Path.GetFullPath(staging) + Path.DirectorySeparatorChar;
+        using var zip = ZipFile.OpenRead(package);
+        foreach (var entry in zip.Entries)
+        {
+            var target = Path.GetFullPath(Path.Combine(root, entry.FullName));
+            if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            {
+                return $"O pacote tem um caminho que sai da pasta ({entry.FullName}).";
+            }
+
+            if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\'))
+            {
+                Directory.CreateDirectory(target);
+                continue;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            entry.ExtractToFile(target, overwrite: true);
+        }
+
+        return requiredFiles.FirstOrDefault(f => !File.Exists(Path.Combine(staging, f))) is { } missing ? $"O pacote não tem o {missing}." : null;
     }
 
     private async Task<bool> WaitForConfirmationAsync(string version, CancellationToken cancellationToken)
