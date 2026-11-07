@@ -76,8 +76,9 @@ O motivo aparece na página Configurar Som e no log do agente. Procure no log do
 
 O "Tocar oferta agora" lista só as ofertas que a loja recebeu e que valem agora. Se vier vazio:
 
-1. Painel → **Ofertas**: oferta com a etiqueta **Vencida** ou **Desativada** não vai para nenhuma loja. Abra a oferta e
-   marque **Não termina** (ou mude o **Termina**) ou marque **Ativa**, depois **Salvar e publicar**. As âncoras na
+1. Painel → **Ofertas**: oferta com a etiqueta **Vencida** ou **Desativada** não vai para nenhuma loja. Para as
+   vencidas, clique **Marcar as N vencidas** (ou marque as que quiser) e use **Prorrogar 15 dias**, **Prorrogar 30 dias**
+   ou **Escolher a data**. Para a desativada, abra a oferta, marque **Ativa** e **Salvar e publicar**. As âncoras na
    playlist continuam lá e voltam a tocar nos mesmos pontos.
 2. Na mesma tela, confira o quadro **Lojas**: a loja precisa estar marcada (sem nenhuma marcada, vale para todas).
 3. No editor da playlist, oferta presa em cinza e riscada não está tocando; o aviso no topo diz o motivo de cada uma
