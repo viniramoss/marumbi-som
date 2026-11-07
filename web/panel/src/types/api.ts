@@ -1527,6 +1527,54 @@ export interface paths {
     };
     trace?: never;
   };
+  '/api/offers/validity': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['ValidityInput'];
+        };
+      };
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['OfferSummary'][];
+          };
+        };
+        /** @description Bad Request */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ApiError'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/offers/{id}/rules': {
     parameters: {
       query?: never;
@@ -2419,6 +2467,13 @@ export interface components {
       error: null | string;
       /** Format: date-time */
       at: string;
+    };
+    ValidityInput: {
+      offerIds?: null | number[];
+      /** Format: int32 */
+      extendDays?: null | number;
+      /** Format: date-time */
+      validUntil?: null | string;
     };
   };
   responses: never;

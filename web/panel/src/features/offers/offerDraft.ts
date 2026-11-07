@@ -58,11 +58,20 @@ export function newRule(kind: (typeof editableKinds)[number]): RuleDraft {
   return { key: ruleKey(), kind, minutes: 30, time: '12:00', days: [0, 1, 2, 3, 4, 5, 6], playlistIds: [] };
 }
 
-/** Oferta nova: vale de agora até o fim do sétimo dia, em todas as lojas, a cada 30 minutos. */
-export function newOfferDraft(now: Date, storeIds: number[]): OfferDraft {
-  const until = new Date(now);
-  until.setDate(until.getDate() + 7);
+/** Validade sugerida para oferta nova (D39); antes eram 7 dias, e as ofertas venciam sem ninguém perceber. */
+export const DefaultValidityDays = 30;
+
+/** Fim de `days` dias depois de `from`, às 23:59 (o mesmo que o Hub usa para prorrogar). */
+export function endOfDayAfter(from: Date, days: number): Date {
+  const until = new Date(from);
+  until.setDate(until.getDate() + days);
   until.setHours(23, 59, 0, 0);
+  return until;
+}
+
+/** Oferta nova: vale de agora até o fim do 30º dia, em todas as lojas, a cada 30 minutos. */
+export function newOfferDraft(now: Date, storeIds: number[]): OfferDraft {
+  const until = endOfDayAfter(now, DefaultValidityDays);
   return {
     name: '',
     audioHash: null,

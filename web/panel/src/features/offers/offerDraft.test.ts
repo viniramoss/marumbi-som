@@ -38,10 +38,10 @@ const detail: OfferDetail = {
 };
 
 describe('offerDraft', () => {
-  it('oferta nova vale de agora até o fim do sétimo dia, em todas as lojas, a cada 30 min', () => {
+  it('oferta nova vale de agora até o fim do 30º dia, em todas as lojas, a cada 30 min (D39)', () => {
     const draft = newOfferDraft(new Date(2026, 9, 24, 10, 15), [1, 2]);
     expect(draft.validFrom).toBe('2026-10-24T10:15');
-    expect(draft.validUntil).toBe('2026-10-31T23:59');
+    expect(draft.validUntil).toBe('2026-11-23T23:59');
     expect(draft.storeIds).toEqual([1, 2]);
     expect(draft.rules).toMatchObject([{ kind: 'everyMinutes', minutes: 30 }]);
     expect(draft.duckLevel).toBe(30);
