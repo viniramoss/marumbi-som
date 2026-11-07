@@ -1,6 +1,5 @@
 import type { OfferDetail } from '../../api/types';
 import {
-  EndlessUntil,
   gapWarning,
   draftFromOffer,
   draftProblem,
@@ -39,14 +38,10 @@ const detail: OfferDetail = {
 };
 
 describe('offerDraft', () => {
-  it('oferta nova vale de agora em diante, sem data para acabar, em todas as lojas, a cada 30 min (D39)', () => {
+  it('oferta nova vale de agora até o fim do sétimo dia, em todas as lojas, a cada 30 min', () => {
     const draft = newOfferDraft(new Date(2026, 9, 24, 10, 15), [1, 2]);
     expect(draft.validFrom).toBe('2026-10-24T10:15');
-    expect(draft.endless).toBe(true);
-    expect(toOfferInput(draft).validUntil).toBe(EndlessUntil);
-    // Desmarcando "Não termina", o fim sugerido é o fim do sétimo dia.
     expect(draft.validUntil).toBe('2026-10-31T23:59');
-    expect(toOfferInput({ ...draft, endless: false }).validUntil).toBe(new Date(2026, 9, 31, 23, 59).toISOString());
     expect(draft.storeIds).toEqual([1, 2]);
     expect(draft.rules).toMatchObject([{ kind: 'everyMinutes', minutes: 30 }]);
     expect(draft.duckLevel).toBe(30);
@@ -90,16 +85,6 @@ describe('offerDraft', () => {
     expect(isOfferDirty(draft, draftFromOffer(detail))).toBe(false);
     expect(isOfferDirty({ ...draft, rules: [draft.rules[0]!] }, draftFromOffer(detail))).toBe(true);
     expect(isOfferDirty({ ...draft, duckLevel: 40 }, draftFromOffer(detail))).toBe(true);
-  });
-
-  it('oferta salva sem fim volta com "Não termina" marcado e sem alteração pendente', () => {
-    const endless = { ...detail, offer: { ...detail.offer, validUntil: '2099-12-31T23:59:00+00:00' } };
-    const draft = draftFromOffer(endless, new Date(2026, 10, 7, 9, 0));
-    expect(draft.endless).toBe(true);
-    expect(draft.validUntil).toBe('2026-11-14T23:59');
-    expect(isOfferDirty(draft, draftFromOffer(endless))).toBe(false);
-    expect(isOfferDirty({ ...draft, endless: false }, draftFromOffer(endless))).toBe(true);
-    expect(draftFromOffer(detail).endless).toBe(false);
   });
 
   it('confere o básico antes de enviar', () => {
