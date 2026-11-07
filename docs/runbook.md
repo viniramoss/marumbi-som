@@ -72,6 +72,18 @@ O motivo aparece na página Configurar Som e no log do agente. Procure no log do
   a placa de vídeo. A versão com a D38 abre o mpv com `--vo=null`; se ainda acontecer, mande o log para o
   desenvolvimento.
 
+## Ofertas não tocam ou "Tocar oferta agora" vem vazio
+
+O "Tocar oferta agora" lista só as ofertas que a loja recebeu e que valem agora. Se vier vazio:
+
+1. Painel → **Ofertas**: oferta com a etiqueta **Vencida** ou **Desativada** não vai para nenhuma loja. Abra a oferta e
+   marque **Não termina** (ou mude o **Termina**) ou marque **Ativa**, depois **Salvar e publicar**. As âncoras na
+   playlist continuam lá e voltam a tocar nos mesmos pontos.
+2. Na mesma tela, confira o quadro **Lojas**: a loja precisa estar marcada (sem nenhuma marcada, vale para todas).
+3. No editor da playlist, oferta presa em cinza e riscada não está tocando; o aviso no topo diz o motivo de cada uma
+   (D39).
+4. Loja → Ao vivo: a configuração precisa estar **Aplicado**. Loja desconectada recebe quando voltar.
+
 ## Música nova ou playlist não chega na loja
 
 1. Painel → Início: o cartão mostra "Baixando x/y" ou "Sincronizado". O download respeita o limite de 2 Mbps; muitas
