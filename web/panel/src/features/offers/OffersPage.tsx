@@ -7,7 +7,7 @@ import { Badge, Button, Card, EmptyState, ErrorNote, PageHeader, Spinner } from 
 import { useNow } from '../../hooks/useNow';
 import { useOpenOnClick } from '../../hooks/useOpenOnClick';
 import { formatDateTime, formatDuration } from '../../lib/format';
-import { expiresIn, offerStatus } from './offerDraft';
+import { expiresIn, isEndless, offerStatus } from './offerDraft';
 
 /** Lista de ofertas com a situação calculada pelo Hub e o aviso de vencimento (seção 7.2, D26 e). */
 export function OffersPage() {
@@ -84,7 +84,11 @@ export function OffersPage() {
                     </td>
                     <td className="py-3 pr-4 text-stone-600">
                       <span className="block">{formatDateTime(offer.validFrom)}</span>
-                      <span className="block text-xs text-stone-500">até {formatDateTime(offer.validUntil)}</span>
+                      <span className="block text-xs text-stone-500">
+                        {isEndless(offer.validUntil)
+                          ? 'sem data para acabar'
+                          : `até ${formatDateTime(offer.validUntil)}`}
+                      </span>
                     </td>
                     <td className="py-3 pr-4 text-stone-700">{storesText(offer, stores.data)}</td>
                     <td className="py-3 pr-4 text-stone-700">{whenText(offer)}</td>
