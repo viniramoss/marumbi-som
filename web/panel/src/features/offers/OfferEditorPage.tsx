@@ -217,13 +217,29 @@ function Editor({ saved, defaultStoreIds }: { saved: OfferDetail | null; default
                   onChange={(e) => change({ validFrom: e.target.value })}
                 />
               </Field>
-              <Field label="Termina" hint="Depois disso a oferta para de tocar sozinha, sem precisar apagar.">
-                <Input
-                  type="datetime-local"
-                  value={draft.validUntil}
-                  onChange={(e) => change({ validUntil: e.target.value })}
+              <label className="flex cursor-pointer items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={draft.endless}
+                  onChange={(e) => change({ endless: e.target.checked })}
+                  className="mt-0.5 size-4 accent-brand-700"
                 />
-              </Field>
+                <span>
+                  <span className="font-medium text-stone-800">Não termina</span>
+                  <span className="block text-xs text-stone-500">
+                    Toca até você desativar ou apagar. Para horário de atendimento, QR Code e produtos fixos.
+                  </span>
+                </span>
+              </label>
+              {!draft.endless && (
+                <Field label="Termina" hint="Depois disso a oferta para de tocar sozinha, sem precisar apagar.">
+                  <Input
+                    type="datetime-local"
+                    value={draft.validUntil}
+                    onChange={(e) => change({ validUntil: e.target.value })}
+                  />
+                </Field>
+              )}
               <label className="flex cursor-pointer items-start gap-2 text-sm">
                 <input
                   type="checkbox"
