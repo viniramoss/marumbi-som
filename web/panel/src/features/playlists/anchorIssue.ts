@@ -22,7 +22,7 @@ export function anchorIssue(offer: OfferSummary | undefined, usage: readonly Pla
   if (offer.status === 'expired') {
     return {
       label: 'Vencida',
-      detail: `Venceu em ${formatDateTime(offer.validUntil)} e não toca mais. Abra a oferta e mude o Termina da validade.`,
+      detail: `Venceu em ${formatDateTime(offer.validUntil)} e não toca mais. Em Ofertas, marque e use Prorrogar, ou abra a oferta e mude o Termina.`,
     };
   }
   const playlistStores = new Map(usage.map((u) => [u.storeId, u.storeName]));
