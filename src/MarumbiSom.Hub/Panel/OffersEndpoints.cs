@@ -5,6 +5,7 @@ using MarumbiSom.Contracts.Manifests;
 using MarumbiSom.Hub.Data;
 using MarumbiSom.Hub.Manifests;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace MarumbiSom.Hub.Panel;
 
@@ -19,12 +20,15 @@ public static class OffersEndpoints
     public const int MaxEveryTracks = 100;
     public static readonly TimeSpan ExpiringWithin = TimeSpan.FromHours(24);
     public static readonly TimeSpan PlaysWindow = TimeSpan.FromDays(7);
+    public const int MaxExtendDays = 365;
 
     public static void MapOffers(this RouteGroupBuilder api)
     {
         api.MapGet("/offers", ListAsync).Returns<IReadOnlyList<OfferSummary>>();
         api.MapPost("/offers", CreateAsync).Returns<OfferDetail>(StatusCodes.Status201Created, StatusCodes.Status400BadRequest);
         api.MapGet("/offers/{id:int}", GetAsync).Returns<OfferDetail>(StatusCodes.Status200OK, StatusCodes.Status404NotFound);
+        api.MapPost("/offers/validity", ChangeValidityAsync)
+            .Returns<IReadOnlyList<OfferSummary>>(StatusCodes.Status200OK, StatusCodes.Status400BadRequest);
         api.MapPatch("/offers/{id:int}", UpdateAsync).Returns<OfferDetail>(StatusCodes.Status200OK, StatusCodes.Status400BadRequest, StatusCodes.Status404NotFound);
         api.MapDelete("/offers/{id:int}", DeleteAsync).ReturnsNothing(StatusCodes.Status204NoContent, StatusCodes.Status404NotFound);
         api.MapPut("/offers/{id:int}/rules", ReplaceRulesAsync)
@@ -91,6 +95,70 @@ public static class OffersEndpoints
         await publisher.RegenerateAllAsync(cancellationToken);
         panel.Changed("offers");
         return Results.Created($"/api/offers/{offer.Id}", await DetailAsync(db, offer.Id, now, cancellationToken));
+    }
+
+    /// <summary>
+    /// Validade de várias ofertas de uma vez (D39): prorrogar N dias ou pôr o mesmo fim em todas. Gera um manifesto
+    /// novo por loja, em vez de um por oferta.
+    /// </summary>
+    private static async Task<IResult> ChangeValidityAsync(
+        ValidityInput input, HubDb db, ManifestPublisher publisher, PanelHub panel, IOptions<HubOptions> options, ClaimsPrincipal user,
+        TimeProvider time, CancellationToken cancellationToken)
+    {
+        var ids = (input.OfferIds ?? []).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return ApiResults.BadRequest("Escolha pelo menos uma oferta.");
+        }
+
+        if ((input.ExtendDays is null) == (input.ValidUntil is null))
+        {
+            return ApiResults.BadRequest("Informe quantos dias prorrogar ou a nova data de fim, só um dos dois.");
+        }
+
+        if (input.ExtendDays is < 1 or > MaxExtendDays)
+        {
+            return ApiResults.BadRequest($"Prorrogue de 1 a {MaxExtendDays} dias.");
+        }
+
+        var offers = await db.Offers.Where(o => ids.Contains(o.Id)).ToListAsync(cancellationToken);
+        if (offers.Count != ids.Count)
+        {
+            return ApiResults.BadRequest("Oferta não encontrada. Recarregue a lista de ofertas.");
+        }
+
+        var now = time.GetUtcNow();
+        var zone = ManifestGenerator.ResolveZone(options.Value.Timezone);
+        foreach (var offer in offers)
+        {
+            offer.ValidUntil = input.ValidUntil ?? ExtendedUntil(offer.ValidUntil, now, input.ExtendDays!.Value, zone);
+            offer.UpdatedAt = now;
+        }
+
+        var beforeStart = offers.Where(o => o.ValidUntil <= o.ValidFrom).Select(o => o.Name).Order(StringComparer.CurrentCultureIgnoreCase).ToList();
+        if (beforeStart.Count > 0)
+        {
+            return ApiResults.BadRequest("O novo fim fica antes do início de: " + string.Join(", ", beforeStart) + ".");
+        }
+
+        db.Audit(user, time, "offers.validity", string.Join(",", ids.Order().Select(Key)), input);
+        await db.SaveChangesAsync(cancellationToken);
+        await publisher.RegenerateAllAsync(cancellationToken);
+        panel.Changed("offers");
+        var context = await SummaryContextAsync(db, null, now, cancellationToken);
+        return Results.Ok(offers.OrderBy(o => o.Id).Select(o => Summary(o, context, now)).ToList());
+    }
+
+    /// <summary>
+    /// Fim prorrogado (D39): <paramref name="days"/> dias depois do fim atual ou, se a oferta já venceu, depois de hoje;
+    /// sempre às 23:59 no fuso do Hub, como o fim que o painel sugere.
+    /// </summary>
+    public static DateTimeOffset ExtendedUntil(DateTimeOffset validUntil, DateTimeOffset now, int days, TimeZoneInfo zone)
+    {
+        ArgumentNullException.ThrowIfNull(zone);
+        var from = TimeZoneInfo.ConvertTime(validUntil > now ? validUntil : now, zone);
+        var end = from.Date.AddDays(days).AddHours(23).AddMinutes(59);
+        return new DateTimeOffset(end, zone.GetUtcOffset(end));
     }
 
     private static async Task<IResult> UpdateAsync(
@@ -453,6 +521,11 @@ public static class OffersEndpoints
         IReadOnlyList<int>? Days,
         int? N,
         IReadOnlyList<int>? PlaylistIds);
+
+    /// <summary>Validade de várias ofertas (D39): <c>extendDays</c> ou <c>validUntil</c>, só um dos dois.</summary>
+    /// <param name="ExtendDays">Prorroga cada oferta este número de dias (1 a 365), a partir do fim atual ou de hoje.</param>
+    /// <param name="ValidUntil">O mesmo fim para todas.</param>
+    public sealed record ValidityInput(IReadOnlyList<int>? OfferIds, int? ExtendDays, DateTimeOffset? ValidUntil);
 
     /// <param name="Key">Identificador da oferta no manifesto e nos comandos (<c>of-12</c>).</param>
     /// <param name="StoreIds">Vazio = todas as lojas.</param>

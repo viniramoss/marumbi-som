@@ -29,10 +29,7 @@ export interface OfferDraft {
   audioHash: string | null;
   /** Valor de `<input type="datetime-local">` (horário do navegador). */
   validFrom: string;
-  /** Fim escolhido; não vale com `endless`, mas fica guardado para quando desmarcar. */
   validUntil: string;
-  /** "Não termina" (D39): toca até desativar ou apagar. */
-  endless: boolean;
   duckLevel: number;
   enabled: boolean;
   storeIds: number[];
@@ -46,14 +43,6 @@ let counter = 0;
 const ruleKey = () => `regra-${++counter}`;
 
 const pad = (n: number) => String(n).padStart(2, '0');
-
-/**
- * Validade da oferta que não termina (D39). O Hub guarda sempre um fim; este fica longe de qualquer oferta real e
- * dispensa mudar o banco, o manifesto e o agente.
- */
-export const EndlessUntil = '2099-12-31T23:59:00.000Z';
-
-export const isEndless = (validUntil: string) => Date.parse(validUntil) >= Date.parse('2099-12-31T00:00:00Z');
 
 /** Data para `<input type="datetime-local">`, no horário do navegador. */
 export function toLocalInput(date: Date): string {
@@ -69,22 +58,25 @@ export function newRule(kind: (typeof editableKinds)[number]): RuleDraft {
   return { key: ruleKey(), kind, minutes: 30, time: '12:00', days: [0, 1, 2, 3, 4, 5, 6], playlistIds: [] };
 }
 
-/** Fim do sétimo dia depois de `from`: o fim sugerido quando a oferta passa a ter data para acabar. */
-function weekLater(from: Date): string {
+/** Validade sugerida para oferta nova (D39); antes eram 7 dias, e as ofertas venciam sem ninguém perceber. */
+export const DefaultValidityDays = 30;
+
+/** Fim de `days` dias depois de `from`, às 23:59 (o mesmo que o Hub usa para prorrogar). */
+export function endOfDayAfter(from: Date, days: number): Date {
   const until = new Date(from);
-  until.setDate(until.getDate() + 7);
+  until.setDate(until.getDate() + days);
   until.setHours(23, 59, 0, 0);
-  return toLocalInput(until);
+  return until;
 }
 
-/** Oferta nova: vale de agora em diante, sem data para acabar (D39), em todas as lojas, a cada 30 minutos. */
+/** Oferta nova: vale de agora até o fim do 30º dia, em todas as lojas, a cada 30 minutos. */
 export function newOfferDraft(now: Date, storeIds: number[]): OfferDraft {
+  const until = endOfDayAfter(now, DefaultValidityDays);
   return {
     name: '',
     audioHash: null,
     validFrom: toLocalInput(now),
-    validUntil: weekLater(now),
-    endless: true,
+    validUntil: toLocalInput(until),
     duckLevel: 30,
     enabled: true,
     storeIds,
@@ -92,15 +84,13 @@ export function newOfferDraft(now: Date, storeIds: number[]): OfferDraft {
   };
 }
 
-export function draftFromOffer(detail: OfferDetail, now = new Date()): OfferDraft {
+export function draftFromOffer(detail: OfferDetail): OfferDraft {
   const { offer } = detail;
-  const endless = isEndless(offer.validUntil);
   return {
     name: offer.name,
     audioHash: offer.audioHash,
     validFrom: toLocalInput(new Date(offer.validFrom)),
-    validUntil: endless ? weekLater(now) : toLocalInput(new Date(offer.validUntil)),
-    endless,
+    validUntil: toLocalInput(new Date(offer.validUntil)),
     duckLevel: offer.duckLevel,
     enabled: offer.enabled,
     storeIds: [...offer.storeIds].sort((a, b) => a - b),
@@ -147,7 +137,7 @@ export function toOfferInput(draft: OfferDraft): OfferInput {
     name: draft.name.trim(),
     audioHash: draft.audioHash,
     validFrom: fromLocalInput(draft.validFrom),
-    validUntil: draft.endless ? EndlessUntil : fromLocalInput(draft.validUntil),
+    validUntil: fromLocalInput(draft.validUntil),
     duckLevel: draft.duckLevel,
     enabled: draft.enabled,
     storeIds: [...draft.storeIds].sort((a, b) => a - b),
@@ -165,7 +155,7 @@ export function draftProblem(draft: OfferDraft): string | null {
   if (!draft.audioHash) return 'Envie o áudio da oferta e espere o processamento terminar.';
   if (!draft.name.trim()) return 'Dê um nome para a oferta.';
   const from = fromLocalInput(draft.validFrom);
-  const until = draft.endless ? EndlessUntil : fromLocalInput(draft.validUntil);
+  const until = fromLocalInput(draft.validUntil);
   if (!from || !until) return 'Preencha o início e o fim da validade.';
   if (Date.parse(until) <= Date.parse(from)) return 'O fim da validade precisa ser depois do início.';
   for (const rule of draft.rules) {

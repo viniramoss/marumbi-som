@@ -142,6 +142,79 @@ public sealed class OffersTests
     }
 
     [Fact]
+    public async Task Prorrogar_varias_ofertas_conta_do_fim_atual_ou_de_hoje_e_volta_a_mandar_a_vencida_para_a_loja()
+    {
+        await using var hub = await HubHarness.StartAsync(Now);
+        var admin = await hub.AdminClientAsync();
+        var music = await hub.SeedTrackAsync("Música");
+        var (storeId, _) = await ManifestTests.StoreWithPlaylistAsync(admin, [music]);
+        var audio = await hub.SeedTrackAsync("Picanha", 12_000, TrackKind.Offer);
+
+        async Task<int> CreateAsync(string name, DateTimeOffset from, DateTimeOffset until) =>
+            (await HubHarness.JsonAsync(await admin.PostAsJsonAsync("/api/offers", new { name, audioHash = audio, validFrom = from, validUntil = until })))
+                .GetProperty("offer").GetProperty("id").GetInt32();
+
+        var live = await CreateAsync("Picanha", Now.AddDays(-1), new DateTimeOffset(2026, 10, 25, 23, 59, 0, TimeSpan.FromHours(-3)));
+        var expired = await CreateAsync("Horário de atendimento", Now.AddDays(-10), Now.AddDays(-3));
+        var untouched = await CreateAsync("Costela", Now.AddDays(-1), Now.AddDays(2));
+        Assert.DoesNotContain((await ManifestTests.LatestAsync(hub, storeId)).Spots.Offers.Values, o => o.Name == "Horário de atendimento");
+
+        var response = await admin.PostAsJsonAsync("/api/offers/validity", new { offerIds = new[] { live, expired }, extendDays = 15 });
+        var changed = (await HubHarness.JsonAsync(response)).EnumerateArray().ToDictionary(o => o.GetProperty("id").GetInt32());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(2, changed.Count);
+        // No ar: 15 dias depois do fim atual. Vencida: 15 dias depois de hoje (23/10). Sempre às 23:59 no fuso do Hub.
+        Assert.Equal(new DateTimeOffset(2026, 11, 9, 23, 59, 0, TimeSpan.FromHours(-3)), changed[live].GetProperty("validUntil").GetDateTimeOffset());
+        Assert.Equal(new DateTimeOffset(2026, 11, 7, 23, 59, 0, TimeSpan.FromHours(-3)), changed[expired].GetProperty("validUntil").GetDateTimeOffset());
+        Assert.Equal("live", changed[expired].GetProperty("status").GetString());
+        Assert.Contains((await ManifestTests.LatestAsync(hub, storeId)).Spots.Offers.Values, o => o.Name == "Horário de atendimento");
+
+        var offers = (await HubHarness.JsonAsync(await admin.GetAsync("/api/offers"))).EnumerateArray().ToDictionary(o => o.GetProperty("id").GetInt32());
+        Assert.Equal(Now.AddDays(2), offers[untouched].GetProperty("validUntil").GetDateTimeOffset());
+    }
+
+    [Fact]
+    public async Task Mesmo_fim_para_varias_ofertas_e_recusas_com_motivo()
+    {
+        await using var hub = await HubHarness.StartAsync(Now);
+        var admin = await hub.AdminClientAsync();
+        var audio = await hub.SeedTrackAsync("Picanha", 12_000, TrackKind.Offer);
+
+        async Task<int> CreateAsync(string name, DateTimeOffset from, DateTimeOffset until) =>
+            (await HubHarness.JsonAsync(await admin.PostAsJsonAsync("/api/offers", new { name, audioHash = audio, validFrom = from, validUntil = until })))
+                .GetProperty("offer").GetProperty("id").GetInt32();
+
+        var first = await CreateAsync("Picanha", Now.AddDays(-1), Now.AddDays(1));
+        var second = await CreateAsync("Linguiça", Now.AddDays(-5), Now.AddDays(-1));
+        var later = await CreateAsync("Natal", Now.AddDays(40), Now.AddDays(60));
+        var end = new DateTimeOffset(2026, 12, 31, 23, 59, 0, TimeSpan.FromHours(-3));
+
+        var response = await admin.PostAsJsonAsync("/api/offers/validity", new { offerIds = new[] { first, second }, validUntil = end });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.All((await HubHarness.JsonAsync(response)).EnumerateArray(), o => Assert.Equal(end, o.GetProperty("validUntil").GetDateTimeOffset()));
+
+        async Task<string> ErrorAsync(object body)
+        {
+            var refused = await admin.PostAsJsonAsync("/api/offers/validity", body);
+            Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+            return (await refused.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString()!;
+        }
+
+        Assert.Equal("O novo fim fica antes do início de: Natal.", await ErrorAsync(new { offerIds = new[] { first, later }, validUntil = Now.AddDays(10) }));
+        Assert.Equal("Escolha pelo menos uma oferta.", await ErrorAsync(new { offerIds = Array.Empty<int>(), extendDays = 15 }));
+        Assert.Contains("só um dos dois", await ErrorAsync(new { offerIds = new[] { first }, extendDays = 15, validUntil = end }), StringComparison.Ordinal);
+        Assert.Contains("só um dos dois", await ErrorAsync(new { offerIds = new[] { first } }), StringComparison.Ordinal);
+        Assert.Equal("Prorrogue de 1 a 365 dias.", await ErrorAsync(new { offerIds = new[] { first }, extendDays = 0 }));
+        Assert.Contains("não encontrada", await ErrorAsync(new { offerIds = new[] { first, 999 }, extendDays = 15 }), StringComparison.Ordinal);
+
+        // A recusa não deixa nada pela metade.
+        var offers = (await HubHarness.JsonAsync(await admin.GetAsync("/api/offers"))).EnumerateArray().ToDictionary(o => o.GetProperty("id").GetInt32());
+        Assert.Equal(end, offers[first].GetProperty("validUntil").GetDateTimeOffset());
+        Assert.Equal(Now.AddDays(60), offers[later].GetProperty("validUntil").GetDateTimeOffset());
+    }
+
+    [Fact]
     public async Task Ancora_durante_presa_ao_item_valida_o_tempo_e_aparece_na_playlist_e_na_oferta()
     {
         await using var hub = await HubHarness.StartAsync(Now);
