@@ -42,6 +42,16 @@ describe('OffersPage', () => {
     expect(screen.getByText('Só pelo botão "tocar oferta agora"')).toBeInTheDocument();
   });
 
+  it('oferta que não termina aparece sem data para acabar (D39)', () => {
+    renderScreen(<OffersPage />, [
+      [keys.offers, [offer({ validUntil: '2099-12-31T23:59:00+00:00' }), offer({ id: 4, name: 'Costela' })]],
+      [keys.stores, []],
+    ]);
+
+    expect(screen.getByText('sem data para acabar')).toBeInTheDocument();
+    expect(screen.getAllByText(/^até /)).toHaveLength(1);
+  });
+
   it('avisa a oferta que vence nas próximas 24 horas', () => {
     const soon = new Date(Date.now() + 5 * 3600_000).toISOString();
     renderScreen(<OffersPage />, [
