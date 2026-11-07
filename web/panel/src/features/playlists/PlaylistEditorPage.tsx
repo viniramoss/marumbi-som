@@ -634,8 +634,8 @@ function OffersColumn({
               {expired === 1 ? 'Há 1 oferta vencida.' : `Há ${expired} ofertas vencidas.`} Para voltar a tocar, abra em{' '}
               <Link to="/ofertas" className="font-medium text-brand-800 hover:underline">
                 Ofertas
-              </Link>{' '}
-              e mude o Termina da validade.
+              </Link>
+              , marque as vencidas e use Prorrogar.
             </p>
           )}
           <Link to="/ofertas/nova" className="font-medium text-brand-800 hover:underline">

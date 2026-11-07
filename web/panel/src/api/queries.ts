@@ -6,6 +6,7 @@ import type {
   ItemInput,
   OfferDetail,
   OfferInput,
+  OfferValidityInput,
   OfferSummary,
   PlaylistDetail,
   ReleaseInfo,
@@ -351,6 +352,19 @@ export function useDeleteOffer() {
       client.setQueryData<OfferSummary[]>(keys.offers, (list) => list?.filter((o) => o.id !== id));
       void client.invalidateQueries({ queryKey: keys.offers });
       void client.invalidateQueries({ queryKey: ['playlist'] });
+    },
+  });
+}
+
+/** Prorrogar ou mudar o fim de várias ofertas de uma vez (D39). */
+export function useChangeOfferValidity() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: OfferValidityInput) => call(api.POST('/api/offers/validity', { body: input })),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.offers });
+      void client.invalidateQueries({ queryKey: ['offer'] });
+      void client.invalidateQueries({ queryKey: ['storeOffers'] });
     },
   });
 }

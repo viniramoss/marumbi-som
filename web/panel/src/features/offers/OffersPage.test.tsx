@@ -1,10 +1,23 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { keys } from '../../api/queries';
+import { keys, useChangeOfferValidity } from '../../api/queries';
 import type { OfferSummary } from '../../api/types';
 import { storeSummary } from '../../test/fixtures';
 import { renderScreen } from '../../test/render';
 import { OffersPage } from './OffersPage';
+
+const changeValidity = vi.fn();
+
+vi.mock('../../api/queries', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/queries')>()),
+  useChangeOfferValidity: vi.fn(),
+}));
+
+beforeEach(() => {
+  changeValidity.mockReset();
+  changeValidity.mockResolvedValue([]);
+  vi.mocked(useChangeOfferValidity).mockReturnValue({ mutateAsync: changeValidity } as never);
+});
 
 function offer(overrides: Partial<OfferSummary> = {}): OfferSummary {
   return {
@@ -42,16 +55,6 @@ describe('OffersPage', () => {
     expect(screen.getByText('Só pelo botão "tocar oferta agora"')).toBeInTheDocument();
   });
 
-  it('oferta que não termina aparece sem data para acabar (D39)', () => {
-    renderScreen(<OffersPage />, [
-      [keys.offers, [offer({ validUntil: '2099-12-31T23:59:00+00:00' }), offer({ id: 4, name: 'Costela' })]],
-      [keys.stores, []],
-    ]);
-
-    expect(screen.getByText('sem data para acabar')).toBeInTheDocument();
-    expect(screen.getAllByText(/^até /)).toHaveLength(1);
-  });
-
   it('avisa a oferta que vence nas próximas 24 horas', () => {
     const soon = new Date(Date.now() + 5 * 3600_000).toISOString();
     renderScreen(<OffersPage />, [
@@ -73,5 +76,66 @@ describe('OffersPage', () => {
     await user.click(screen.getByText('1 regra · presa em 2 músicas'));
 
     expect(router.state.location.pathname).toBe('/ofertas/3');
+  });
+
+  it('marca as vencidas e prorroga 15 dias de uma vez (D39)', async () => {
+    const user = userEvent.setup();
+    const { router } = renderScreen(<OffersPage />, [
+      [
+        keys.offers,
+        [
+          offer({ id: 3, name: 'Horário', status: 'expired' }),
+          offer({ id: 4, name: 'QR Code', status: 'expired' }),
+          offer({ id: 5, name: 'Picanha' }),
+        ],
+      ],
+      [keys.stores, []],
+    ]);
+
+    await user.click(screen.getByRole('button', { name: 'Marcar as 2 vencidas' }));
+    expect(screen.getByText('2 selecionadas')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Selecionar Horário' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Selecionar Picanha' })).not.toBeChecked();
+
+    await user.click(screen.getByRole('button', { name: 'Prorrogar 15 dias' }));
+
+    expect(changeValidity).toHaveBeenCalledWith({ offerIds: [3, 4], extendDays: 15, validUntil: null });
+    expect(await screen.findByText('2 ofertas prorrogadas por 15 dias.')).toBeInTheDocument();
+    expect(screen.queryByText('2 selecionadas')).not.toBeInTheDocument();
+    // Marcar não abre a oferta.
+    expect(router.state.location.pathname).toBe('/');
+  });
+
+  it('marca todas e põe a mesma data de fim, recusando data antes do início', async () => {
+    const user = userEvent.setup();
+    renderScreen(<OffersPage />, [
+      [
+        keys.offers,
+        [offer({ id: 3, name: 'Horário' }), offer({ id: 4, name: 'Natal', validFrom: '2026-12-20T03:00:00Z' })],
+      ],
+      [keys.stores, []],
+    ]);
+
+    await user.click(screen.getByRole('checkbox', { name: 'Selecionar todas as ofertas' }));
+    expect(screen.getByText('2 selecionadas')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Escolher a data' }));
+    const dialog = screen.getByRole('dialog', { name: 'Escolher o fim da validade' });
+    const date = within(dialog).getByLabelText('Termina em');
+
+    await user.clear(date);
+    await user.type(date, '2026-12-10T23:59');
+    expect(within(dialog).getByText(/antes do início de: Natal/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Aplicar nas 2 ofertas' })).toBeDisabled();
+
+    await user.clear(date);
+    await user.type(date, '2026-12-31T23:59');
+    await user.click(within(dialog).getByRole('button', { name: 'Aplicar nas 2 ofertas' }));
+
+    expect(changeValidity).toHaveBeenCalledWith({
+      offerIds: [3, 4],
+      extendDays: null,
+      validUntil: new Date(2026, 11, 31, 23, 59).toISOString(),
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
