@@ -1,4 +1,5 @@
 using MarumbiSom.Agent.Configuration;
+using MarumbiSom.Contracts.Releases;
 
 namespace MarumbiSom.Agent.Storage;
 
@@ -24,4 +25,7 @@ public sealed class AgentDataPaths(string root)
     public string ConfigFile => Path.Combine(Root, "config.json");
 
     public string LogsDirectory => Path.Combine(Root, "logs");
+
+    /// <summary>Atualização remota do agente (D27 e, f).</summary>
+    public UpdatePaths Updates => new(Root);
 }

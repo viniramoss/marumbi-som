@@ -21,10 +21,16 @@ export function topicKeys(topic: string): QueryKey[] {
       return [keys.playlists, ['playlist']];
     case 'playlist':
       return numeric === undefined ? [['playlist']] : [keys.playlist(numeric)];
+    case 'offers':
+      return [keys.offers, ['offer'], ['storeOffers'], ['playlist']];
     case 'events':
       return numeric === undefined ? [['events']] : [keys.events(numeric)];
     case 'history':
       return numeric === undefined ? [['history']] : [['history', numeric]];
+    case 'releases':
+      return [keys.releases];
+    case 'github':
+      return [keys.github];
     default:
       return [];
   }
@@ -49,11 +55,14 @@ export function applyLiveMessage(client: QueryClient, message: PanelMessage) {
     if (!known && client.getQueryData(keys.stores) !== undefined) {
       void client.invalidateQueries({ queryKey: keys.stores });
     }
-    // A fila e as músicas do manifesto vêm só no detalhe; ele é recarregado quando a música ou a versão muda (o Hub
-    // também avisa "store:{id}" quando a fila muda). A comparação usa o detalhe de antes da troca do resumo.
+    // A fila e as músicas do manifesto vêm só no detalhe; ele é recarregado quando a música ou a versão muda, e
+    // enquanto a fila estiver vazia com música tocando (o detalhe pode ter sido lido antes de a loja informar a fila).
+    // O Hub também avisa "store:{id}" quando a fila muda. A comparação usa o detalhe de antes da troca do resumo.
     if (
       previous &&
-      (previous.queue[0]?.hash === store.nowPlaying?.hash || previous.status.appliedVersion !== store.appliedVersion)
+      (previous.queue[0]?.hash === store.nowPlaying?.hash ||
+        previous.status.appliedVersion !== store.appliedVersion ||
+        (previous.queue.length === 0 && store.nowPlaying !== null))
     ) {
       void client.invalidateQueries({ queryKey: keys.store(store.id) });
     }

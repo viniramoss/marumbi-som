@@ -314,7 +314,7 @@ public sealed class PanelTests
         }
     }
 
-    private static StatusMessage Status(string hash, BluetoothStatus bluetooth) => new()
+    internal static StatusMessage Status(string hash, BluetoothStatus bluetooth) => new()
     {
         Player = PlayerStatus.Playing,
         NowPlaying = hash,
@@ -348,17 +348,17 @@ public sealed class PanelTests
         return await client.ConnectAsync(new Uri("wss://localhost/ws/panel"), None);
     }
 
-    private static async Task<WebSocket> ConnectAgentAsync(HubHarness hub, string token)
+    internal static async Task<WebSocket> ConnectAgentAsync(HubHarness hub, string token)
     {
         var client = hub.Server.CreateWebSocketClient();
         client.ConfigureRequest = r => r.Headers.Authorization = $"Bearer {token}";
         return await client.ConnectAsync(new Uri("wss://localhost/agent/ws"), None);
     }
 
-    private static Task SendAsync(WebSocket socket, AgentMessage message) =>
+    internal static Task SendAsync(WebSocket socket, AgentMessage message) =>
         socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(message, ContractJson.Options), WebSocketMessageType.Text, true, None);
 
-    private static async Task<HubMessage> ReceiveAgentAsync(WebSocket socket)
+    internal static async Task<HubMessage> ReceiveAgentAsync(WebSocket socket)
     {
         var buffer = new byte[16 * 1024];
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -395,7 +395,7 @@ public sealed class PanelTests
     private static Task<PanelChangedMessage> ReceiveChangedAsync(WebSocket socket, Func<IReadOnlyList<string>, bool> match) =>
         ReceivePanelAsync<PanelChangedMessage>(socket, m => match(m.Topics));
 
-    private static async Task<JsonElement> WaitForAsync(HttpClient client, string path, Func<JsonElement, bool> match)
+    internal static async Task<JsonElement> WaitForAsync(HttpClient client, string path, Func<JsonElement, bool> match)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);
         while (true)

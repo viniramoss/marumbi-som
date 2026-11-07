@@ -8,6 +8,7 @@ using MarumbiSom.Agent.Simulation;
 using MarumbiSom.Agent.Spots;
 using MarumbiSom.Agent.Storage;
 using MarumbiSom.Agent.Sync;
+using MarumbiSom.Agent.Updates;
 using MarumbiSom.Agent.Windows.Abstractions;
 using MarumbiSom.Agent.Windows.Implementations;
 using Microsoft.Extensions.Options;
@@ -67,6 +68,7 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<HubLink>();
         services.AddSingleton<SyncEngine>();
         services.AddSingleton<AgentRestart>();
+        services.AddSingleton<AgentUpdater>();
         services.AddSingleton<HubClient>();
 
         services.AddSingleton(sp => new LocalConfigContext(
@@ -88,6 +90,7 @@ public static class AgentServiceCollectionExtensions
         services.AddHostedService<PlayerService>();
         services.AddHostedService(sp => sp.GetRequiredService<SyncEngine>());
         services.AddHostedService(sp => sp.GetRequiredService<HubClient>());
+        services.AddHostedService(sp => sp.GetRequiredService<AgentUpdater>());
         services.AddHostedService<LocalConfigServer>();
         return services;
     }
@@ -99,6 +102,8 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<IBluetoothSpeakerControl, WindowsBluetoothSpeakerControl>();
         services.AddSingleton<IAudioEndpoints, CoreAudioEndpoints>();
         services.AddSingleton<ISecretProtector, DpapiSecretProtector>();
+        services.AddSingleton(UpdateEnvironment.Installed());
+        services.AddSingleton<IUpdaterLauncher, ProcessUpdaterLauncher>();
         services.AddSingleton<IBluetoothAdapterControl>(sp => new PnpBluetoothAdapterControl(
             sp.GetRequiredService<ILogger<PnpBluetoothAdapterControl>>(),
             sp.GetRequiredService<IOptions<BluetoothOptions>>().Value.AdapterInstanceId));
@@ -127,6 +132,9 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<IBluetoothSpeakerControl>(sp => sp.GetRequiredService<SimulatedWindowsEnvironment>());
         services.AddSingleton<IAudioEndpoints>(sp => sp.GetRequiredService<SimulatedWindowsEnvironment>());
         services.AddSingleton<ISecretProtector, PlainSecretProtector>();
+        // Só no modo simulado a chave pública pode vir de outro lugar (Updates:PublicKeyFile), para os testes ponta a ponta.
+        services.AddSingleton(sp => UpdateEnvironment.Installed(sp.GetRequiredService<IConfiguration>()["Updates:PublicKeyFile"]));
+        services.AddSingleton<IUpdaterLauncher, SimulatedUpdaterLauncher>();
 
         foreach (var (key, name) in new[] { (PlayerKeys.MusicA, "música A"), (PlayerKeys.MusicB, "música B"), (PlayerKeys.Spot, "ofertas") })
         {

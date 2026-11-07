@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <Compile Include="..\MarumbiSom.Hub.Tests\HubHarness.cs" Link="Sync\HubHarness.cs" />
+    <Compile Include="..\MarumbiSom.Hub.Tests\ReleasePackages.cs" Link="Updates\ReleasePackages.cs" />
   </ItemGroup>
 
   <ItemGroup>

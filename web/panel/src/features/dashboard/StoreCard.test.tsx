@@ -48,4 +48,68 @@ describe('StoreCard', () => {
     expect(bar).toHaveAttribute('aria-valuenow', '3');
     expect(bar).toHaveAttribute('aria-valuemax', '10');
   });
+
+  it('mostra a próxima oferta prevista e a última tocada', () => {
+    const at = new Date(Date.now() + 5 * 60_000).toISOString();
+    renderScreen(
+      <StoreCard
+        store={storeSummary({
+          nextOffer: { key: 'of-3', offerId: 3, name: 'Picanha', at },
+          lastOffer: {
+            offerId: 4,
+            name: 'Costela',
+            at: new Date(Date.now() - 600_000).toISOString(),
+            result: 'interrupted',
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText('Picanha')).toBeInTheDocument();
+    expect(screen.getByText(/\(em 5 min\)/)).toBeInTheDocument();
+    expect(screen.getByText(/há 10 min\), cortada/)).toBeInTheDocument();
+  });
+
+  it('sem ofertas o card não mostra a linha de ofertas', () => {
+    renderScreen(<StoreCard store={storeSummary()} />);
+
+    expect(screen.queryByText('Próxima oferta:')).not.toBeInTheDocument();
+  });
+
+  it('mostra o andamento e o resultado da atualização do agente', () => {
+    const downloading = storeSummary({
+      update: {
+        version: '0.6.12',
+        stage: 'downloading',
+        doneBytes: 35 * 1024 * 1024,
+        totalBytes: 70 * 1024 * 1024,
+        error: null,
+        at: '2026-10-24T10:00:00Z',
+      },
+    });
+    const { unmount } = renderScreen(<StoreCard store={downloading} />);
+    expect(screen.getByText(/Baixando o agente 0.6.12… 35 MB de 70 MB/)).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Baixando o agente 0.6.12' })).toHaveAttribute(
+      'aria-valuenow',
+      '36700160',
+    );
+    unmount();
+
+    renderScreen(
+      <StoreCard
+        store={storeSummary({
+          update: {
+            version: '0.6.12',
+            stage: 'rolledBack',
+            doneBytes: null,
+            totalBytes: null,
+            error: 'A versão nova não confirmou em 2 minutos.',
+            at: '2026-10-24T10:00:00Z',
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText('Versão 0.6.12 revertida')).toBeInTheDocument();
+    expect(screen.getByText('A versão nova não confirmou em 2 minutos.')).toBeInTheDocument();
+  });
 });

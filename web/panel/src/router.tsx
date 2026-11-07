@@ -4,6 +4,7 @@ import { LoginPage } from './features/auth/LoginPage';
 import { RequireAuth } from './features/auth/RequireAuth';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { LibraryPage } from './features/library/LibraryPage';
+import { OfferEditorPage } from './features/offers/OfferEditorPage';
 import { OffersPage } from './features/offers/OffersPage';
 import { PlaylistEditorPage } from './features/playlists/PlaylistEditorPage';
 import { PlaylistsPage } from './features/playlists/PlaylistsPage';
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
       { path: 'playlists', element: <PlaylistsPage /> },
       { path: 'playlists/:id', element: <PlaylistEditorPage /> },
       { path: 'ofertas', element: <OffersPage /> },
+      { path: 'ofertas/:id', element: <OfferEditorPage /> },
       { path: 'lojas', element: <StoresPage /> },
       { path: 'lojas/:id', element: <StoreDetailPage /> },
       { path: 'configuracoes', element: <SettingsPage /> },

@@ -21,3 +21,12 @@ export function groupByDay(entries: readonly HistoryEntry[]): { day: string; ent
   }
   return groups;
 }
+
+/** "12 músicas · 3 ofertas" para o cabeçalho de cada dia. */
+export function dayCounts(entries: readonly HistoryEntry[]): string {
+  const offers = entries.filter((e) => e.kind === 'offer').length;
+  const music = entries.length - offers;
+  const parts = [`${music} ${music === 1 ? 'música' : 'músicas'}`];
+  if (offers > 0) parts.push(`${offers} ${offers === 1 ? 'oferta' : 'ofertas'}`);
+  return parts.join(' · ');
+}

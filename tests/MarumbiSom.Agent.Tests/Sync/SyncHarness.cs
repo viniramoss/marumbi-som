@@ -3,6 +3,8 @@ using MarumbiSom.Agent.LocalConfig;
 using MarumbiSom.Agent.Simulation;
 using MarumbiSom.Agent.Sync;
 using MarumbiSom.Agent.Tests.Playback;
+using MarumbiSom.Agent.Tests.Updates;
+using MarumbiSom.Agent.Updates;
 using MarumbiSom.Hub.Manifests;
 using MarumbiSom.Hub.Tests;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -80,6 +82,18 @@ internal sealed class SyncHarness : IAsyncDisposable
         }));
         return new SyncHarness(hub, admin, storeId, playlistId, hashes, agentTime, bandwidthKbps);
     }
+
+    /// <summary>
+    /// Atualizador do agente com a pasta do programa em <see cref="ProgramDirectory"/> (onde fica o
+    /// <c>release-public-key.txt</c>) e o Updater trocado por <paramref name="launcher"/>.
+    /// </summary>
+    public AgentUpdater NewUpdater(IUpdaterLauncher? launcher = null, string version = "0.6.10") => new(
+        Link, Transport, Player.Paths,
+        new UpdateEnvironment(ProgramDirectory, Path.Combine(ProgramDirectory, Contracts.Releases.ReleaseSigning.PublicKeyFileName), version, "MarumbiSom.Agent"),
+        launcher ?? new FakeUpdaterLauncher(), Options.Create(new SyncOptions { BandwidthKbps = 0 }), AgentTime, NullLogger<AgentUpdater>.Instance);
+
+    /// <summary>Pasta do programa do agente nos testes (fora da pasta de dados, como no PC da loja).</summary>
+    public string ProgramDirectory => Player.Paths.Root + "-programa";
 
     /// <summary>Outra instância lendo o mesmo config.json (como depois de reiniciar o agente).</summary>
     public HubLink NewLink() => new(Config, new PlainSecretProtector(), Transport, NullLogger<HubLink>.Instance);

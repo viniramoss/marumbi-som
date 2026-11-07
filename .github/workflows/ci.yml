@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      publicar:
+        description: Publicar versão do agente no GitHub Releases (o Hub baixa sozinho)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -106,6 +111,11 @@ jobs:
   publish:
     runs-on: windows-latest
     needs: [test, panel]
+    env:
+      # Versão do agente e do Hub; o pacote assinado e o instalador levam esta versão (D27 b).
+      VERSION: 0.6.${{ github.run_number }}
+      # Junção no main ou execução manual com "publicar": assina o pacote do agente e publica a Release (D29).
+      PUBLICAR: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.publicar) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -121,7 +131,9 @@ jobs:
             foreach ($e in $errors) { $failed = $true; Write-Host "$($_.Name):$($e.Extent.StartLineNumber): $($e.Message)" }
           }
           if ($failed) { exit 1 }
-      - run: dotnet publish src/MarumbiSom.Agent -c Release -r win-x64 --self-contained -o publish/agent
+      - run: dotnet publish src/MarumbiSom.Agent -c Release -r win-x64 --self-contained -p:Version=${{ env.VERSION }} -o publish/agent
+      - name: Updater (um .exe só) na pasta do agente (D27 e)
+        run: dotnet publish src/MarumbiSom.Updater -c Release -r win-x64 -p:Version=${{ env.VERSION }} -p:DebugType=none -o publish/agent
       - name: Baixar mpv (SHA-256 conferido pelo tools.lock.json)
         run: ./scripts/download-tools.ps1 -Destination publish/agent/tools
         shell: pwsh
@@ -130,12 +142,67 @@ jobs:
         shell: pwsh
       - run: Copy-Item -Recurse scripts publish/agent/scripts
         shell: pwsh
+      - name: Pasta do agente completa para o pacote assinado
+        shell: pwsh
+        run: |
+          foreach ($file in 'MarumbiSom.Agent.exe', 'MarumbiSom.Agent.dll', 'MarumbiSom.Updater.exe', 'release-public-key.txt', 'tools/mpv.exe') {
+            if (-not (Test-Path "publish/agent/$file")) { throw "Falta $file em publish/agent" }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: MarumbiSom.Agent-win-x64
           path: publish/agent
           retention-days: 30
-      - run: dotnet publish src/MarumbiSom.Hub -c Release -r win-x64 --self-contained -o publish/hub
+      - name: Instalador do agente (Inno Setup, D27 g)
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw "choco install innosetup falhou ($LASTEXITCODE)" }
+          }
+          & $iscc "/DAppVersion=$env:VERSION" '/DSourceDir=..\publish\agent' installer/agent.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC falhou ($LASTEXITCODE)" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarumbiSom.Agent-Setup
+          path: publish/installer
+          retention-days: 30
+      - name: Ferramenta de chave e assinatura (roda no PC do administrador, D27 b)
+        shell: pwsh
+        run: |
+          dotnet publish src/MarumbiSom.Release -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:Version=$env:VERSION -o publish/release-tool
+          if ($LASTEXITCODE -ne 0) { throw "publish falhou ($LASTEXITCODE)" }
+          Copy-Item scripts/new-signing-key.ps1, scripts/sign-release.ps1, scripts/release-tool.ps1 publish/release-tool
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarumbiSom.Release-win-x64
+          path: publish/release-tool
+          retention-days: 30
+      - name: Assinar o pacote do agente com a chave guardada no secret (D29)
+        if: env.PUBLICAR == 'true'
+        shell: pwsh
+        env:
+          MARUMBI_SIGNING_KEY: ${{ secrets.MARUMBI_SIGNING_KEY }}
+        run: |
+          if (-not $env:MARUMBI_SIGNING_KEY) { throw 'O secret MARUMBI_SIGNING_KEY não está cadastrado no repositório (veja "Atualizar o agente" no docs/runbook.md).' }
+          $key = Join-Path $env:RUNNER_TEMP 'chave-assinatura.txt'
+          try {
+            [IO.File]::WriteAllText($key, $env:MARUMBI_SIGNING_KEY)
+            # Recusa se a chave não for a do release-public-key.txt do build (as lojas deixariam de aceitar atualizações).
+            & publish/release-tool/MarumbiSom.Release.exe pack --key $key --agent publish/agent --out publish/release
+            if ($LASTEXITCODE -ne 0) { throw "Assinatura do pacote falhou ($LASTEXITCODE)" }
+          }
+          finally {
+            Remove-Item $key -Force -ErrorAction SilentlyContinue
+          }
+      - uses: actions/upload-artifact@v4
+        if: env.PUBLICAR == 'true'
+        with:
+          name: MarumbiSom.Agent-assinado
+          path: publish/release
+          retention-days: 30
+      - run: dotnet publish src/MarumbiSom.Hub -c Release -r win-x64 --self-contained -p:Version=${{ env.VERSION }} -o publish/hub
       - name: Painel (build do job panel) em wwwroot
         uses: actions/download-artifact@v4
         with:
@@ -151,3 +218,50 @@ jobs:
           name: MarumbiSom.Hub-win-x64
           path: publish/hub
           retention-days: 30
+
+  release:
+    name: Publicar no GitHub Releases (D29)
+    # Fixo no 24.04 como os outros jobs: em 27/10/2026 a criação da Release passou a falhar no ubuntu-latest.
+    runs-on: ubuntu-24.04
+    needs: publish
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.publicar)
+    permissions:
+      contents: write
+    env:
+      VERSION: 0.6.${{ github.run_number }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: MarumbiSom.Agent-assinado
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: MarumbiSom.Agent-Setup
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: MarumbiSom.Hub-win-x64
+          path: hub
+      - name: Pacote do Hub
+        run: cd hub && zip -qr "../release/MarumbiSom.Hub-$VERSION.zip" .
+      - name: Criar a Release (fora do main fica como pré-lançamento)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l release
+          tag="agente-v$VERSION"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "A Release $tag já existe (execução repetida); nada a fazer."
+            exit 0
+          fi
+          flags=()
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then flags+=(--prerelease); fi
+          # O erro do gh vira anotação: o log do job nem sempre está acessível, as anotações sim.
+          trap 'echo "::error::gh release create falhou ($(gh --version | head -1), $(lsb_release -ds)): $(tr "\n" " " < "$RUNNER_TEMP/gh-erro.txt")"' ERR
+          gh release create "$tag" release/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Agente $VERSION" "${flags[@]}" 2> "$RUNNER_TEMP/gh-erro.txt" \
+            --notes "Versão $VERSION (${GITHUB_REF_NAME}, ${GITHUB_SHA::7}).
+
+          - Agente: o Hub baixa sozinho o pacote assinado (MarumbiSom.Agent-$VERSION.zip e .sig.json). Atualize as lojas no painel, em Configurações (loja piloto primeiro).
+          - Instalador para loja nova: MarumbiSom.Agent-Setup-$VERSION.exe.
+          - Hub: MarumbiSom.Hub-$VERSION.zip (atualização pelo install-hub.ps1, como no runbook)."

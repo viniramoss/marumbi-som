@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MarumbiSom.Contracts.Releases;
 using MarumbiSom.Hub.Agents;
 using MarumbiSom.Hub.Data;
 using MarumbiSom.Hub.Manifests;
@@ -32,12 +33,14 @@ public sealed class StoreStatusReader(AgentConnections agents, TimeProvider time
         var statesQuery = db.StoreStates.AsNoTracking();
         var manifestsQuery = db.StoreManifests.AsNoTracking();
         var restartsQuery = db.Events.AsNoTracking().Where(e => e.Type == AgentConnections.AgentRestartedEvent && e.CreatedAt > now.AddHours(-1));
+        var offerPlaysQuery = db.OfferPlays.AsNoTracking().Where(p => p.StartedAt > now.AddDays(-7) && (p.Result == null || p.Result != "skipped"));
         if (storeId is { } id)
         {
             storesQuery = storesQuery.Where(s => s.Id == id);
             statesQuery = statesQuery.Where(s => s.StoreId == id);
             manifestsQuery = manifestsQuery.Where(m => m.StoreId == id);
             restartsQuery = restartsQuery.Where(e => e.StoreId == id);
+            offerPlaysQuery = offerPlaysQuery.Where(p => p.StoreId == id);
         }
 
         var stores = await storesQuery.ToListAsync(cancellationToken);
@@ -52,6 +55,11 @@ public sealed class StoreStatusReader(AgentConnections agents, TimeProvider time
         var playlistIds = states.Values.Select(s => ManifestGenerator.ParseKey(s.PlaylistKey, "p")).OfType<int>().Distinct().ToList();
         var playlists = await db.Playlists.AsNoTracking().Where(p => playlistIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id, p => p.Name, cancellationToken);
+        var lastOffers = (await offerPlaysQuery.ToListAsync(cancellationToken))
+            .GroupBy(p => p.StoreId).ToDictionary(g => g.Key, g => g.MaxBy(p => p.StartedAt)!);
+        var offerIds = lastOffers.Values.Select(p => p.OfferId)
+            .Concat(states.Values.Select(s => ManifestGenerator.ParseKey(s.NextOfferKey, "of-"))).OfType<int>().Distinct().ToList();
+        var offerNames = await db.Offers.AsNoTracking().Where(o => offerIds.Contains(o.Id)).ToDictionaryAsync(o => o.Id, o => o.Name, cancellationToken);
 
         return stores.OrderBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase).Select(store =>
         {
@@ -64,14 +72,38 @@ public sealed class StoreStatusReader(AgentConnections agents, TimeProvider time
             var playlistId = ManifestGenerator.ParseKey(state?.PlaylistKey, "p");
             var open = OpeningHours.IsOpen(store.Schedules, ManifestGenerator.ResolveZone(store.Timezone), now);
             var online = agents.IsOnline(store.Id);
+            var nextOfferId = ManifestGenerator.ParseKey(state?.NextOfferKey, "of-");
+            var nextOffer = online && state?.NextOfferKey is { } nextKey && state.NextOfferAt is { } nextAt
+                ? new NextOfferInfo(nextKey, nextOfferId, OfferName(offerNames, nextOfferId), nextAt)
+                : null;
+            var lastOffer = lastOffers.GetValueOrDefault(store.Id) is { } last
+                ? new LastOfferInfo(last.OfferId, OfferName(offerNames, last.OfferId), last.StartedAt, last.Result)
+                : null;
             return new StoreSummary(
                 store.Id, store.Slug, store.Name, online, store.TokenHash is not null, latest.TryGetValue(store.Id, out var v) ? v : null,
                 state?.AppliedVersion, state?.PendingVersion, state?.SyncDone, state?.SyncTotal, state?.PlayerState, nowPlaying, state?.BtState, state?.Volume,
                 state?.DiskFreeMb, state?.AgentVersion, state?.LastSeenAt, state?.PlaylistKey,
-                playlistId is { } p && playlists.TryGetValue(p, out var name) ? name : null, open, store.Schedules.Count > 0,
-                Alerts(store, state, online, open, restarts.GetValueOrDefault(store.Id), now));
+                playlistId is { } p && playlists.TryGetValue(p, out var name) ? name : null, open, store.Schedules.Count > 0, store.MinOfferGapS, nextOffer, lastOffer,
+                Update(state, now), Alerts(store, state, online, open, restarts.GetValueOrDefault(store.Id), now));
         }).ToList();
     }
+
+    public static readonly TimeSpan UpdateResultFor = TimeSpan.FromHours(24);
+
+    public static UpdateInfo? Update(StoreState? state, DateTimeOffset now)
+    {
+        if (state is not { UpdateVersion: { } version, UpdateStage: { } stage, UpdateAt: { } at })
+        {
+            return null;
+        }
+
+        return UpdateStages.InProgress(stage) || now - at < UpdateResultFor
+            ? new UpdateInfo(version, stage, state.UpdateDoneBytes, state.UpdateTotalBytes, state.UpdateError, at)
+            : null;
+    }
+
+    private static string OfferName(Dictionary<int, string> names, int? offerId) =>
+        offerId is { } id && names.TryGetValue(id, out var name) ? name : "Oferta removida";
 
     /// <summary>Condições da seção 6.6, só dentro do horário de funcionamento (alguma janela da agenda em vigor).</summary>
     public static IReadOnlyList<StoreAlert> Alerts(Store store, StoreState? state, bool online, bool open, int restartsLastHour, DateTimeOffset now)
@@ -185,4 +217,19 @@ public sealed record StoreSummary(
     string? PlaylistName,
     bool Open,
     bool HasSchedule,
+    int MinOfferGapS,
+    NextOfferInfo? NextOffer,
+    LastOfferInfo? LastOffer,
+    UpdateInfo? Update,
     IReadOnlyList<StoreAlert> Alerts);
+
+/// <summary>Próxima oferta prevista pelo agente (D26 d); só com a loja conectada.</summary>
+public sealed record NextOfferInfo(string Key, int? OfferId, string Name, DateTimeOffset At);
+
+/// <summary>Última oferta que começou a tocar na loja nos últimos 7 dias; <c>Result</c> nulo = tocando agora.</summary>
+public sealed record LastOfferInfo(int? OfferId, string Name, DateTimeOffset At, string? Result);
+
+/// <summary>
+/// Atualização do agente (D27 h): em andamento sempre; o resultado (<c>done</c>, <c>failed</c>, <c>rolledBack</c>) por 24 horas.
+/// </summary>
+public sealed record UpdateInfo(string Version, string Stage, long? DoneBytes, long? TotalBytes, string? Error, DateTimeOffset At);

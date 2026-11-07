@@ -274,11 +274,3 @@ export function Tabs<T extends string>({
     </div>
   );
 }
-
-export function SoonTag({ stage }: { stage: number }) {
-  return (
-    <span className="rounded bg-stone-200 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-stone-600 uppercase">
-      Etapa {stage}
-    </span>
-  );
-}

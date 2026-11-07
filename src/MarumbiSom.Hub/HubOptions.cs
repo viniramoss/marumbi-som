@@ -21,6 +21,12 @@ public sealed class HubOptions
     /// <summary>Fuso do PC do escritório para a regeneração diária.</summary>
     public string Timezone { get; set; } = "America/Sao_Paulo";
 
+    /// <summary>Repositório (dono/nome) onde o GitHub Actions publica as versões do agente (D29). Vazio desliga a procura.</summary>
+    public string? GitHubRepository { get; set; } = "viniramoss/marumbi-som";
+
+    /// <summary>De quantas em quantas horas o Hub procura versão nova no GitHub (1 a 168).</summary>
+    public int ReleaseCheckHours { get; set; } = 6;
+
     public static string ResolveTool(string configured, string fallbackName)
     {
         var path = Path.IsPathRooted(configured) ? configured : Path.Combine(AppContext.BaseDirectory, configured);

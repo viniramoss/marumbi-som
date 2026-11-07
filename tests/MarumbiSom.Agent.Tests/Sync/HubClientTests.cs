@@ -59,8 +59,9 @@ public sealed class HubClientTests
             Assert.Equal("ok", volume.GetProperty("result").GetString());
             Assert.Equal(40, h.Player.State.State.VolumeOverride);
 
-            var unknown = await HubHarness.JsonAsync(await h.Admin.PostAsJsonAsync($"/api/stores/{h.StoreId}/commands", new { command = "updateAgent" }));
-            Assert.Equal("error", unknown.GetProperty("result").GetString());
+            // Sem versão para distribuição o Hub nem manda o comando (a atualização é testada no AgentUpdaterTests).
+            var update = await h.Admin.PostAsJsonAsync($"/api/stores/{h.StoreId}/commands", new { command = "updateAgent" });
+            Assert.Equal(System.Net.HttpStatusCode.BadRequest, update.StatusCode);
         }
         finally
         {
@@ -106,7 +107,7 @@ public sealed class HubClientTests
         var restart = new AgentRestart(lifetime, code => serviceExitCode = code);
         using var client = new HubClient(
             h.Link, h.Transport, h.Player.Manifests, h.Engine, h.Player.Engine, h.Player.Bluetooth, h.Player.Events, h.Player.Paths, restart,
-            TimeProvider.System, NullLogger<HubClient>.Instance);
+            h.NewUpdater(), TimeProvider.System, NullLogger<HubClient>.Instance);
         var exitCode = Environment.ExitCode;
         try
         {
@@ -132,7 +133,7 @@ public sealed class HubClientTests
 
     private static HubClient NewClient(SyncHarness h, IHostApplicationLifetime lifetime) => new(
         h.Link, h.Transport, h.Player.Manifests, h.Engine, h.Player.Engine, h.Player.Bluetooth, h.Player.Events, h.Player.Paths,
-        new AgentRestart(lifetime), TimeProvider.System, NullLogger<HubClient>.Instance);
+        new AgentRestart(lifetime), h.NewUpdater(), TimeProvider.System, NullLogger<HubClient>.Instance);
 
     private sealed class FakeLifetime : IHostApplicationLifetime
     {

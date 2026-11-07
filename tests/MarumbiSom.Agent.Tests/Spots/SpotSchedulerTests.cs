@@ -255,6 +255,47 @@ public sealed class SpotSchedulerTests : IDisposable
         Assert.NotNull(_scheduler.RequestNow("nao-existe", Now));
     }
 
+    [Fact]
+    public void Previsao_soma_a_musica_atual_e_a_fila_ate_a_ancora()
+    {
+        Load(0, new AnchorDuringPlacement { Id = "pl-1", OfferId = "of-1", PlaylistId = "tarde", ItemId = "it-2", OffsetMs = 20_000 });
+        QueueItem[] upcoming = [new("tarde", "it-1", "a"), new("tarde", "it-2", "b")];
+
+        var next = _scheduler.NextPlanned(Context(current: new QueueItem("tarde", "it-0", "x"), position: 30, duration: 200), upcoming, _ => 100, null);
+
+        // 170 s que faltam da atual + 100 s da it-1 + 20 s dentro da it-2.
+        Assert.Equal(new NextSpot("of-1", Now.AddSeconds(290)), next);
+    }
+
+    [Fact]
+    public void Previsao_escolhe_a_regra_mais_proxima_respeitando_intervalo_minimo_e_validade()
+    {
+        _offers["of-2"] = Offer("of-2") with { ValidUntil = Friday10h.AddMinutes(20) };
+        Load(
+            600,
+            new EveryMinutesPlacement { Id = "pl-1", OfferId = "of-1", Minutes = 15, Mode = SpotMode.During },
+            new ClockPlacement { Id = "pl-2", OfferId = "of-2", Time = new TimeOnly(10, 30), Days = [5], Mode = SpotMode.During },
+            new ClockPlacement { Id = "pl-3", OfferId = "of-3", Time = new TimeOnly(10, 12), Days = [5], Mode = SpotMode.During });
+        _state.State.SpotLastTriggered["pl-1"] = Now.AddMinutes(-10);
+        _state.State.LastOfferEndedAt = Now.AddMinutes(-4);
+
+        var next = _scheduler.NextPlanned(Context(current: new QueueItem("tarde", "it-0", "x"), position: 0, duration: 200), [], _ => 100, null);
+
+        // A cada 15 min vence às 10:05, mas o intervalo mínimo (10 min desde 9:56) segura até 10:06; o of-2 das 10:30
+        // já estaria vencido e o of-3 das 10:12 vem depois.
+        Assert.Equal(new NextSpot("of-1", Now.AddMinutes(6)), next);
+    }
+
+    [Fact]
+    public void Sem_musica_tocando_ou_fora_da_janela_nao_ha_previsao()
+    {
+        Load(0, new EveryMinutesPlacement { Id = "pl-1", OfferId = "of-1", Minutes = 15, Mode = SpotMode.During });
+
+        Assert.Null(_scheduler.NextPlanned(Context(inWindow: false), [], _ => 100, null));
+        Assert.Null(_scheduler.NextPlanned(Context(paused: true), [], _ => 100, null));
+        Assert.Null(_scheduler.NextPlanned(Context(), [], _ => 100, windowEnd: Now.AddMinutes(10)));
+    }
+
     private void Load(int minGap, params Placement[] placements)
     {
         foreach (var offer in _offers.Values)
