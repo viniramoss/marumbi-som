@@ -42,6 +42,12 @@ public sealed class Track
 
     public DateTimeOffset? DeletedAt { get; set; }
 
+    /// <summary>Música editada no painel (D34): hash da música enviada de onde ela foi refeita; nulo na própria enviada.</summary>
+    public string? SourceHash { get; set; }
+
+    /// <summary>Trechos tirados na edição (D34), em ms no tempo da música enviada já sem o silêncio: JSON <c>[[início, fim], …]</c>.</summary>
+    public string? CutsJson { get; set; }
+
     /// <summary>Título que a música recebe ao ser importada: o número com três dígitos ("007"), D31.</summary>
     public static string NumberTitle(int number) => number.ToString("000", System.Globalization.CultureInfo.InvariantCulture);
 }

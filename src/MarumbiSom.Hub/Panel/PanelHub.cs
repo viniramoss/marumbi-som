@@ -183,8 +183,9 @@ public sealed class PanelHub(
 
     private void OnPublished(object? sender, PublishedManifest e) => StoreChanged(e.StoreId);
 
+    // A edição de música (D34) troca a música nas playlists e ajusta as âncoras das ofertas.
     private void OnIngestionChanged(object? sender, IngestionJob job) =>
-        Changed(job.Status is IngestionStatus.Done ? ["uploads", "tracks"] : ["uploads"]);
+        Changed(job.Status is not IngestionStatus.Done ? ["uploads"] : job.EditOf is null ? ["uploads", "tracks"] : ["uploads", "tracks", "playlists", "offers"]);
 
     private async Task SendStoresAsync(HashSet<int>? storeIds, bool onlyIfChanged, CancellationToken cancellationToken)
     {

@@ -4,6 +4,7 @@ import { LoginPage } from './features/auth/LoginPage';
 import { RequireAuth } from './features/auth/RequireAuth';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { LibraryPage } from './features/library/LibraryPage';
+import { TrackEditorPage } from './features/library/TrackEditorPage';
 import { OfferEditorPage } from './features/offers/OfferEditorPage';
 import { OffersPage } from './features/offers/OffersPage';
 import { PlaylistEditorPage } from './features/playlists/PlaylistEditorPage';
@@ -24,6 +25,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <DashboardPage /> },
       { path: 'biblioteca', element: <LibraryPage /> },
+      { path: 'biblioteca/:hash', element: <TrackEditorPage /> },
       { path: 'playlists', element: <PlaylistsPage /> },
       { path: 'playlists/:id', element: <PlaylistEditorPage /> },
       { path: 'ofertas', element: <OffersPage /> },

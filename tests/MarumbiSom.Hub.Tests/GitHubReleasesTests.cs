@@ -136,6 +136,56 @@ public sealed class GitHubReleasesTests
     }
 
     [Fact]
+    public async Task Buscar_atualizacoes_procura_baixa_e_ja_pede_a_troca()
+    {
+        // D35: um clique procura no GitHub e, se vier versão nova do Hub, pede a troca sem outra confirmação.
+        var github = new FakeGitHub();
+        var (key, publicKey) = ReleaseSigning.NewKeyPair();
+        var keyFile = Path.Combine(Path.GetTempPath(), $"marumbi-chave-{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(keyFile, publicKey);
+        try
+        {
+            await using var hub = await StartAsync(github, services => services.PostConfigure<HubOptions>(o => o.UpdatePublicKeyFile = keyFile));
+            var admin = await hub.AdminClientAsync();
+            var watcher = hub.App.Services.GetRequiredService<GitHubReleaseWatcher>();
+            var updates = hub.App.Services.GetRequiredService<HubUpdates>();
+
+            var withoutUpdater = await admin.PostAsync("/api/hub/update/check", null);
+            Assert.Equal(HttpStatusCode.BadRequest, withoutUpdater.StatusCode);
+            Assert.Contains("atualizador ainda não está instalado", await withoutUpdater.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+            Directory.CreateDirectory(Path.GetDirectoryName(updates.Files.UpdaterExe)!);
+            await File.WriteAllTextAsync(updates.Files.UpdaterExe, "");
+
+            // Nada publicado ainda: o cartão diz e nada é pedido.
+            // A procura do botão roda em segundo plano; aqui ela é esperada rodando uma em seguida.
+            Assert.Equal(HttpStatusCode.Accepted, (await admin.PostAsync("/api/hub/update/check", null)).StatusCode);
+            await watcher.CheckAsync(CancellationToken.None);
+            var nothing = await updates.StatusAsync(CancellationToken.None);
+            Assert.False(nothing.Searching);
+            Assert.Null(nothing.Pending);
+            Assert.Contains("Nenhum pacote do Hub", nothing.Message, StringComparison.Ordinal);
+
+            github.Release("agente-v9.1.0", ("9.1.0", ReleasePackages.Package("9.1.0", key)), hub: ReleasePackages.HubPackage("9.1.0", key));
+            Assert.Equal(HttpStatusCode.Accepted, (await admin.PostAsync("/api/hub/update/check", null)).StatusCode);
+            await watcher.CheckAsync(CancellationToken.None);
+            var status = await updates.StatusAsync(CancellationToken.None);
+            Assert.False(status.Searching);
+            Assert.Equal(("9.1.0", "waiting", false), (status.Pending?.Version, status.Pending?.Stage, status.Pending?.Automatic));
+            Assert.True(await hub.WithDbAsync(db => db.AuditLog.AnyAsync(a => a.Action == "hub.update.search")));
+            Assert.True(await hub.WithDbAsync(db => db.AuditLog.AnyAsync(a => a.Action == "hub.update.request" && a.Target == "9.1.0")));
+
+            // Com a troca pedida, o botão não procura de novo.
+            var again = await admin.PostAsync("/api/hub/update/check", null);
+            Assert.Equal(HttpStatusCode.BadRequest, again.StatusCode);
+            Assert.Contains("Já há", await again.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(keyFile);
+        }
+    }
+
+    [Fact]
     public async Task Explica_quando_o_github_recusa()
     {
         var github = new FakeGitHub { ListStatus = HttpStatusCode.NotFound };

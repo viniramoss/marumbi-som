@@ -12,6 +12,7 @@ const status = (overrides: Partial<HubUpdateStatus> = {}): HubUpdateStatus => ({
   download: null,
   message: null,
   problem: false,
+  searching: false,
   autoUpdate: true,
   autoUpdateTime: '03:00',
   pending: null,
@@ -30,6 +31,25 @@ describe('HubUpdateCard', () => {
     expect(screen.getByRole('button', { name: 'Atualizar o Hub agora' })).toBeEnabled();
     expect(screen.getByRole('checkbox', { name: /Atualizar sozinho de madrugada/ })).toBeChecked();
     expect(screen.getByText(/entre 03:00 e 04:00, uma vez por versão/)).toBeInTheDocument();
+  });
+
+  it('sem versão baixada oferece "Buscar atualizações", que procura e já instala (D35)', () => {
+    renderScreen(<HubUpdateCard />, [
+      [keys.hubUpdate, status({ message: 'O Hub já está na versão mais nova do GitHub (0.6.41).' })],
+    ]);
+
+    expect(screen.getByRole('button', { name: 'Buscar atualizações' })).toBeEnabled();
+    expect(screen.getByText(/se tiver versão nova, já instala/)).toBeInTheDocument();
+    expect(screen.getByText('O Hub já está na versão mais nova do GitHub (0.6.41).')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Atualizar o Hub agora' })).not.toBeInTheDocument();
+  });
+
+  it('procurando mostra a barra no lugar da mensagem antiga', () => {
+    renderScreen(<HubUpdateCard />, [[keys.hubUpdate, status({ searching: true, message: null })]]);
+
+    expect(screen.getByText('Procurando versão nova no GitHub…')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Procurando versão nova do Hub no GitHub' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Buscar atualizações/ })).toBeDisabled();
   });
 
   it('sem o atualizador instalado, pede o install-hub.ps1 e não deixa pedir a troca', () => {

@@ -320,6 +320,75 @@
         }
       }
     },
+    "/api/tracks/{hash}/edit": {
+      "post": {
+        "tags": [
+          "TracksEndpoints"
+        ],
+        "parameters": [
+          {
+            "name": "hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackEditInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/tracks/{hash}/audio": {
       "get": {
         "tags": [
@@ -1959,6 +2028,35 @@
         }
       }
     },
+    "/api/hub/update/check": {
+      "post": {
+        "tags": [
+          "HubUpdateEndpoints"
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubUpdateStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/hub/update/package": {
       "post": {
         "tags": [
@@ -2138,6 +2236,23 @@
         "properties": {
           "version": {
             "type": "string"
+          }
+        }
+      },
+      "CutInput": {
+        "required": [
+          "startMs",
+          "endMs"
+        ],
+        "type": "object",
+        "properties": {
+          "startMs": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "endMs": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -2427,6 +2542,7 @@
           "download",
           "message",
           "problem",
+          "searching",
           "autoUpdate",
           "autoUpdateTime",
           "pending",
@@ -2470,6 +2586,9 @@
             ]
           },
           "problem": {
+            "type": "boolean"
+          },
+          "searching": {
             "type": "boolean"
           },
           "autoUpdate": {
@@ -2522,7 +2641,12 @@
           "uploadedAt",
           "status",
           "error",
-          "hash"
+          "hash",
+          "progress",
+          "editOf",
+          "sourceHash",
+          "cuts",
+          "inputExtension"
         ],
         "type": "object",
         "properties": {
@@ -2549,6 +2673,37 @@
             ]
           },
           "hash": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "progress": {
+            "type": "number",
+            "format": "double"
+          },
+          "editOf": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sourceHash": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cuts": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/TrackCut"
+            }
+          },
+          "inputExtension": {
             "type": [
               "null",
               "string"
@@ -3800,6 +3955,23 @@
           }
         }
       },
+      "TrackCut": {
+        "required": [
+          "startMs",
+          "endMs"
+        ],
+        "type": "object",
+        "properties": {
+          "startMs": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "endMs": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "TrackDto": {
         "required": [
           "hash",
@@ -3812,7 +3984,9 @@
           "loudnessLufs",
           "originalName",
           "createdAt",
-          "playlists"
+          "playlists",
+          "edited",
+          "removedMs"
         ],
         "type": "object",
         "properties": {
@@ -3865,6 +4039,33 @@
             "items": {
               "$ref": "#/components/schemas/PlaylistRef"
             }
+          },
+          "edited": {
+            "type": "boolean"
+          },
+          "removedMs": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "TrackEditInput": {
+        "required": [
+          "original"
+        ],
+        "type": "object",
+        "properties": {
+          "cuts": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/CutInput"
+            }
+          },
+          "original": {
+            "type": "boolean"
           }
         }
       },

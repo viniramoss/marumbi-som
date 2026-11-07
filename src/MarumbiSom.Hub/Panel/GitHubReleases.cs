@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -66,6 +67,26 @@ public sealed partial class GitHubReleaseWatcher(
                 // Já havia um pedido na fila.
             }
         }
+    }
+
+    /// <summary>
+    /// "Buscar atualizações" no cartão do Hub (D35): procura agora e, se vier versão nova do Hub, já pede a troca.
+    /// Devolve o motivo quando não dá para procurar.
+    /// </summary>
+    public async Task<string?> SearchAndInstallAsync(ClaimsPrincipal? user, CancellationToken cancellationToken)
+    {
+        if (Repository is null)
+        {
+            return "A procura de versões no GitHub está desligada (Hub:GitHubRepository vazio).";
+        }
+
+        if (await hubUpdates.BeginSearchAsync(user, cancellationToken) is { } problem)
+        {
+            return problem;
+        }
+
+        RequestCheck();
+        return null;
     }
 
     public async Task<GitHubStatus> StatusAsync(CancellationToken cancellationToken)
@@ -139,6 +160,8 @@ public sealed partial class GitHubReleaseWatcher(
             {
                 logger.LogWarning("Procura de versão nova no GitHub: {Message}", message);
             }
+
+            await hubUpdates.EndSearchAsync(problem ? message : null, cancellationToken);
         }
         finally
         {

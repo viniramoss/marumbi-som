@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace MarumbiSom.Hub.Updates;
 
-/// <summary>Configurações → Atualização do Hub (D32 f): versão instalada e disponível, atualizar agora, a madrugada e o envio à mão.</summary>
+/// <summary>Configurações → Atualização do Hub (D32 f, D35): versão instalada e disponível, buscar e atualizar agora, a madrugada e o envio à mão.</summary>
 public static class HubUpdateEndpoints
 {
     public static void MapHubUpdate(this RouteGroupBuilder api)
@@ -15,6 +15,7 @@ public static class HubUpdateEndpoints
         api.MapPost("/hub/update", RequestAsync).Returns<HubUpdateStatus>(StatusCodes.Status202Accepted, StatusCodes.Status400BadRequest);
         api.MapDelete("/hub/update", CancelAsync).Returns<HubUpdateStatus>(StatusCodes.Status200OK, StatusCodes.Status400BadRequest);
         api.MapPut("/hub/update/auto", SetAutoAsync).Returns<HubUpdateStatus>();
+        api.MapPost("/hub/update/check", SearchAsync).Returns<HubUpdateStatus>(StatusCodes.Status202Accepted, StatusCodes.Status400BadRequest);
         api.MapPost("/hub/update/package", UploadAsync)
             .DisableAntiforgery()
             .WithMetadata(
@@ -26,6 +27,13 @@ public static class HubUpdateEndpoints
 
     private static async Task<IResult> RequestAsync(HubUpdates updates, ClaimsPrincipal user, CancellationToken cancellationToken) =>
         await updates.RequestAsync(automatic: false, user, cancellationToken) is { } problem
+            ? ApiResults.BadRequest(problem)
+            : Results.Json(await updates.StatusAsync(cancellationToken), statusCode: StatusCodes.Status202Accepted);
+
+    /// <summary>"Buscar atualizações" (D35): procura no GitHub agora e já pede a troca se vier versão nova.</summary>
+    private static async Task<IResult> SearchAsync(
+        GitHubReleaseWatcher github, HubUpdates updates, ClaimsPrincipal user, CancellationToken cancellationToken) =>
+        await github.SearchAndInstallAsync(user, cancellationToken) is { } problem
             ? ApiResults.BadRequest(problem)
             : Results.Json(await updates.StatusAsync(cancellationToken), statusCode: StatusCodes.Status202Accepted);
 

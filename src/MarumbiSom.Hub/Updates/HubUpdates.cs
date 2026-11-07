@@ -58,6 +58,8 @@ public sealed partial class HubUpdates : BackgroundService
     private string? _message;
     private bool _problem;
     private HubUpdateRequest? _confirm;
+    private bool _searching;
+    private ClaimsPrincipal? _searchBy;
 
     public HubUpdates(
         IServiceScopeFactory scopes, HubPaths paths, IOptions<HubOptions> options, PanelHub panel, IHostApplicationLifetime lifetime, TimeProvider time,
@@ -138,7 +140,7 @@ public sealed partial class HubUpdates : BackgroundService
             return new HubUpdateStatus(
                 CurrentVersion, Supported, Supported && File.Exists(Files.UpdaterExe),
                 available is null ? null : new HubPackageInfo(available.Version, available.SizeBytes, available.DownloadedAt),
-                _download, _message, _problem, auto, _options.Value.HubUpdateTime, pending, last);
+                _download, _message, _problem, _searching, auto, _options.Value.HubUpdateTime, pending, last);
         }
     }
 
@@ -185,6 +187,84 @@ public sealed partial class HubUpdates : BackgroundService
         finally
         {
             _requestLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Botão "Buscar atualizações" (D35): marca que a próxima procura no GitHub, pedida logo em seguida pelo
+    /// <see cref="Panel.GitHubReleaseWatcher"/>, já pede a troca se achar (ou já houver) versão mais nova.
+    /// </summary>
+    public async Task<string?> BeginSearchAsync(ClaimsPrincipal? user, CancellationToken cancellationToken)
+    {
+        if (!Supported)
+        {
+            return NotSupported;
+        }
+
+        if (!File.Exists(Files.UpdaterExe))
+        {
+            return "O atualizador ainda não está instalado neste PC. Rode o install-hub.ps1 uma vez, como administrador.";
+        }
+
+        if (ReadPending() is not null)
+        {
+            return "Já há uma atualização do Hub pedida.";
+        }
+
+        lock (_gate)
+        {
+            if (_searching)
+            {
+                return null;
+            }
+
+            _searching = true;
+            _searchBy = user;
+            _message = null;
+            _problem = false;
+        }
+
+        await AuditAsync(user, "hub.update.search", CurrentVersion, null, cancellationToken);
+        _panel.Changed(Topic);
+        return null;
+    }
+
+    /// <summary>Fim da procura pedida pelo botão: pede a troca se há versão mais nova baixada; senão o cartão mostra o motivo.</summary>
+    /// <param name="checkProblem">Erro da procura antes de chegar no pacote do Hub (GitHub fora do ar, por exemplo).</param>
+    internal async Task EndSearchAsync(string? checkProblem, CancellationToken cancellationToken)
+    {
+        ClaimsPrincipal? user;
+        bool explained;
+        lock (_gate)
+        {
+            if (!_searching)
+            {
+                return;
+            }
+
+            _searching = false;
+            user = _searchBy;
+            _searchBy = null;
+            explained = _message is not null;
+        }
+
+        if (AvailableVersion is null)
+        {
+            if (!explained)
+            {
+                SetMessage(checkProblem ?? $"O Hub já está na versão mais nova ({CurrentVersion}).", problem: checkProblem is not null);
+            }
+            else
+            {
+                _panel.Changed(Topic);
+            }
+
+            return;
+        }
+
+        if (await RequestAsync(automatic: false, user, cancellationToken) is { } problem)
+        {
+            SetMessage(problem, problem: true);
         }
     }
 
@@ -693,10 +773,11 @@ public sealed partial class HubUpdates : BackgroundService
 /// <param name="Available">Versão nova já baixada e conferida, pronta para instalar.</param>
 /// <param name="Download">Andamento do download do GitHub, enquanto baixa.</param>
 /// <param name="Message">Resultado da última procura do pacote do Hub no GitHub.</param>
+/// <param name="Searching">Procura do botão "Buscar atualizações" em andamento (D35); no fim, a troca é pedida se veio versão nova.</param>
 /// <param name="AutoUpdateTime">Hora local da atualização automática.</param>
 public sealed record HubUpdateStatus(
     string CurrentVersion, bool Supported, bool UpdaterInstalled, HubPackageInfo? Available, GitHubDownload? Download, string? Message, bool Problem,
-    bool AutoUpdate, TimeOnly AutoUpdateTime, HubUpdatePendingInfo? Pending, HubUpdateLastInfo? Last);
+    bool Searching, bool AutoUpdate, TimeOnly AutoUpdateTime, HubUpdatePendingInfo? Pending, HubUpdateLastInfo? Last);
 
 public sealed record HubPackageInfo(string Version, long SizeBytes, DateTimeOffset DownloadedAt);
 

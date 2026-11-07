@@ -75,6 +75,21 @@ for (const [name, source] of [...tracks, offerAudio]) {
         join(audio, name),
     ]);
 }
+// A onda do editor de música (D34) no Chromium do Playwright, que não decodifica AAC: o mesmo tom da primeira música
+// em WAV (o Chrome e o Edge das lojas decodificam o .m4a do Hub normalmente).
+run('ffmpeg', [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    tracks[0][1],
+    '-ac',
+    '2',
+    join(audio, 'editor.wav'),
+]);
 
 // Versão do agente assinada para o teste da atualização (D27): par Ed25519 de teste, .zip com o que o Hub exige e o
 // .sig.json no formato do sign-release. O agente simulado confia nesta chave pública (Updates:PublicKeyFile).
@@ -152,6 +167,7 @@ writeFileSync(
             root,
             audio,
             tracks: tracks.map(([name]) => join(audio, name)),
+            editorWav: join(audio, 'editor.wav'),
             offerAudio: join(audio, offerAudio[0]),
             release: { version: releaseVersion, zip: releaseZip, sig: releaseSig },
         },

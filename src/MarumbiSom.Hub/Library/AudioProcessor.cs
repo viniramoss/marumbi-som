@@ -24,7 +24,8 @@ public sealed record ProcessedAudio(string OutputPath, string Hash, string Title
 /// <summary>
 /// Pipeline de ingestão (seção 6.5): valida com ffprobe, corta o silêncio do início e do fim (−50 dB), aplica fades,
 /// normaliza em duas passadas com loudnorm e codifica em AAC-LC 160 kbps, 44,1 kHz, estéreo, .m4a com faststart.
-/// A saída é determinística (bitexact): o mesmo arquivo enviado duas vezes gera o mesmo hash.
+/// A saída é determinística (bitexact): o mesmo arquivo enviado duas vezes gera o mesmo hash. Na edição de música
+/// (D34), os trechos são tirados logo depois do corte do silêncio, então os tempos são os da música processada.
 /// </summary>
 public sealed class AudioProcessor(Ffmpeg ffmpeg, ILogger<AudioProcessor> logger)
 {
@@ -37,7 +38,11 @@ public sealed class AudioProcessor(Ffmpeg ffmpeg, ILogger<AudioProcessor> logger
 
     private const string SilenceThreshold = "-50dB";
 
-    public async Task<ProcessedAudio> ProcessAsync(string inputPath, string originalName, IngestionProfile profile, string workDirectory, CancellationToken cancellationToken)
+    /// <param name="cuts">Trechos a tirar (D34), em ms no tempo da música sem o silêncio; vazio na ingestão.</param>
+    /// <param name="progress">Andamento de 0 a 1, chamado a cada etapa.</param>
+    public async Task<ProcessedAudio> ProcessAsync(
+        string inputPath, string originalName, IngestionProfile profile, string workDirectory, CancellationToken cancellationToken,
+        IReadOnlyList<TrackCut>? cuts = null, Action<double>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         if (!AllowedExtensions.Contains(Path.GetExtension(originalName)))
@@ -57,9 +62,11 @@ public sealed class AudioProcessor(Ffmpeg ffmpeg, ILogger<AudioProcessor> logger
         Directory.CreateDirectory(workDirectory);
         var id = Guid.NewGuid().ToString("N");
         var trimmed = Path.Combine(workDirectory, id + "-corte.flac");
+        var edited = Path.Combine(workDirectory, id + "-trechos.flac");
         var output = Path.Combine(workDirectory, id + ".m4a");
         try
         {
+            progress?.Invoke(0.05);
             // Passo 3: corta o silêncio do início e, invertendo o áudio, o do fim.
             var silence = $"silenceremove=start_periods=1:start_threshold={SilenceThreshold}";
             await RunAsync(
@@ -68,6 +75,27 @@ public sealed class AudioProcessor(Ffmpeg ffmpeg, ILogger<AudioProcessor> logger
                 "cortar o silêncio", cancellationToken);
             var trimmedDuration = (await ProbeAsync(trimmed, cancellationToken))?.Duration ?? TimeSpan.Zero;
             CheckDuration(trimmedDuration, profile, "Sem o silêncio, o áudio");
+            progress?.Invoke(0.3);
+
+            // D34: tira os trechos marcados no editor, com um fade curto em cada emenda.
+            var normalizedCuts = TrackCuts.Normalize(cuts ?? [], (long)trimmedDuration.TotalMilliseconds);
+            if (normalizedCuts.Count > 0)
+            {
+                var kept = TrackCuts.Kept(normalizedCuts, (long)trimmedDuration.TotalMilliseconds);
+                if (kept.Count == 0)
+                {
+                    throw new IngestionRejectedException("Sem os trechos marcados não sobra nada da música.");
+                }
+
+                await RunAsync(
+                    ["-i", trimmed, "-filter_complex", TrackCuts.Filter(kept), "-map", "[out]", "-c:a", "flac", "-sample_fmt", "s32", edited],
+                    "tirar os trechos", cancellationToken);
+                File.Move(edited, trimmed, overwrite: true);
+                trimmedDuration = (await ProbeAsync(trimmed, cancellationToken))?.Duration ?? TimeSpan.Zero;
+                CheckDuration(trimmedDuration, profile, "Sem os trechos, a música");
+            }
+
+            progress?.Invoke(0.4);
 
             // Passos 4 e 5: fades e normalização em duas passadas (medição, depois ganho linear).
             var fades = Fades(profile, trimmedDuration);
@@ -80,6 +108,7 @@ public sealed class AudioProcessor(Ffmpeg ffmpeg, ILogger<AudioProcessor> logger
                 throw new IngestionRejectedException("O áudio está em silêncio.");
             }
 
+            progress?.Invoke(0.6);
             var normalize = target + string.Create(
                 CultureInfo.InvariantCulture,
                 $":measured_I={loudness.InputI}:measured_TP={loudness.InputTp}:measured_LRA={loudness.InputLra}:measured_thresh={loudness.InputThresh}:offset={loudness.TargetOffset}:linear=true");
@@ -91,6 +120,7 @@ public sealed class AudioProcessor(Ffmpeg ffmpeg, ILogger<AudioProcessor> logger
                 "codificar", cancellationToken);
             var final = await ProbeAsync(output, cancellationToken)
                 ?? throw new InvalidOperationException("O arquivo processado não pôde ser lido pelo ffprobe.");
+            progress?.Invoke(0.95);
 
             // Passo 7: SHA-256 do arquivo final (regra 7).
             string hash;
@@ -113,6 +143,7 @@ public sealed class AudioProcessor(Ffmpeg ffmpeg, ILogger<AudioProcessor> logger
         finally
         {
             TryDelete(trimmed);
+            TryDelete(edited);
         }
     }
 
