@@ -21,11 +21,16 @@ public static class OffersEndpoints
     public static readonly TimeSpan ExpiringWithin = TimeSpan.FromHours(24);
     public static readonly TimeSpan PlaysWindow = TimeSpan.FromDays(7);
     public const int MaxExtendDays = 365;
+    public const int MaxBatch = 50;
 
     public static void MapOffers(this RouteGroupBuilder api)
     {
         api.MapGet("/offers", ListAsync).Returns<IReadOnlyList<OfferSummary>>();
         api.MapPost("/offers", CreateAsync).Returns<OfferDetail>(StatusCodes.Status201Created, StatusCodes.Status400BadRequest);
+        api.MapPost("/offers/batch", CreateManyAsync)
+            .Returns<IReadOnlyList<OfferSummary>>(StatusCodes.Status201Created, StatusCodes.Status400BadRequest);
+        api.MapPost("/offers/stores", ChangeStoresAsync)
+            .Returns<IReadOnlyList<OfferSummary>>(StatusCodes.Status200OK, StatusCodes.Status400BadRequest);
         api.MapGet("/offers/{id:int}", GetAsync).Returns<OfferDetail>(StatusCodes.Status200OK, StatusCodes.Status404NotFound);
         api.MapPost("/offers/validity", ChangeValidityAsync)
             .Returns<IReadOnlyList<OfferSummary>>(StatusCodes.Status200OK, StatusCodes.Status400BadRequest);
@@ -95,6 +100,112 @@ public static class OffersEndpoints
         await publisher.RegenerateAllAsync(cancellationToken);
         panel.Changed("offers");
         return Results.Created($"/api/offers/{offer.Id}", await DetailAsync(db, offer.Id, now, cancellationToken));
+    }
+
+    /// <summary>
+    /// Várias ofertas de uma vez (D40 a): uma por áudio, com as mesmas lojas, validade e regras. Tudo ou nada: se uma
+    /// não passa na conferência, nenhuma é criada e a mensagem diz qual. Um manifesto novo por loja no fim.
+    /// </summary>
+    private static async Task<IResult> CreateManyAsync(
+        List<OfferInput> inputs, HubDb db, ManifestPublisher publisher, PanelHub panel, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
+    {
+        if (inputs.Count == 0)
+        {
+            return ApiResults.BadRequest("Envie pelo menos um áudio.");
+        }
+
+        if (inputs.Count > MaxBatch)
+        {
+            return ApiResults.BadRequest($"No máximo {MaxBatch} ofertas de uma vez.");
+        }
+
+        var now = time.GetUtcNow();
+        var offers = new List<(Offer Offer, OfferInput Input)>();
+        foreach (var (input, index) in inputs.Select((input, index) => (input, index)))
+        {
+            var label = string.IsNullOrWhiteSpace(input.Name) ? $"Oferta {index + 1}" : input.Name.Trim();
+            if (input.Name is null || input.AudioHash is null || input.ValidFrom is null || input.ValidUntil is null)
+            {
+                return ApiResults.BadRequest($"{label}: nome, áudio e validade (início e fim) são obrigatórios.");
+            }
+
+            var offer = new Offer
+            {
+                Name = input.Name,
+                AudioHash = input.AudioHash,
+                ValidFrom = input.ValidFrom.Value,
+                ValidUntil = input.ValidUntil.Value,
+                DuckLevel = input.DuckLevel ?? 30,
+                Enabled = input.Enabled ?? true,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            if (await ValidateAsync(db, offer, input, cancellationToken) is { } error)
+            {
+                return ApiResults.BadRequest($"{label}: {error}");
+            }
+
+            offer.Name = offer.Name.Trim();
+            offers.Add((offer, input));
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        db.Offers.AddRange(offers.Select(o => o.Offer));
+        await db.SaveChangesAsync(cancellationToken);
+        foreach (var (offer, input) in offers)
+        {
+            ReplaceStores(db, offer.Id, input.StoreIds ?? []);
+            await WriteRulesAsync(db, offer.Id, input.Rules ?? [], cancellationToken);
+        }
+
+        db.Audit(user, time, "offers.createMany", string.Join(",", offers.Select(o => Key(o.Offer.Id))), inputs);
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        await publisher.RegenerateAllAsync(cancellationToken);
+        panel.Changed("offers");
+        var context = await SummaryContextAsync(db, null, now, cancellationToken);
+        return Results.Created("/api/offers", offers.Select(o => Summary(o.Offer, context, now)).ToList());
+    }
+
+    /// <summary>
+    /// Muda a pasta (as lojas) de várias ofertas de uma vez (D40 b). Lojas vazias = pasta Geral, todas as lojas.
+    /// </summary>
+    private static async Task<IResult> ChangeStoresAsync(
+        StoresInput input, HubDb db, ManifestPublisher publisher, PanelHub panel, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
+    {
+        var ids = (input.OfferIds ?? []).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return ApiResults.BadRequest("Escolha pelo menos uma oferta.");
+        }
+
+        var storeIds = (input.StoreIds ?? []).Distinct().ToList();
+        if (storeIds.Count > 0 && await db.Stores.CountAsync(s => storeIds.Contains(s.Id), cancellationToken) != storeIds.Count)
+        {
+            return ApiResults.BadRequest("Uma das lojas escolhidas não existe.");
+        }
+
+        var offers = await db.Offers.Where(o => ids.Contains(o.Id)).ToListAsync(cancellationToken);
+        if (offers.Count != ids.Count)
+        {
+            return ApiResults.BadRequest("Oferta não encontrada. Recarregue a lista de ofertas.");
+        }
+
+        var now = time.GetUtcNow();
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        foreach (var offer in offers)
+        {
+            ReplaceStores(db, offer.Id, storeIds);
+            offer.UpdatedAt = now;
+        }
+
+        db.Audit(user, time, "offers.stores", string.Join(",", ids.Order().Select(Key)), input);
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        await publisher.RegenerateAllAsync(cancellationToken);
+        panel.Changed("offers");
+        var context = await SummaryContextAsync(db, null, now, cancellationToken);
+        return Results.Ok(offers.OrderBy(o => o.Id).Select(o => Summary(o, context, now)).ToList());
     }
 
     /// <summary>
@@ -526,6 +637,9 @@ public static class OffersEndpoints
     /// <param name="ExtendDays">Prorroga cada oferta este número de dias (1 a 365), a partir do fim atual ou de hoje.</param>
     /// <param name="ValidUntil">O mesmo fim para todas.</param>
     public sealed record ValidityInput(IReadOnlyList<int>? OfferIds, int? ExtendDays, DateTimeOffset? ValidUntil);
+
+    /// <summary>Pasta (lojas) de várias ofertas (D40 b): <c>storeIds</c> vazio = Geral, todas as lojas.</summary>
+    public sealed record StoresInput(IReadOnlyList<int>? OfferIds, IReadOnlyList<int>? StoreIds);
 
     /// <param name="Key">Identificador da oferta no manifesto e nos comandos (<c>of-12</c>).</param>
     /// <param name="StoreIds">Vazio = todas as lojas.</param>

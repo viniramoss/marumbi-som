@@ -67,6 +67,17 @@ public sealed class Playlist
     public List<PlaylistItem> Items { get; set; } = [];
 }
 
+/// <summary>
+/// Playlist exclusiva de uma ou mais lojas (D40): o editor dela mostra só as ofertas que valem para essas lojas.
+/// Sem linhas = playlist geral, que mostra todas as ofertas. Não muda o que a loja toca (isso é a agenda).
+/// </summary>
+public sealed class PlaylistStore
+{
+    public int PlaylistId { get; set; }
+
+    public int StoreId { get; set; }
+}
+
 public sealed class PlaylistItem
 {
     /// <summary>UUID estável: preservado ao reordenar; âncoras de ofertas apontam para ele.</summary>

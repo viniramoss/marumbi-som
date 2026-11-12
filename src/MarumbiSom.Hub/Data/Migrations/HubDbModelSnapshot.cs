@@ -364,6 +364,23 @@ namespace MarumbiSom.Hub.Data.Migrations
                     b.ToTable("playlist_items", (string)null);
                 });
 
+            modelBuilder.Entity("MarumbiSom.Hub.Data.PlaylistStore", b =>
+                {
+                    b.Property<int>("PlaylistId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("playlist_id");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("store_id");
+
+                    b.HasKey("PlaylistId", "StoreId");
+
+                    b.HasIndex("StoreId");
+
+                    b.ToTable("playlist_stores", (string)null);
+                });
+
             modelBuilder.Entity("MarumbiSom.Hub.Data.Schedule", b =>
                 {
                     b.Property<int>("Id")
@@ -850,6 +867,21 @@ namespace MarumbiSom.Hub.Data.Migrations
                         .WithMany()
                         .HasForeignKey("TrackHash")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarumbiSom.Hub.Data.PlaylistStore", b =>
+                {
+                    b.HasOne("MarumbiSom.Hub.Data.Playlist", null)
+                        .WithMany()
+                        .HasForeignKey("PlaylistId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MarumbiSom.Hub.Data.Store", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
