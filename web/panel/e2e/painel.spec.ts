@@ -11,6 +11,7 @@ interface Stack {
   localPassword: string;
   tracks: string[];
   offerAudio: string;
+  moreOffers: string[];
   editorWav: string;
   release: { version: string; zip: string; sig: string };
 }
@@ -307,6 +308,26 @@ test('tira um trecho da música no editor e ela segue na playlist', async () => 
   await expect(edited.getByText('editada', { exact: true })).toBeVisible();
   await expect(edited.getByText(number!, { exact: true }).first()).toBeVisible();
   await expect(edited.getByRole('link', { name: 'Manhã' })).toBeVisible();
+});
+
+test('adiciona várias ofertas de uma vez (D40)', async () => {
+  await page.getByRole('link', { name: 'Ofertas' }).first().click();
+  await page.getByRole('button', { name: 'Adicionar várias' }).click();
+  await expect(page).toHaveURL(/\/ofertas\/varias/);
+  await page
+    .getByTestId('offers-batch-input')
+    .setInputFiles(
+      stack.moreOffers.map((file) => ({ name: basename(file), mimeType: 'audio/mpeg', buffer: readFileSync(file) })),
+    );
+  // Cada áudio vira uma linha com o nome do arquivo; o botão espera todos ficarem prontos.
+  await expect(page.getByRole('button', { name: 'Criar 2 ofertas' })).toBeEnabled({ timeout: 60_000 });
+  await page.getByLabel('Nome da oferta de Oferta Costela.mp3').fill('Costela R$ 39,90');
+  await expect(page.getByLabel('Nome da oferta de Oferta Linguiça.mp3')).toHaveValue('Oferta Linguiça');
+  await page.getByRole('button', { name: 'Criar 2 ofertas' }).click();
+  await expect(page.getByText('2 ofertas criadas e publicadas para Marumbi Teste.')).toBeVisible();
+  await expect(page).toHaveURL(/\/ofertas$/);
+  await expect(page.getByRole('link', { name: 'Costela R$ 39,90' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Oferta Linguiça' })).toBeVisible();
 });
 
 test('nenhum erro no console do navegador', () => {

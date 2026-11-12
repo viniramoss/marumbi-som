@@ -1,8 +1,19 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
-import { CalendarClock, CalendarPlus, Clock, Megaphone, Plus, X } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router';
+import {
+  CalendarClock,
+  CalendarPlus,
+  Clock,
+  Folder as FolderIcon,
+  FolderInput,
+  FolderOpen,
+  Megaphone,
+  Plus,
+  Upload,
+  X,
+} from 'lucide-react';
 import { errorMessage } from '../../api/client';
-import { useChangeOfferValidity, useOffers, useStores } from '../../api/queries';
+import { useChangeOfferStores, useChangeOfferValidity, useOffers, useStores } from '../../api/queries';
 import type { OfferSummary, OfferValidityInput, StoreSummary } from '../../api/types';
 import { Modal } from '../../components/Modal';
 import { useToast } from '../../components/Toasts';
@@ -11,6 +22,7 @@ import { useNow } from '../../hooks/useNow';
 import { useOpenOnClick } from '../../hooks/useOpenOnClick';
 import { formatDateTime, formatDuration } from '../../lib/format';
 import { DefaultValidityDays, endOfDayAfter, expiresIn, fromLocalInput, offerStatus, toLocalInput } from './offerDraft';
+import { inFolder, isGeneral, parseFolder, storeNames, type Folder } from './offerFolders';
 
 /** Botões de prorrogar da seleção (D39). */
 const ExtendOptions = [15, 30] as const;
@@ -22,11 +34,21 @@ export function OffersPage() {
   const navigate = useNavigate();
   const open = useOpenOnClick();
   const now = useNow(60_000);
+  const [params, setParams] = useSearchParams();
+  const storeList = stores.data ?? [];
+  // Pastas por loja (D40): a pasta escolhida fica no endereço, para voltar a ela depois de abrir uma oferta.
+  const folder = parseFolder(params.get('pasta'), storeList);
+  const folderQuery = folder === 'todas' ? '' : `?pasta=${folder}`;
+  const setFolder = (next: Folder) => {
+    setSelected(new Set());
+    setParams(next === 'todas' ? {} : { pasta: String(next) }, { replace: true });
+  };
+  const visible = (offers.data ?? []).filter((o) => inFolder(o, folder, storeList));
   const expiring = (offers.data ?? []).filter((o) => o.expiresSoon && o.status !== 'expired');
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
-  // Oferta removida em outra aba sai da seleção sozinha.
-  const chosen = (offers.data ?? []).filter((o) => selected.has(o.id));
-  const allChosen = offers.data !== undefined && offers.data.length > 0 && chosen.length === offers.data.length;
+  // Oferta removida em outra aba ou que saiu da pasta sai da seleção sozinha.
+  const chosen = visible.filter((o) => selected.has(o.id));
+  const allChosen = visible.length > 0 && chosen.length === visible.length;
   const toggle = (id: number) =>
     setSelected((current) => {
       const next = new Set(current);
@@ -40,9 +62,18 @@ export function OffersPage() {
         title="Ofertas"
         description="Anúncios gravados que tocam por cima da música, com a música abaixada. Nunca tocam sozinhos."
         actions={
-          <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => void navigate('/ofertas/nova')}>
-            Nova oferta
-          </Button>
+          <>
+            <Button icon={<Upload className="size-4" />} onClick={() => void navigate(`/ofertas/varias${folderQuery}`)}>
+              Adicionar várias
+            </Button>
+            <Button
+              variant="primary"
+              icon={<Plus className="size-4" />}
+              onClick={() => void navigate(`/ofertas/nova${folderQuery}`)}
+            >
+              Nova oferta
+            </Button>
+          </>
         }
       />
       {expiring.length > 0 && (
@@ -56,6 +87,9 @@ export function OffersPage() {
             : `${expiring.length} ofertas vencem nas próximas 24 horas.`}
         </p>
       )}
+      {offers.data && offers.data.length > 0 && storeList.length > 1 && (
+        <FolderBar offers={offers.data} stores={storeList} value={folder} onChange={setFolder} />
+      )}
       <Card>
         {offers.isPending ? (
           <Spinner />
@@ -67,9 +101,20 @@ export function OffersPage() {
           <EmptyState icon={<Megaphone className="size-10" />} title="Nenhuma oferta">
             Envie o áudio gravado, escolha a validade, as lojas e de quanto em quanto tempo ela toca.
           </EmptyState>
+        ) : visible.length === 0 ? (
+          <EmptyState icon={<FolderOpen className="size-10" />} title="Pasta vazia">
+            {typeof folder === 'number'
+              ? `Nenhuma oferta só de ${storeNames([folder], storeList)}. Use "Adicionar várias" ou "Nova oferta" daqui, ou marque ofertas em outra pasta e use "Mudar de pasta".`
+              : 'Nenhuma oferta para todas as lojas.'}
+          </EmptyState>
         ) : (
           <>
-            <SelectionBar offers={offers.data} chosen={chosen} onSelect={(ids) => setSelected(new Set(ids))} />
+            <SelectionBar
+              offers={visible}
+              chosen={chosen}
+              stores={storeList}
+              onSelect={(ids) => setSelected(new Set(ids))}
+            />
             <div className="overflow-x-auto">
               <table className="w-full min-w-[800px] text-sm">
                 <thead>
@@ -82,7 +127,7 @@ export function OffersPage() {
                         ref={(el) => {
                           if (el) el.indeterminate = chosen.length > 0 && !allChosen;
                         }}
-                        onChange={() => setSelected(new Set(allChosen ? [] : offers.data.map((o) => o.id)))}
+                        onChange={() => setSelected(new Set(allChosen ? [] : visible.map((o) => o.id)))}
                         className="size-4 cursor-pointer accent-brand-700"
                       />
                     </th>
@@ -94,11 +139,11 @@ export function OffersPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
-                  {offers.data.map((offer) => (
+                  {visible.map((offer) => (
                     <tr
                       key={offer.id}
                       className={`cursor-pointer ${selected.has(offer.id) ? 'bg-brand-50/60 hover:bg-brand-50' : 'hover:bg-stone-50'}`}
-                      onClick={open(`/ofertas/${offer.id}`)}
+                      onClick={open(`/ofertas/${offer.id}${folderQuery}`)}
                     >
                       <td className="w-10 p-0">
                         {/* A célula inteira marca a oferta, sem abrir a tela dela. */}
@@ -113,7 +158,10 @@ export function OffersPage() {
                         </label>
                       </td>
                       <td className="py-3 pr-5 pl-2">
-                        <Link to={`/ofertas/${offer.id}`} className="font-medium text-stone-900 hover:text-brand-800">
+                        <Link
+                          to={`/ofertas/${offer.id}${folderQuery}`}
+                          className="font-medium text-stone-900 hover:text-brand-800"
+                        >
                           {offer.name}
                         </Link>
                         <span className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -156,8 +204,7 @@ export function OfferStatusBadge({ offer }: { offer: Pick<OfferSummary, 'status'
 
 function storesText(offer: OfferSummary, stores: StoreSummary[] | undefined): string {
   // Sem loja marcada a oferta vale para todas (seção 6.3).
-  if (offer.storeIds.length === 0) return 'Todas as lojas';
-  if (stores && stores.length > 1 && stores.every((s) => offer.storeIds.includes(s.id))) return 'Todas as lojas';
+  if (isGeneral(offer, stores ?? [])) return 'Todas as lojas';
   const names = (stores ?? []).filter((s) => offer.storeIds.includes(s.id)).map((s) => s.name);
   return names.length > 0 ? names.join(', ') : `${offer.storeIds.length} loja(s)`;
 }
@@ -178,15 +225,19 @@ function whenText(offer: OfferSummary): string {
 function SelectionBar({
   offers,
   chosen,
+  stores,
   onSelect,
 }: {
   offers: OfferSummary[];
   chosen: OfferSummary[];
+  stores: StoreSummary[];
   onSelect: (ids: number[]) => void;
 }) {
   const change = useChangeOfferValidity();
+  const move = useChangeOfferStores();
   const toast = useToast();
   const [picking, setPicking] = useState(false);
+  const [moving, setMoving] = useState(false);
   const [running, setRunning] = useState<string | null>(null);
   const expired = offers.filter((o) => o.status === 'expired');
   const count = chosen.length === 1 ? '1 oferta' : `${chosen.length} ofertas`;
@@ -208,7 +259,10 @@ function SelectionBar({
   if (chosen.length === 0) {
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-stone-100 px-5 py-3 text-sm text-stone-500">
-        <span>Marque as ofertas para prorrogar ou mudar a data de várias juntas.</span>
+        <span>
+          Marque as ofertas para prorrogar, mudar a data{stores.length > 1 ? ' ou mudar de pasta' : ''} de várias
+          juntas.
+        </span>
         {expired.length > 0 && (
           <Button size="sm" variant="secondary" onClick={() => onSelect(expired.map((o) => o.id))}>
             {expired.length === 1 ? 'Marcar a vencida' : `Marcar as ${expired.length} vencidas`}
@@ -252,6 +306,17 @@ function SelectionBar({
         >
           Escolher a data
         </Button>
+        {stores.length > 1 && (
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<FolderInput className="size-4" />}
+            disabled={running !== null}
+            onClick={() => setMoving(true)}
+          >
+            Mudar de pasta
+          </Button>
+        )}
         <Button
           size="sm"
           variant="ghost"
@@ -266,6 +331,28 @@ function SelectionBar({
         Prorrogar soma os dias no fim de cada oferta; a que já venceu volta a valer contando de hoje. O fim fica às
         23:59.
       </p>
+      {moving && (
+        <MoveDialog
+          chosen={chosen}
+          stores={stores}
+          busy={running === 'pasta'}
+          onCancel={() => setMoving(false)}
+          onApply={(storeIds) => {
+            setRunning('pasta');
+            move
+              .mutateAsync({ offerIds: chosen.map((o) => o.id), storeIds })
+              .then(() => {
+                toast.success(
+                  `${count} ${chosen.length === 1 ? 'foi' : 'foram'} para ${storeIds.length === 0 ? 'a pasta Geral (todas as lojas)' : `a pasta ${storeNames(storeIds, stores)}`}.`,
+                );
+                onSelect([]);
+                setMoving(false);
+              })
+              .catch((error: unknown) => toast.error(errorMessage(error)))
+              .finally(() => setRunning(null));
+          }}
+        />
+      )}
       {picking && (
         <PickDateDialog
           chosen={chosen}
@@ -337,6 +424,134 @@ function PickDateDialog({
             </li>
           ))}
         </ul>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Pastas por loja (D40): Todas, Geral (toca em todas as lojas) e uma pasta por loja, com quantas ofertas há em cada.
+ * A oferta marcada para duas lojas aparece nas duas pastas.
+ */
+function FolderBar({
+  offers,
+  stores,
+  value,
+  onChange,
+}: {
+  offers: OfferSummary[];
+  stores: StoreSummary[];
+  value: Folder;
+  onChange: (folder: Folder) => void;
+}) {
+  const folders: { id: Folder; label: string; hint: string }[] = [
+    { id: 'todas', label: 'Todas', hint: 'todas as pastas' },
+    { id: 'geral', label: 'Geral', hint: 'tocam em todas as lojas' },
+    ...stores.map((store) => ({ id: store.id as Folder, label: store.name, hint: 'só nesta loja' })),
+  ];
+  return (
+    <nav aria-label="Pastas de ofertas" className="mb-4 flex gap-2 overflow-x-auto pb-1">
+      {folders.map((folder) => {
+        const active = folder.id === value;
+        const count = offers.filter((o) => inFolder(o, folder.id, stores)).length;
+        const Icon = active ? FolderOpen : FolderIcon;
+        return (
+          <button
+            key={String(folder.id)}
+            type="button"
+            aria-current={active ? 'page' : undefined}
+            onClick={() => onChange(folder.id)}
+            className={`flex min-w-36 shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-left shadow-sm ring-1 transition-colors ${
+              active ? 'bg-brand-50 ring-brand-200' : 'bg-white ring-stone-200 hover:bg-stone-50 hover:ring-stone-300'
+            }`}
+          >
+            <Icon className={`size-5 shrink-0 ${active ? 'text-brand-700' : 'text-stone-400'}`} aria-hidden />
+            <span className="min-w-0">
+              <span className="flex items-center gap-1.5 text-sm font-semibold text-stone-900">
+                <span className="truncate">{folder.label}</span>
+                <span className="rounded-full bg-stone-100 px-1.5 text-xs font-medium text-stone-600 tabular-nums">
+                  {count}
+                </span>
+              </span>
+              <span className="block text-xs text-stone-500">{folder.hint}</span>
+            </span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+/** Pasta nova para as ofertas marcadas: Geral (todas as lojas) ou uma ou mais lojas. */
+function MoveDialog({
+  chosen,
+  stores,
+  busy,
+  onCancel,
+  onApply,
+}: {
+  chosen: OfferSummary[];
+  stores: StoreSummary[];
+  busy: boolean;
+  onCancel: () => void;
+  onApply: (storeIds: number[]) => void;
+}) {
+  const [storeIds, setStoreIds] = useState<number[]>([]);
+  const toggle = (id: number) => {
+    const next = storeIds.includes(id) ? storeIds.filter((s) => s !== id) : [...storeIds, id];
+    setStoreIds(next.length === stores.length ? [] : next.sort((a, b) => a - b));
+  };
+  const option = (active: boolean) =>
+    `flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm ring-1 transition-colors ${
+      active ? 'bg-brand-50 ring-brand-200' : 'bg-white ring-stone-200 hover:bg-stone-50'
+    }`;
+  return (
+    <Modal
+      title={chosen.length === 1 ? 'Mudar a oferta de pasta' : `Mudar ${chosen.length} ofertas de pasta`}
+      onClose={onCancel}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onCancel} disabled={busy}>
+            Cancelar
+          </Button>
+          <Button variant="primary" busy={busy} onClick={() => onApply(storeIds)}>
+            {storeIds.length === 0 ? 'Mover para Geral' : `Mover para ${storeNames(storeIds, stores)}`}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-2">
+        <p className="mb-3 text-sm text-stone-600">
+          A pasta é a loja onde a oferta toca. Na playlist exclusiva de uma loja só aparecem as ofertas da pasta Geral e
+          da pasta daquela loja.
+        </p>
+        <button
+          type="button"
+          aria-pressed={storeIds.length === 0}
+          className={option(storeIds.length === 0)}
+          onClick={() => setStoreIds([])}
+        >
+          <FolderIcon className="size-4 shrink-0 text-stone-400" aria-hidden />
+          <span>
+            <span className="block font-medium text-stone-900">Geral</span>
+            <span className="block text-xs text-stone-500">
+              Toca em todas as lojas, inclusive as cadastradas depois.
+            </span>
+          </span>
+        </button>
+        {stores.map((store) => (
+          <button
+            key={store.id}
+            type="button"
+            aria-pressed={storeIds.includes(store.id)}
+            className={option(storeIds.includes(store.id))}
+            onClick={() => toggle(store.id)}
+          >
+            <FolderIcon className="size-4 shrink-0 text-stone-400" aria-hidden />
+            <span className="font-medium text-stone-900">{store.name}</span>
+          </button>
+        ))}
+        <p className="pt-1 text-xs text-stone-500">Marque mais de uma loja para a oferta ficar nas duas pastas.</p>
       </div>
     </Modal>
   );

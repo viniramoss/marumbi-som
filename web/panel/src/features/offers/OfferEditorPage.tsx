@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ArrowLeft, CircleAlert, Clock, Pause, Play, Plus, Save, Timer, Trash2, Upload, X } from 'lucide-react';
 import { errorMessage } from '../../api/client';
 import {
@@ -39,6 +39,7 @@ import {
   expiresIn,
   gapWarning,
   isOfferDirty,
+  nameFromFile,
   newOfferDraft,
   newRule,
   ruleText,
@@ -47,6 +48,7 @@ import {
   type RuleDraft,
 } from './offerDraft';
 import { OfferStatusBadge } from './OffersPage';
+import { parseFolder, storeIdsForFolder } from './offerFolders';
 
 /** Criar (/ofertas/nova) ou editar uma oferta (seção 7.2 e D26). */
 export function OfferEditorPage() {
@@ -54,10 +56,13 @@ export function OfferEditorPage() {
   const isNew = param === 'nova';
   const offer = useOffer(Number(param), !isNew);
   const stores = useStores();
+  const folder = useSearchParams()[0].get('pasta');
 
   if (isNew) {
     if (stores.isPending) return <Spinner />;
-    return <Editor key="nova" saved={null} defaultStoreIds={(stores.data ?? []).map((s) => s.id)} />;
+    // Criada de dentro da pasta de uma loja (D40), já vem marcada só para essa loja.
+    const all = stores.data ?? [];
+    return <Editor key="nova" saved={null} defaultStoreIds={storeIdsForFolder(parseFolder(folder, all), all)} />;
   }
   if (offer.isPending) return <Spinner />;
   if (offer.isError) return <ErrorNote>{errorMessage(offer.error)}</ErrorNote>;
@@ -82,6 +87,8 @@ function Editor({ saved, defaultStoreIds }: { saved: OfferDetail | null; default
   const toast = useToast();
   const navigate = useNavigate();
   const now = useNow(60_000);
+  const pasta = useSearchParams()[0].get('pasta');
+  const back = pasta ? `/ofertas?pasta=${encodeURIComponent(pasta)}` : '/ofertas';
 
   const leaveDialog = useUnsavedChanges(
     dirty,
@@ -90,8 +97,9 @@ function Editor({ saved, defaultStoreIds }: { saved: OfferDetail | null; default
 
   // Depois de criar, vai para o endereço da oferta (só depois que o rascunho virou o salvo, para não perguntar).
   useEffect(() => {
-    if (created) void navigate(`/ofertas/${created.id}`, { replace: true });
-  }, [created, navigate]);
+    if (created)
+      void navigate(`/ofertas/${created.id}${pasta ? `?pasta=${encodeURIComponent(pasta)}` : ''}`, { replace: true });
+  }, [created, navigate, pasta]);
 
   const durationMs =
     draft.audioHash === null
@@ -134,7 +142,7 @@ function Editor({ saved, defaultStoreIds }: { saved: OfferDetail | null; default
       await remove.mutateAsync(saved.offer.id);
       setDeleting(false);
       toast.success('Oferta removida.');
-      void navigate('/ofertas', { replace: true });
+      void navigate(back, { replace: true });
     } catch (error) {
       setDeleting(false);
       toast.error(errorMessage(error));
@@ -144,7 +152,7 @@ function Editor({ saved, defaultStoreIds }: { saved: OfferDetail | null; default
   return (
     <>
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <Link to="/ofertas" className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800">
+        <Link to={back} className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800">
           <ArrowLeft className="size-4" /> Ofertas
         </Link>
       </div>
@@ -268,12 +276,6 @@ function Editor({ saved, defaultStoreIds }: { saved: OfferDetail | null; default
       {leaveDialog}
     </>
   );
-}
-
-/** "picanha-69,90.mp3" → "picanha-69,90". */
-function nameFromFile(fileName: string): string {
-  const dot = fileName.lastIndexOf('.');
-  return (dot > 0 ? fileName.slice(0, dot) : fileName).slice(0, 80);
 }
 
 interface UploadState {
@@ -429,7 +431,7 @@ function UploadProgress({ upload, onRetry }: { upload: UploadState; onRetry: () 
 }
 
 /** Regras de recorrência: só "a cada X minutos" e "horário fixo", sempre durante a música (D24, D26 b). */
-function RulesCard({
+export function RulesCard({
   rules,
   hasAnchors,
   stores,
@@ -600,7 +602,7 @@ function RuleEditor({
               onClick={() => togglePlaylist(playlist.id)}
               className={`rounded-full px-2.5 py-1 font-medium ring-1 transition-colors ${
                 rule.playlistIds.includes(playlist.id)
-                  ? 'bg-brand-50 text-brand-800 ring-brand-300'
+                  ? 'bg-brand-50 text-brand-800 ring-brand-200'
                   : 'bg-white text-stone-600 ring-stone-200 hover:bg-stone-50'
               }`}
             >
@@ -653,11 +655,13 @@ function AnchorsCard({ saved }: { saved: OfferDetail | null }) {
   );
 }
 
-function StoresCard({
+export function StoresCard({
+  title = 'Lojas (pasta)',
   storeIds,
   savedStoreIds,
   onChange,
 }: {
+  title?: string;
   storeIds: number[];
   savedStoreIds: number[];
   onChange: (ids: number[]) => void;
@@ -670,7 +674,8 @@ function StoresCard({
   return (
     <Card>
       <CardHeader
-        title="Lojas"
+        title={title}
+        subtitle="É a pasta da oferta."
         actions={
           all.length > 1 && (
             <Button size="sm" variant="ghost" onClick={() => onChange(allChosen ? [] : all)}>
@@ -719,7 +724,7 @@ function StoresCard({
 }
 
 /** Nível do ducking: quanto a música fica durante a oferta (seção 10.3.3, padrão 30%). */
-function DuckCard({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+export function DuckCard({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   return (
     <Card>
       <CardHeader title="Música durante a oferta" />
