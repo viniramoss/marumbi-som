@@ -1,6 +1,6 @@
 # Sistema de Som Remoto — Casa de Carnes Marumbi
 
-> Documento de arquitetura e execução. Versão 1.17 — outubro/2026 (inclui ofertas com ducking, mixagem entre músicas e as decisões D17 a D36 da implementação).
+> Documento de arquitetura e execução. Versão 1.21 — novembro/2026 (inclui ofertas com ducking, mixagem entre músicas e as decisões D17 a D40 da implementação).
 > Este documento é a fonte da verdade do projeto. Toda implementação DEVE segui-lo. Qualquer desvio DEVE ser registrado na seção 18 (Registro de Decisões) antes de ser implementado.
 
 ---
@@ -259,6 +259,7 @@ C:\MarumbiSom\Hub\
 | `users` | id, username, password_hash, created_at | Um usuário admin na v1 |
 | `tracks` | hash (PK), kind, number, title, artist, duration_ms, size_bytes, loudness_lufs, original_name, created_at, deleted_at, source_hash, cuts_json | `kind`: `music` ou `offer`. `number`: número da música em ordem de importação (único, nunca reaproveitado; nulo nas ofertas), D31. `deleted_at` = exclusão lógica. `source_hash` e `cuts_json`: música editada no painel, com o original de onde veio e os trechos tirados (D34) |
 | `playlists` | id, name, shuffle (bool), created_at, updated_at | |
+| `playlist_stores` | playlist_id, store_id | Lojas de que a playlist é exclusiva (D40). Sem linhas = playlist geral. Só muda quais ofertas o editor da playlist mostra; o que a loja toca continua vindo da agenda |
 | `playlist_items` | id (UUID estável), playlist_id, position, track_hash | Único (playlist_id, position). O `id` é preservado ao reordenar; âncoras de ofertas apontam para ele |
 | `stores` | id, slug, name, volume (0–100), bt_device_name, timezone, min_offer_gap_s, crossfade_s, token_hash, created_at | `timezone` padrão `America/Sao_Paulo`; `min_offer_gap_s` padrão 300; `crossfade_s` padrão 5 (0 = sem mixagem) |
 | `schedules` | id, store_id, playlist_id, days_mask, start_time, end_time | `days_mask`: bit 0 = domingo … bit 6 = sábado |
@@ -369,20 +370,23 @@ Cada alerta é enviado uma única vez por ocorrência e gera uma mensagem de "re
   - **Coluna de músicas (esquerda):** lista ordenada com arrastar e soltar (funciona no toque), tempo acumulado ao lado de cada música, adicionar músicas da biblioteca (busca), remover, alternar "aleatório", duração total.
   - **Coluna de ofertas (direita):** alinhada à coluna de músicas. ~~Uma oferta arrastada para o **espaço entre duas músicas** cria uma âncora `anchorBetween`.~~ (fora do painel pela D24) Uma oferta arrastada para **cima de uma música** cria uma âncora `anchorDuring`, com um marcador de tempo ajustável ("aos 1:20 desta música").
   - Com "aleatório" ativado, a coluna de ofertas fica bloqueada (âncoras só existem em playlist sequencial).
+  - **Playlist de qual loja? (D40):** no topo da coluna de ofertas, Geral (padrão) ou uma ou mais lojas. Na playlist exclusiva de uma loja, a coluna, a linha do tempo e o "prender oferta" só oferecem as ofertas da pasta Geral e da pasta daquela loja; um aviso diz quantas de outras lojas ficaram escondidas, com "Mostrar todas". Vai junto no "Salvar e publicar"; a lista de playlists mostra "Só Loja 1".
   - Ao remover uma música que tem âncora, o painel DEVE avisar antes de salvar.
   - A música que uma loja está tocando fica marcada na lista, com o nome da loja e a posição (D31 e).
   - "Adicionar músicas" lista a biblioteca na ordem do número, com o nome do arquivo embaixo.
 
 **Ofertas**
 - Lista de ofertas com status calculado: agendada, no ar, vencida, desativada.
-- Criar/editar oferta: nome (ex.: "Picanha R$ 69,90"), upload do áudio, pré-escuta, validade (início e fim, com data e hora), lojas (todas ou selecionadas), nível do ducking (padrão 30%), ativar/desativar.
+- **Pastas por loja (D40):** acima da lista, Todas, Geral (ofertas que tocam em todas as lojas) e uma pasta por loja, com a contagem. A pasta da oferta é a loja onde ela toca (as lojas da oferta); a oferta de duas lojas aparece nas duas pastas. Marcando várias, **Mudar de pasta** troca as lojas de todas juntas. "Nova oferta" e "Adicionar várias" abertos de dentro de uma pasta já marcam aquela loja.
+- **Adicionar várias (D40):** arrastar vários áudios de uma vez; cada um vira uma oferta com o nome do arquivo (editável na lista), com barra de envio e de processamento por arquivo, e as lojas (pasta), a validade, as regras e o nível da música valem para todas. Só cria quando todos os áudios terminaram; o que deu erro fica de fora, com o motivo.
+- Criar/editar oferta: nome (ex.: "Picanha R$ 69,90"), upload do áudio, pré-escuta, validade (início e fim, com data e hora; a nova sugere 30 dias, D39), lojas (todas ou selecionadas), nível do ducking (padrão 30%), ativar/desativar.
 - Regras de recorrência da oferta: ~~"a cada N músicas",~~ "a cada X minutos" ~~(entre ou durante)~~, "em horário fixo" (dias da semana + hora ~~; entre ou durante~~), com restrição opcional a playlists específicas. Pela D24 toda oferta toca durante a música, com ducking.
 - Lista das âncoras dessa oferta em cada playlist (somente leitura; edição no editor de playlist).
 - Contagem de execuções por loja (tocou, interrompida, descartada) nos últimos 7 dias.
 - Aviso visível em toda oferta que vence nas próximas 24 h.
 
 **Loja (detalhe)**
-- Controle ao vivo: tocar/pausar, pular, volume (slider), "tocar agora" (escolhe uma música do manifesto ativo), "tocar oferta agora" (escolhe uma oferta vigente da loja), "reconectar Bluetooth".
+- Controle ao vivo: tocar/pausar, pular, volume (slider), "tocar agora" (escolhe uma música do manifesto ativo), "tocar oferta agora" (escolhe uma oferta vigente da loja), "reconectar Bluetooth" e "reiniciar áudio" (D37).
 - Intervalo mínimo entre ofertas da loja (padrão 5 min).
 - Agenda: grade semanal com faixas de horário → playlist. Validação: faixas não podem se sobrepor no mesmo dia.
 - Fila atual (próximas 10 faixas).
@@ -553,6 +557,7 @@ O nível 3 só pode ser executado no máximo 1 vez a cada 10 minutos.
 - Quando a caixa conecta, o Windows tende a torná-la a saída padrão (e os sons do sistema do caixa passam a sair na caixa da loja). O `AudioEndpointManager` DEVE restaurar a saída padrão anterior (via interface `IPolicyConfig`, não documentada). Se a interface falhar em alguma versão do Windows, registrar aviso e seguir sem essa função. Destino válido, viva-voz da caixa e desistência após três trocas seguidas: D25.
 - Volume do endpoint da caixa fixado em 100%. O volume da loja é controlado pelo volume do mpv (0–100, definido no painel). O agente reaplica ambos a cada 10 s, desfazendo alterações feitas por funcionários. Durante uma oferta, o valor imposto à música é o do ducking em andamento.
 - Sem caixa conectada: o player pausa e guarda a posição. Ao reconectar, reabre a saída de áudio dos três mpv (`ao-reload`, mesmo com o mesmo id de endpoint) e retoma da mesma posição (D36).
+- Comando "reiniciar áudio" (D37): o guardião entra no estado `ReiniciandoÁudio` (status `restartingAudio`), o player pausa e fecha os três mpv guardando a posição, o agente reinicia o `AudioEndpointBuilder` (e com ele o `Audiosrv`), o `bthserv` e o adaptador (nível 3, sem o limite de 10 minutos), volta para `Inicializando` e reconecta a caixa; a música continua do mesmo ponto em mpv novos.
 
 ### 9.6 Metas
 
@@ -572,7 +577,7 @@ O nível 3 só pode ser executado no máximo 1 vez a cada 10 minutos.
 Parâmetros de inicialização:
 
 ```
-mpv --idle=yes --no-video --no-terminal --gapless-audio=yes
+mpv --idle=yes --no-video --vo=null --audio-display=no --no-terminal --gapless-audio=yes
     --input-ipc-server=\\.\pipe\marumbisom-mpv-a
     --audio-device=wasapi/{endpoint}
     --volume=<volume da loja> --volume-max=100
@@ -743,7 +748,7 @@ Todos os contratos (DTOs) ficam em `MarumbiSom.Contracts`, compartilhados entre 
 | DELETE | `/api/tracks/{hash}` | Remover (bloqueado se em uso) |
 | GET | `/api/tracks/{hash}/audio` | Pré-escuta (suporta Range) |
 | GET/POST | `/api/playlists` | Listar/criar |
-| GET/PATCH/DELETE | `/api/playlists/{id}` | Detalhe/renomear/shuffle/remover |
+| GET/PATCH/DELETE | `/api/playlists/{id}` | Detalhe/renomear/shuffle/lojas da playlist (`storeIds`, D40)/remover |
 | PUT | `/api/playlists/{id}/items` | Substituir a lista ordenada inteira (idempotente; itens existentes mantêm o `id`, itens novos vêm sem `id`) |
 | PUT | `/api/playlists/{id}/anchors` | Substituir todas as âncoras de ofertas da playlist |
 | GET/POST | `/api/stores` | Listar/criar loja |
@@ -756,6 +761,9 @@ Todos os contratos (DTOs) ficam em `MarumbiSom.Contracts`, compartilhados entre 
 | GET | `/api/stores/{id}/offers` | Ofertas vigentes da loja, para "tocar oferta agora" (D26 g) |
 | GET/POST | `/api/offers` | Listar/criar oferta (~~criação em multipart, com o áudio~~ JSON com o `audioHash` do áudio já enviado, D26 a) |
 | GET/PATCH/DELETE | `/api/offers/{id}` | Detalhe/editar/remover oferta |
+| POST | `/api/offers/batch` | Criar várias ofertas de uma vez, uma por áudio; tudo ou nada (até 50, D40) |
+| POST | `/api/offers/stores` | Mudar a pasta (as lojas) de várias ofertas de uma vez; `storeIds` vazio = Geral (D40) |
+| POST | `/api/offers/validity` | Prorrogar ou mudar o fim de várias ofertas de uma vez (D39) |
 | PUT | `/api/offers/{id}/rules` | Substituir as regras de recorrência da oferta |
 | GET | `/api/offers/{id}/audio` | Pré-escuta da oferta |
 | GET | `/api/offers/{id}/plays` | Execuções por loja |
@@ -769,7 +777,7 @@ Todos os contratos (DTOs) ficam em `MarumbiSom.Contracts`, compartilhados entre 
 | PUT | `/api/releases/github/token` | Cadastrar, trocar ou apagar (`null`) o token do GitHub; o token nunca é devolvido (D29) |
 | WS | `/ws/panel` | Atualizações em tempo real para o painel |
 
-Tipos de comando: `play`, `pause`, `next`, `setVolume {volume}`, `playNow {hash}`, `playOffer {offerId}`, `reconnectBluetooth`, `restartAgent`, `updateAgent`.
+Tipos de comando: `play`, `pause`, `next`, `setVolume {volume}`, `playNow {hash}`, `playOffer {offerId}`, `reconnectBluetooth`, `restartAudio` (D37), `restartAgent`, `updateAgent`.
 
 ### 11.3 API do agente (token Bearer)
 
@@ -871,7 +879,7 @@ marumbi-som/
     install-hub.ps1
     install-agent.ps1               (usado pelo instalador)
     harden-store-pc.ps1
-    download-tools.ps1              (baixa ffmpeg e mpv com verificação de hash)
+    download-tools.ps1              (baixa ffmpeg, mpv e o vulkan-1.dll do mpv com verificação de hash, D38)
     sign-release.ps1
     new-signing-key.ps1
     uninstall-agent.ps1
@@ -1135,7 +1143,7 @@ Aceite:
 | Situação | Ação |
 |---|---|
 | Loja offline no painel | Verificar internet da loja; se a música estiver tocando, não há urgência |
-| Bluetooth 🔴 persistente | Painel → "Reconectar Bluetooth"; se falhar, Área de Trabalho Remota pelo Tailscale e verificar o adaptador; em último caso, pedir para alguém desligar e religar a caixa |
+| Bluetooth 🔴 persistente | Painel → "Reconectar Bluetooth"; se falhar, "Reiniciar áudio" (D37); se ainda falhar, Área de Trabalho Remota pelo Tailscale e verificar o adaptador; em último caso, pedir para alguém desligar e religar a caixa |
 | Música não atualiza | Ver progresso de sincronização e eventos da loja no painel |
 | Atualizar o agente | Publicar release assinada → atualizar loja piloto → aguardar 1 dia → atualizar as demais |
 | Atualizar o Hub | Sozinho às 03:00 depois que a Release chega (D32), ou Configurações → Atualização do Hub → **Buscar atualizações** (D35; com versão já baixada, **Atualizar o Hub agora**) |
@@ -1188,6 +1196,10 @@ Aceite:
 | D34 | Editor de música no painel (pedido do proprietário em 26/10/2026: "É viavel ter um editorzinho de musica dentro do hub? Tipo, quero editar e remover um trecho dessa musica."): (a) na Biblioteca, **Editar** abre a música com o desenho da onda (calculado no navegador a partir do arquivo da biblioteca, sem mudar o Hub nem o agente); o proprietário marca um ou mais trechos arrastando na onda ou digitando início e fim, ouve cada trecho e a música já sem eles, e salva; serve também para cortar o começo ou o fim; (b) o Hub refaz a música a partir do arquivo enviado guardado em `originals\`, para não perder qualidade a cada edição: corta o silêncio como na ingestão (passo 3 da seção 6.5), tira os trechos com 20 ms de fade em cada emenda para não estalar e segue os passos 4 a 7 (fades, volume, AAC, SHA-256); sem o original (ex.: biblioteca restaurada de um backup antigo) usa o arquivo da biblioteca; o resultado precisa continuar com pelo menos 30 s; (c) o arquivo editado é outro (SHA-256 novo, regra 7), então a música nova herda número, título, artista e data de envio da anterior, toma o lugar dela nas playlists (os itens mantêm o id, então as âncoras continuam valendo), as âncoras "durante" (D26) andam junto com o corte (um ponto dentro de um trecho tirado vai para a emenda) e a anterior fica excluída logicamente, sem número; os manifestos são gerados de novo e as lojas baixam a versão nova na próxima sincronização; (d) a música guarda de qual original veio (`source_hash`) e os trechos tirados no tempo do original (`cuts_json`): editar de novo soma os cortes, **Voltar para a original** refaz a música sem cortes (o mesmo arquivo de antes, pela saída determinística) e enviar de novo o arquivo original de uma música editada aparece como "Já estava na biblioteca"; (e) a edição entra na mesma fila da ingestão; o processamento (da edição e dos envios) passa a mostrar a etapa e a barra de andamento; (f) nesta versão só músicas (`kind = music`); o áudio de oferta continua sendo trocado na oferta | O proprietário quer tirar um trecho sem sair do painel nem usar outro programa. Refazer a partir do original evita perder qualidade a cada edição, e guardar os cortes no tempo do original permite editar de novo e desfazer sem acumular perdas. Manter o mesmo hash com outro conteúdo quebraria a regra 7 e o cache das lojas, por isso a música é trocada nas referências, como uma música nova |
 | D35 | Buscar atualizações num clique e publicação de toda versão (pedido do proprietário em 27/10/2026: "sempre que tiver uma ATT eu preciso ir no git, baixar um arquivo" e "Pode publicar sempre, mas a gente adiciona dai no hub um botão de buscar atualizações, clico la e ja era"; complementa a D32): (a) toda versão nova entregue pelo desenvolvimento é publicada no GitHub Releases assim que o CI passa (Run workflow com **Publicar**; fora do `main` sai como pré-lançamento), e o Hub a encontra sozinho como na D32; ninguém precisa baixar nem assinar pacote à mão; (b) em Configurações → Atualização do Hub, sem versão baixada, o botão **Buscar atualizações** procura no GitHub na hora (`POST /api/hub/update/check`), baixa com a barra de andamento e já pede a troca, sem outra confirmação; se não houver versão mais nova, o cartão diz isso; (c) com versão já baixada continua **Atualizar o Hub agora**; (d) a madrugada (03:00), a cópia e a volta do banco e o atualizador continuam os da D32; (e) **Enviar pacote…** fica para testes e para o GitHub fora do ar |
 | D36 | Saída de áudio que falha e mpv travado (seções 9.5 e 10.1, ajuste de campo): (a) quando o mpv encerra o arquivo com `file_error` de saída de áudio (`audio output initialization failed`, ex.: endpoint da caixa desativado), a faixa não é pulada nem conta como defeito: o mpv reinicia e ela continua do ponto onde parou, com espera de 2, 5, 15 e 30 s entre as tentativas (volta a 2 s depois de 5 s tocando); (b) comando do IPC sem resposta em 5 s com o processo vivo conta como mpv travado: mata, reinicia e a faixa segue no outro mpv; (c) a cada reconexão da caixa o agente reabre a saída dos três mpv, mesmo com o mesmo id de endpoint, e o mpv que travar ao reabrir é reiniciado | No PC piloto (27/10/2026), com a caixa desativada no Windows, o agente pulou três músicas em 1 s; depois o mpv travou no `set_property` e ficou mudo até reiniciar o serviço, porque a leitura da posição tratava o tempo esgotado como "nada carregado" e o watchdog de 30 s nunca disparava |
+| D37 | Botão "Reiniciar áudio" (pedido do proprietário em 27/10/2026: "Vamos fazer o botão sim!", sobre reiniciar o Bluetooth e o áudio do Windows sem reiniciar o PC; complementa as seções 9.2, 9.5 e 11.2): (a) comando `restartAudio`, no painel em Loja → Ao vivo, ao lado de "Reconectar caixa", com confirmação que avisa que a música para por cerca de 30 s; (b) no agente, o guardião entra no estado `ReiniciandoÁudio` (status `restartingAudio`, "Reiniciando o áudio…" no painel e na configuração local): o player pausa como na queda da caixa e fecha os três mpv, guardando a faixa e a posição; (c) 2 s depois o agente reinicia o serviço `AudioEndpointBuilder` (que para e religa o `Audiosrv` junto), o `bthserv` e o adaptador Bluetooth pelo PnP; o reinício do adaptador pedido pelo administrador não respeita o limite de 10 minutos do nível 3, mas conta como o último reinício para o limite automático; uma etapa que falhar é registrada no log e as seguintes continuam; (d) depois o guardião volta para `Inicializando`, que inicia o que ficou parado, liga o rádio e conecta a caixa pelo escalonamento normal; com a caixa conectada, a música continua do mesmo ponto em mpv novos; (e) reiniciar um serviço com dependentes religa os dependentes que estavam rodando (antes só o próprio serviço voltava, também no nível 2); (f) agente antigo que não conhece o comando responde "Comando desconhecido" e o Hub traduz para "atualize o agente desta loja" | Na Loja 1 (27/10/2026) a caixa aparecia conectada, o agente tocava e mesmo o teste de som do Windows saía mudo; só reiniciar o PC resolveu. Reiniciar o áudio e o Bluetooth do Windows pelo painel resolve a maioria desses casos sem ir até a loja nem derrubar o PC |
+| D38 | mpv em PC sem driver de vídeo (Loja 2, ajuste de campo em 28/10/2026; complementa as seções 10.1 e 13.1 e a D15): (a) o `mpv.exe` do shinchiro importa o `vulkan-1.dll`, que só existe com driver de vídeo instalado; o pacote do agente passa a levar em `tools\` o carregador oficial da Khronos (Apache-2.0), tirado do pacote NuGet `Silk.NET.Vulkan.Loader.Native` com SHA-256 no `tools.lock.json`; (b) os três mpv abrem com `--vo=null` e `--audio-display=no`, para nunca criar saída de vídeo; (c) o CI lê as importações de tudo em `tools\` (`dumpbin /dependents`) e falha se alguma DLL não vem com o Windows 10 nem está em `tools\`; (d) o agente registra a saída `0xC0000135` do mpv como "falta uma DLL"; o "tocar som de teste" com o mpv das ofertas fechado diz isso em vez de "caixa não conectada"; e o player sem mpv de música aberto registra o motivo uma vez, em vez de a cada ciclo | Na Loja 2 (Windows 10 22H2, Intel HD de 2016 e o adaptador virtual do Parsec) os três mpv morriam ao abrir com 0xC0000135 por falta do `vulkan-1.dll`; com ele instalado à mão, morriam com 0xC0000005 ao carregar cada faixa depois de o vo `gpu-next` falhar na swapchain do d3d11. No PC piloto o driver de vídeo instala o Vulkan e o problema não aparecia |
+| D39 | Ofertas que vencem sem ninguém perceber (Loja 3, ajuste de campo em 07/11/2026): (a) a oferta nova sugere 30 dias de validade (antes 7), terminando às 23:59; (b) na lista de Ofertas dá para marcar várias, todas ou "as N vencidas" e, de uma vez, **Prorrogar 15 dias**, **Prorrogar 30 dias** ou **Escolher a data** do fim (`POST /api/offers/validity` com `offerIds` e `extendDays` de 1 a 365 ou `validUntil`); prorrogar conta do fim atual ou, na oferta já vencida, de hoje, e termina às 23:59 no fuso do Hub; o Hub recusa fim antes do início e republica o manifesto das lojas; (c) no editor da playlist, a oferta presa que não vai tocar (desativada, vencida, marcada só para lojas que não tocam a playlist, ou agendada) aparece em cinza, riscada e com o motivo na linha do tempo e na lista de músicas, e um aviso no topo lista cada uma com atalho para abrir a oferta; a coluna Ofertas diz quantas venceram; (d) oferta sem loja marcada vale para todas as lojas (seção 6.3, `offer_stores` sem linhas), e o painel deixa de dizer que ela não toca em lugar nenhum | Na Loja 3 as sete ofertas (horário de atendimento, QR Code, produtos fixos) venceram juntas com os 7 dias sugeridos; o Hub as tirou do manifesto (regra 14), mas a linha do tempo seguia mostrando as 37 âncoras como se fossem tocar, e o "tocar oferta agora" vinha vazio sem dizer por quê. O Vinicius preferiu manter um fim (30 dias) e renovar várias juntas a ter oferta sem data para acabar |
+| D40 | Muitas ofertas e ofertas que só valem para uma loja (pedido do Vinicius em 12/11/2026): (a) **Adicionar várias** em Ofertas: vários áudios de uma vez, uma oferta por áudio com o nome do arquivo, mesmas lojas, validade, regras e nível da música para todas (`POST /api/offers/batch`, até 50, tudo ou nada, um manifesto novo por loja no fim); (b) **pastas por loja** em Ofertas, sem conceito novo no banco: a pasta é a lista de lojas da oferta (`offer_stores`), "Geral" = nenhuma ou todas as lojas; **Mudar de pasta** em várias juntas (`POST /api/offers/stores`); (c) **playlist exclusiva de loja** (`playlist_stores`, vazio = geral): o editor da playlist exclusiva só oferece as ofertas da pasta Geral e das lojas dela; a playlist geral mostra todas. Não muda a agenda nem o que cada loja toca | (a) cadastrar uma por uma demorava quando chegam várias gravações juntas; (b) a pasta igual às lojas da oferta mantém tudo coerente: a oferta da pasta da Loja 1 é exatamente a que só toca na Loja 1, e o Hub já tirava do manifesto as ofertas de outras lojas; (c) na playlist da Loja 1 ou da Loja 3 não precisam aparecer as ofertas das outras lojas, que de qualquer forma não tocariam ali |
 
 Novas decisões DEVEM ser adicionadas aqui com número sequencial.
 

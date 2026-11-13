@@ -270,8 +270,14 @@ public static class StoresEndpoints
         var result = await agents.SendCommandAsync(id, new CommandMessage(commandId, input.Command, args), CommandWait, cancellationToken);
         return result is null
             ? Results.Ok(new CommandOutcome(command.Id, "pending", "A loja não respondeu a tempo; o resultado aparece no histórico."))
-            : Results.Ok(new CommandOutcome(command.Id, result.Ok ? "ok" : "error", result.Error));
+            : Results.Ok(new CommandOutcome(command.Id, result.Ok ? "ok" : "error", result.Ok ? null : AgentError(result.Error)));
     }
+
+    /// <summary>Agente de versão anterior a um comando novo responde "Comando desconhecido" (D37 f).</summary>
+    private static string? AgentError(string? error) =>
+        error is not null && error.StartsWith("Comando desconhecido", StringComparison.Ordinal)
+            ? "O agente desta loja é de uma versão antiga e não conhece este comando. Atualize o agente da loja e tente de novo."
+            : error;
 
     /// <summary>Músicas do manifesto que a loja aplicou (para "tocar agora"); sem manifesto aplicado, as do mais recente.</summary>
     private static async Task<IResult> TracksAsync(int id, HubDb db, CancellationToken cancellationToken)

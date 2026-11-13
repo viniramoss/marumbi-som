@@ -225,3 +225,9 @@ export function gapWarning(
   const each = slower.map((s) => `${s.name} toca no máximo 1 oferta a cada ${s.gap} min`);
   return `Na prática toca com menos frequência: ${names(each)}, ${where}.`;
 }
+
+/** "picanha-69,90.mp3" → "picanha-69,90". */
+export function nameFromFile(fileName: string): string {
+  const dot = fileName.lastIndexOf('.');
+  return (dot > 0 ? fileName.slice(0, dot) : fileName).slice(0, 80);
+}

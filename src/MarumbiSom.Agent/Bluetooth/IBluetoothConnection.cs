@@ -23,4 +23,7 @@ public interface IBluetoothConnection
 
     /// <summary>Comando "reconectar Bluetooth": reinicia o escalonamento sem esperar o backoff.</summary>
     void RequestReconnect();
+
+    /// <summary>Comando "reiniciar áudio" (D37): para a música, reinicia o áudio e o Bluetooth do Windows e reconecta.</summary>
+    void RequestAudioRestart();
 }

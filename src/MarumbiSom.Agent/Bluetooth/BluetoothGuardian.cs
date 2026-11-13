@@ -15,6 +15,9 @@ public enum GuardianState
     Verifying,
     Connected,
     Waiting,
+
+    /// <summary>Comando "reiniciar áudio" (D37): reinicia o áudio e o Bluetooth do Windows antes de reconectar.</summary>
+    RestartingAudio,
 }
 
 public enum ReconnectMethod
@@ -36,6 +39,12 @@ public enum ReconnectMethod
 /// </summary>
 public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
 {
+    /// <summary>Espera entre entrar em <see cref="GuardianState.RestartingAudio"/> e reiniciar os serviços (D37 c).</summary>
+    public static readonly TimeSpan AudioRestartGrace = TimeSpan.FromSeconds(2);
+
+    /// <summary>Depois do reinício, o status segue "reiniciando o áudio" até a caixa voltar ou esse tempo passar (D37 d).</summary>
+    public static readonly TimeSpan AudioRestartReconnectWindow = TimeSpan.FromSeconds(90);
+
     private readonly IBluetoothRadio _radio;
     private readonly ISystemServices _services;
     private readonly IBluetoothAdapterControl _adapter;
@@ -55,6 +64,10 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
     private DateTimeOffset? _lastAdapterReset;
     private DateTimeOffset _waitUntil;
     private volatile bool _reconnectRequested;
+    private volatile bool _audioRestartRequested;
+
+    // UtcTicks do fim da janela da D37 d (0 = fora dela); lido pelo status em outra thread.
+    private long _audioRestartUntilTicks;
 
     public BluetoothGuardian(
         IBluetoothRadio radio,
@@ -102,6 +115,8 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
     public BluetoothStatus Status => State switch
     {
         GuardianState.Connected => BluetoothStatus.Connected,
+        GuardianState.RestartingAudio => BluetoothStatus.RestartingAudio,
+        _ when _time.GetUtcNow().UtcTicks < Interlocked.Read(ref _audioRestartUntilTicks) => BluetoothStatus.RestartingAudio,
         GuardianState.TurningOnRadio => BluetoothStatus.RadioOff,
         GuardianState.Connecting or GuardianState.Verifying => BluetoothStatus.Connecting,
         _ => BluetoothStatus.Disconnected,
@@ -113,6 +128,8 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
 
     public void RequestReconnect() => _reconnectRequested = true;
 
+    public void RequestAudioRestart() => _audioRestartRequested = true;
+
     /// <summary>Troca a caixa (configuração local, seção 8.4). Vale a partir do próximo passo, sem reiniciar o serviço.</summary>
     public void SetSpeaker(BluetoothAddress? address) => _pendingSpeaker = new SpeakerChange(address);
 
@@ -121,6 +138,12 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
     {
         try
         {
+            if (Interlocked.Read(ref _audioRestartUntilTicks) is > 0 and var until && _time.GetUtcNow().UtcTicks >= until)
+            {
+                Interlocked.Exchange(ref _audioRestartUntilTicks, 0);
+                _logger.LogWarning("A caixa não voltou em {Window} depois do reinício do áudio; o guardião segue tentando", AudioRestartReconnectWindow);
+            }
+
             if (_pendingSpeaker is { } change)
             {
                 _pendingSpeaker = null;
@@ -130,10 +153,22 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
                 _failedAttempts = 0;
                 SetDisconnected();
                 SpeakerEndpointId = null;
-                if (State != GuardianState.Initializing)
+                if (State is not (GuardianState.Initializing or GuardianState.RestartingAudio))
                 {
                     State = GuardianState.CheckingRadio;
                 }
+            }
+
+            if (_audioRestartRequested)
+            {
+                _audioRestartRequested = false;
+                _reconnectRequested = false;
+                _logger.LogWarning("Reinício do áudio e do Bluetooth do Windows solicitado pelo administrador");
+                Interlocked.Exchange(ref _audioRestartUntilTicks, 0);
+                SetDisconnected();
+                State = GuardianState.RestartingAudio;
+                // Tempo para o player pausar e fechar os mpv antes de o Windows derrubar a saída de áudio.
+                return AudioRestartGrace;
             }
 
             if (_reconnectRequested)
@@ -141,7 +176,8 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
                 _reconnectRequested = false;
                 _logger.LogInformation("Reconexão do Bluetooth solicitada pelo administrador");
                 _failedAttempts = 0;
-                if (State != GuardianState.Initializing)
+                // Durante o reinício do áudio a reconexão já vem no fim dele (D37 d).
+                if (State is not (GuardianState.Initializing or GuardianState.RestartingAudio))
                 {
                     SetDisconnected();
                     State = GuardianState.CheckingRadio;
@@ -157,6 +193,7 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
                 GuardianState.Verifying => await VerifyAsync(cancellationToken),
                 GuardianState.Connected => await MonitorConnectedAsync(cancellationToken),
                 GuardianState.Waiting => await WaitAsync(cancellationToken),
+                GuardianState.RestartingAudio => await RestartAudioAsync(cancellationToken),
                 _ => throw new InvalidOperationException($"Estado desconhecido {State}"),
             };
         }
@@ -360,6 +397,63 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
         return remaining < Poll ? remaining : Poll;
     }
 
+    /// <summary>
+    /// D37: reinicia o AudioEndpointBuilder (com o Audiosrv), o bthserv e o adaptador; uma etapa que falha não impede as
+    /// seguintes. Depois volta para Inicializando, que religa o que ficou parado e reconecta a caixa.
+    /// </summary>
+    private async Task<TimeSpan> RestartAudioAsync(CancellationToken cancellationToken)
+    {
+        Report("audio.restart");
+        var failed = new List<string>();
+        foreach (var name in new[] { WindowsServiceNames.AudioEndpointBuilder, WindowsServiceNames.Bluetooth })
+        {
+            try
+            {
+                await _services.RestartAsync(name, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogError(ex, "Falha ao reiniciar o serviço {Service}", name);
+                failed.Add(name);
+            }
+        }
+
+        // Pedido do administrador: não respeita o intervalo mínimo, mas conta para o limite do nível 3 automático.
+        _lastAdapterReset = _time.GetUtcNow();
+        Report("adapter.reset");
+        try
+        {
+            if (!await _adapter.ResetAdapterAsync(cancellationToken))
+            {
+                failed.Add("adaptador");
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogError(ex, "Falha ao reiniciar o adaptador Bluetooth");
+            failed.Add("adaptador");
+        }
+
+        if (failed.Count == 0)
+        {
+            _logger.LogInformation("Áudio e Bluetooth do Windows reiniciados; reconectando a caixa");
+        }
+        else
+        {
+            _logger.LogWarning("Reinício do áudio terminou com falha em {Failed}; reconectando a caixa mesmo assim", string.Join(", ", failed));
+        }
+
+        _containerId = null;
+        _failedAttempts = 0;
+        _radioLevel = 0;
+        // O rádio volta no último estado salvo; se voltar desligado, o nível 1 é tentado de novo antes de escalar.
+        _softwareRetryPending = true;
+        SpeakerEndpointId = null;
+        Interlocked.Exchange(ref _audioRestartUntilTicks, (_time.GetUtcNow() + AudioRestartReconnectWindow).UtcTicks);
+        State = GuardianState.Initializing;
+        return TimeSpan.FromSeconds(3);
+    }
+
     private TimeSpan EnterWaiting()
     {
         var delay = _backoff[Math.Clamp(_failedAttempts - 1, 0, _backoff.Count - 1)];
@@ -401,6 +495,7 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
     private TimeSpan SetConnected(AudioEndpoint endpoint)
     {
         var wasConnected = IsConnected;
+        Interlocked.Exchange(ref _audioRestartUntilTicks, 0);
         _failedAttempts = 0;
         _radioLevel = 0;
         SpeakerEndpointId = endpoint.Id;

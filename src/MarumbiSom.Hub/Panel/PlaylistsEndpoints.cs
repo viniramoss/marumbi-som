@@ -38,8 +38,9 @@ public static class PlaylistsEndpoints
             })
             .ToListAsync(cancellationToken);
         var usage = await UsageAsync(db, null, cancellationToken);
+        var stores = await StoresAsync(db, null, cancellationToken);
         return Results.Ok(playlists.OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
-            .Select(p => new PlaylistSummary(p.Id, p.Name, p.Shuffle, p.ItemCount, p.DurationMs, p.UpdatedAt, usage[p.Id].ToList())));
+            .Select(p => new PlaylistSummary(p.Id, p.Name, p.Shuffle, p.ItemCount, p.DurationMs, p.UpdatedAt, usage[p.Id].ToList(), stores[p.Id].Order().ToList())));
     }
 
     private static async Task<IResult> CreateAsync(PlaylistInput input, HubDb db, PanelHub panel, ClaimsPrincipal user, TimeProvider time, CancellationToken cancellationToken)
@@ -49,10 +50,16 @@ public static class PlaylistsEndpoints
             return ApiResults.BadRequest(error);
         }
 
+        if (await ValidateStoresAsync(db, input.StoreIds, cancellationToken) is { } storeError)
+        {
+            return ApiResults.BadRequest(storeError);
+        }
+
         var now = time.GetUtcNow();
         var playlist = new Playlist { Name = input.Name!.Trim(), Shuffle = input.Shuffle ?? false, CreatedAt = now, UpdatedAt = now };
         db.Playlists.Add(playlist);
         await db.SaveChangesAsync(cancellationToken);
+        ReplaceStores(db, playlist.Id, input.StoreIds ?? []);
         db.Audit(user, time, "playlists.create", playlist.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), input);
         await db.SaveChangesAsync(cancellationToken);
         panel.Changed("playlists");
@@ -79,6 +86,16 @@ public static class PlaylistsEndpoints
             }
 
             playlist.Name = input.Name.Trim();
+        }
+
+        if (input.StoreIds is not null)
+        {
+            if (await ValidateStoresAsync(db, input.StoreIds, cancellationToken) is { } storeError)
+            {
+                return ApiResults.BadRequest(storeError);
+            }
+
+            ReplaceStores(db, id, input.StoreIds);
         }
 
         var removedAnchors = 0;
@@ -280,7 +297,37 @@ public static class PlaylistsEndpoints
             .ToListAsync(cancellationToken);
         var usage = await UsageAsync(db, id, cancellationToken);
         var anchors = await OffersEndpoints.AnchorsAsync(db, id, null, cancellationToken);
-        return new PlaylistDetail(playlist.Id, playlist.Name, playlist.Shuffle, items, usage[id].ToList(), anchors);
+        var stores = await StoresAsync(db, id, cancellationToken);
+        return new PlaylistDetail(playlist.Id, playlist.Name, playlist.Shuffle, items, usage[id].ToList(), anchors, stores[id].Order().ToList());
+    }
+
+    /// <summary>Lojas de que cada playlist é exclusiva (D40); sem lojas = geral.</summary>
+    private static async Task<ILookup<int, int>> StoresAsync(HubDb db, int? playlistId, CancellationToken cancellationToken)
+    {
+        var query = db.PlaylistStores.AsNoTracking();
+        if (playlistId is { } only)
+        {
+            query = query.Where(s => s.PlaylistId == only);
+        }
+
+        return (await query.ToListAsync(cancellationToken)).ToLookup(s => s.PlaylistId, s => s.StoreId);
+    }
+
+    private static async Task<string?> ValidateStoresAsync(HubDb db, IReadOnlyList<int>? storeIds, CancellationToken cancellationToken)
+    {
+        if (storeIds is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        var distinct = storeIds.Distinct().ToList();
+        return await db.Stores.CountAsync(s => distinct.Contains(s.Id), cancellationToken) == distinct.Count ? null : "Uma das lojas escolhidas não existe.";
+    }
+
+    private static void ReplaceStores(HubDb db, int playlistId, IReadOnlyList<int> storeIds)
+    {
+        db.PlaylistStores.RemoveRange(db.PlaylistStores.Where(s => s.PlaylistId == playlistId));
+        db.PlaylistStores.AddRange(storeIds.Distinct().Select(storeId => new PlaylistStore { PlaylistId = playlistId, StoreId = storeId }));
     }
 
     /// <summary>Lojas e horários que usam cada playlist (seção 7.2, Playlists).</summary>
@@ -301,7 +348,8 @@ public static class PlaylistsEndpoints
     private static string? ValidateName(string? name) =>
         string.IsNullOrWhiteSpace(name) || name.Trim().Length > MaxNameLength ? $"Nome obrigatório, até {MaxNameLength} caracteres." : null;
 
-    public sealed record PlaylistInput(string? Name, bool? Shuffle);
+    /// <param name="StoreIds">Lojas de que a playlist é exclusiva (D40); vazio = geral; nulo no PATCH = sem mudança.</param>
+    public sealed record PlaylistInput(string? Name, bool? Shuffle, IReadOnlyList<int>? StoreIds = null);
 
     public sealed record ItemInput(string? Id, string Hash);
 
@@ -313,7 +361,9 @@ public static class PlaylistsEndpoints
     /// <summary>Uma janela da agenda de uma loja que toca esta playlist.</summary>
     public sealed record PlaylistUsage(int StoreId, string StoreName, IReadOnlyList<int> Days, TimeOnly Start, TimeOnly End);
 
-    public sealed record PlaylistSummary(int Id, string Name, bool Shuffle, int ItemCount, long DurationMs, DateTimeOffset UpdatedAt, IReadOnlyList<PlaylistUsage> Usage);
+    /// <param name="StoreIds">Lojas de que a playlist é exclusiva (D40); vazio = geral.</param>
+    public sealed record PlaylistSummary(
+        int Id, string Name, bool Shuffle, int ItemCount, long DurationMs, DateTimeOffset UpdatedAt, IReadOnlyList<PlaylistUsage> Usage, IReadOnlyList<int> StoreIds);
 
     public sealed record PlaylistDetail(
         int Id,
@@ -321,5 +371,6 @@ public static class PlaylistsEndpoints
         bool Shuffle,
         IReadOnlyList<PlaylistItemDetail> Items,
         IReadOnlyList<PlaylistUsage> Usage,
-        IReadOnlyList<OffersEndpoints.OfferAnchor> Anchors);
+        IReadOnlyList<OffersEndpoints.OfferAnchor> Anchors,
+        IReadOnlyList<int> StoreIds);
 }

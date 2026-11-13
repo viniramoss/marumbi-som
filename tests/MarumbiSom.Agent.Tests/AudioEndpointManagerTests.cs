@@ -158,5 +158,9 @@ public class AudioEndpointManagerTests
         public void RequestReconnect()
         {
         }
+
+        public void RequestAudioRestart()
+        {
+        }
     }
 }

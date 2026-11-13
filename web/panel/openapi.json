@@ -1386,6 +1386,93 @@
         }
       }
     },
+    "/api/offers/batch": {
+      "post": {
+        "tags": [
+          "OffersEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OfferInput"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OfferSummary"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/offers/stores": {
+      "post": {
+        "tags": [
+          "OffersEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoresInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OfferSummary"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/offers/{id}": {
       "get": {
         "tags": [
@@ -3285,7 +3372,8 @@
           "shuffle",
           "items",
           "usage",
-          "anchors"
+          "anchors",
+          "storeIds"
         ],
         "type": "object",
         "properties": {
@@ -3316,6 +3404,13 @@
             "items": {
               "$ref": "#/components/schemas/OfferAnchor"
             }
+          },
+          "storeIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
           }
         }
       },
@@ -3333,6 +3428,16 @@
               "null",
               "boolean"
             ]
+          },
+          "storeIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
           }
         }
       },
@@ -3391,7 +3496,8 @@
           "itemCount",
           "durationMs",
           "updatedAt",
-          "usage"
+          "usage",
+          "storeIds"
         ],
         "type": "object",
         "properties": {
@@ -3421,6 +3527,13 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PlaylistUsage"
+            }
+          },
+          "storeIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
             }
           }
         }
@@ -3734,6 +3847,31 @@
           "validUntil": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "StoresInput": {
+        "type": "object",
+        "properties": {
+          "offerIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "storeIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
           }
         }
       },

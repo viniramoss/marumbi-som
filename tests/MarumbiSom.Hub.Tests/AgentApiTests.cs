@@ -175,6 +175,30 @@ public sealed class AgentApiTests
         Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
     }
 
+    [Fact]
+    public async Task Agente_antigo_que_nao_conhece_o_comando_vira_aviso_para_atualizar()
+    {
+        await using var hub = await HubHarness.StartAsync();
+        var (_, token) = await EnrolledStoreAsync(hub);
+        var storeId = await hub.WithDbAsync(db => db.Stores.Select(s => s.Id).SingleAsync());
+        var client = hub.Server.CreateWebSocketClient();
+        client.ConfigureRequest = r => r.Headers.Authorization = $"Bearer {token}";
+        using var socket = await client.ConnectAsync(new Uri("wss://localhost/agent/ws"), CancellationToken.None);
+        await SendAsync(socket, new HelloMessage("loja-2-centro", "0.6.96", 0));
+        Assert.IsType<ManifestChangedMessage>(await ReceiveAsync(socket));
+
+        var admin = await hub.AdminClientAsync();
+        var commandTask = admin.PostAsJsonAsync($"/api/stores/{storeId}/commands", new { command = "restartAudio" });
+        var command = Assert.IsType<CommandMessage>(await ReceiveAsync(socket));
+        await SendAsync(socket, new CommandResultMessage(command.Id, false, "Comando desconhecido: restartAudio"));
+        var outcome = await HubHarness.JsonAsync(await commandTask);
+
+        // D37 f: a mensagem do agente antigo vira uma instrução que o dono entende.
+        Assert.Equal("restartAudio", command.Command);
+        Assert.Equal("error", outcome.GetProperty("result").GetString());
+        Assert.Contains("Atualize o agente", outcome.GetProperty("error").GetString(), StringComparison.Ordinal);
+    }
+
     internal static async Task<(string Hash, string Token)> EnrolledStoreAsync(HubHarness hub)
     {
         var admin = await hub.AdminClientAsync();

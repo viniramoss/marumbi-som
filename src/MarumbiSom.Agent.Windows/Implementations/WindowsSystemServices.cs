@@ -44,6 +44,15 @@ public sealed class WindowsSystemServices(ILogger<WindowsSystemServices> logger)
             {
                 using var service = new ServiceController(serviceName);
                 logger.LogWarning("Reiniciando o serviço {Service}", serviceName);
+
+                // DependentServices traz os diretos e os indiretos na ordem inversa da partida; o Stop os derruba
+                // junto, mas não os religa (ex.: o Audiosrv, ao reiniciar o AudioEndpointBuilder). O Stop usa essa
+                // mesma lista em cache, então os itens não são descartados aqui.
+                var dependents = service.DependentServices
+                    .Where(d => d.Status == ServiceControllerStatus.Running)
+                    .Select(d => d.ServiceName)
+                    .ToList();
+
                 if (service.Status != ServiceControllerStatus.Stopped)
                 {
                     service.Stop(stopDependentServices: true);
@@ -52,6 +61,31 @@ public sealed class WindowsSystemServices(ILogger<WindowsSystemServices> logger)
 
                 service.Start();
                 service.WaitForStatus(ServiceControllerStatus.Running, Timeout);
+                dependents.Reverse();
+                foreach (var name in dependents)
+                {
+                    StartDependent(name);
+                }
             },
             cancellationToken);
+
+    private void StartDependent(string serviceName)
+    {
+        try
+        {
+            using var service = new ServiceController(serviceName);
+            if (service.Status is ServiceControllerStatus.Running or ServiceControllerStatus.StartPending)
+            {
+                return;
+            }
+
+            logger.LogInformation("Iniciando de novo o serviço dependente {Service}", serviceName);
+            service.Start();
+            service.WaitForStatus(ServiceControllerStatus.Running, Timeout);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ServiceProcess.TimeoutException)
+        {
+            logger.LogWarning(ex, "Serviço dependente {Service} não voltou", serviceName);
+        }
+    }
 }

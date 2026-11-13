@@ -11,6 +11,7 @@ const done: Record<StoreCommand['command'], string> = {
   playNow: 'A música escolhida entra agora.',
   playOffer: 'A oferta entra agora, por cima da música.',
   reconnectBluetooth: 'Pedido de reconexão da caixa enviado.',
+  restartAudio: 'A loja está reiniciando o áudio. A música volta sozinha em cerca de 30 s.',
   restartAgent: 'O agente da loja está reiniciando.',
   updateAgent: 'A loja começou a baixar a versão nova do agente.',
 };

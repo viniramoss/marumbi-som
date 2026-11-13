@@ -56,7 +56,7 @@ function uptime(seconds) {
 }
 
 const playerText = { playing: 'Tocando', paused: 'Pausado', stopped: 'Parado' };
-const bluetoothText = { connected: 'Conectada', connecting: 'Conectando…', disconnected: 'Desconectada', radioOff: 'Bluetooth desligado' };
+const bluetoothText = { connected: 'Conectada', connecting: 'Conectando…', disconnected: 'Desconectada', radioOff: 'Bluetooth desligado', restartingAudio: 'Reiniciando o áudio…' };
 
 async function loadStatus() {
   let s;

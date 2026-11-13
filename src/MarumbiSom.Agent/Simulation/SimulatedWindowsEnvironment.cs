@@ -52,6 +52,12 @@ public sealed class SimulatedWindowsEnvironment : IBluetoothRadio, ISystemServic
 
     public int ServiceRestarts { get; private set; }
 
+    /// <summary>Serviços reiniciados, na ordem.</summary>
+    public List<string> RestartedServices { get; } = [];
+
+    /// <summary>Serviços cujo reinício lança exceção, como um serviço que não para a tempo.</summary>
+    public HashSet<string> FailingRestarts { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public int AdapterResets { get; private set; }
 
     public int KsReconnects { get; private set; }
@@ -110,6 +116,12 @@ public sealed class SimulatedWindowsEnvironment : IBluetoothRadio, ISystemServic
     public Task RestartAsync(string serviceName, CancellationToken cancellationToken)
     {
         ServiceRestarts++;
+        RestartedServices.Add(serviceName);
+        if (FailingRestarts.Contains(serviceName))
+        {
+            throw new InvalidOperationException($"O serviço {serviceName} não parou a tempo (simulado)");
+        }
+
         lock (_lock)
         {
             _stoppedServices.Remove(serviceName);

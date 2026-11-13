@@ -8,6 +8,7 @@ import type {
   OfferDetail,
   OfferInput,
   OfferValidityInput,
+  OfferStoresInput,
   OfferSummary,
   PlaylistDetail,
   ReleaseInfo,
@@ -205,7 +206,7 @@ export function useRevokeToken(id: number) {
 }
 
 export type StoreCommand =
-  | { command: 'play' | 'pause' | 'next' | 'reconnectBluetooth' | 'restartAgent' }
+  | { command: 'play' | 'pause' | 'next' | 'reconnectBluetooth' | 'restartAudio' | 'restartAgent' }
   | { command: 'setVolume'; volume: number }
   | { command: 'playNow'; hash: string }
   | { command: 'playOffer'; offerKey: string }
@@ -294,18 +295,20 @@ export function useSavePlaylist(id: number) {
     mutationFn: async ({
       name,
       shuffle,
+      storeIds,
       items,
       changedSettings,
       anchors,
     }: {
       name: string;
       shuffle: boolean;
+      storeIds: number[];
       items: ItemInput[];
       changedSettings: boolean;
       anchors?: (saved: PlaylistDetail) => AnchorInput[] | null;
     }): Promise<PlaylistDetail> => {
       if (changedSettings) {
-        await call(api.PATCH('/api/playlists/{id}', { params: { path: { id } }, body: { name, shuffle } }));
+        await call(api.PATCH('/api/playlists/{id}', { params: { path: { id } }, body: { name, shuffle, storeIds } }));
       }
       const saved = await call(api.PUT('/api/playlists/{id}/items', { params: { path: { id } }, body: items }));
       const body = anchors?.(saved);
@@ -369,6 +372,32 @@ export function useDeleteOffer() {
       client.removeQueries({ queryKey: keys.offer(id) });
       client.setQueryData<OfferSummary[]>(keys.offers, (list) => list?.filter((o) => o.id !== id));
       void client.invalidateQueries({ queryKey: keys.offers });
+      void client.invalidateQueries({ queryKey: ['playlist'] });
+    },
+  });
+}
+
+/** Várias ofertas de uma vez, uma por áudio (D40 a). */
+export function useCreateOffers() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (inputs: OfferInput[]) => call(api.POST('/api/offers/batch', { body: inputs })),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.offers });
+      void client.invalidateQueries({ queryKey: ['storeOffers'] });
+    },
+  });
+}
+
+/** Muda a pasta (as lojas) de várias ofertas de uma vez (D40 b). */
+export function useChangeOfferStores() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: OfferStoresInput) => call(api.POST('/api/offers/stores', { body: input })),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.offers });
+      void client.invalidateQueries({ queryKey: ['offer'] });
+      void client.invalidateQueries({ queryKey: ['storeOffers'] });
       void client.invalidateQueries({ queryKey: ['playlist'] });
     },
   });
