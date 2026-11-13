@@ -26,6 +26,7 @@ export type OfferSummary = Schemas['OfferSummary'];
 export type OfferDetail = Schemas['OfferDetail'];
 export type OfferInput = Schemas['OfferInput'];
 export type OfferValidityInput = Schemas['ValidityInput'];
+export type OfferStoresInput = Schemas['StoresInput'];
 export type OfferRule = Schemas['OfferRule'];
 export type OfferAnchor = Schemas['OfferAnchor'];
 export type OfferState = Schemas['OfferState'];

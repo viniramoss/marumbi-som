@@ -15,6 +15,8 @@ public sealed class HubDb(DbContextOptions<HubDb> options) : DbContext(options)
 
     public DbSet<PlaylistItem> PlaylistItems => Set<PlaylistItem>();
 
+    public DbSet<PlaylistStore> PlaylistStores => Set<PlaylistStore>();
+
     public DbSet<Store> Stores => Set<Store>();
 
     public DbSet<Schedule> Schedules => Set<Schedule>();
@@ -134,6 +136,13 @@ public sealed class HubDb(DbContextOptions<HubDb> options) : DbContext(options)
         {
             e.ToTable("offers");
             e.HasOne<Track>().WithMany().HasForeignKey(o => o.AudioHash).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<PlaylistStore>(e =>
+        {
+            e.ToTable("playlist_stores");
+            e.HasKey(x => new { x.PlaylistId, x.StoreId });
+            e.HasOne<Playlist>().WithMany().HasForeignKey(x => x.PlaylistId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Store>().WithMany().HasForeignKey(x => x.StoreId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<OfferStore>(e =>
         {

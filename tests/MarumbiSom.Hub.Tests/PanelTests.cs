@@ -236,6 +236,29 @@ public sealed class PanelTests
     }
 
     [Fact]
+    public async Task Playlist_exclusiva_de_loja_guarda_as_lojas_e_vazio_e_geral()
+    {
+        await using var hub = await HubHarness.StartAsync();
+        var admin = await hub.AdminClientAsync();
+        var music = await hub.SeedTrackAsync("Música");
+        var (storeId, playlistId) = await ManifestTests.StoreWithPlaylistAsync(admin, [music]);
+        Assert.Empty((await HubHarness.JsonAsync(await admin.GetAsync($"/api/playlists/{playlistId}"))).GetProperty("storeIds").EnumerateArray());
+
+        var patched = await HubHarness.JsonAsync(await admin.PatchAsJsonAsync($"/api/playlists/{playlistId}", new { storeIds = new[] { storeId } }));
+        Assert.Equal(new[] { storeId }, patched.GetProperty("storeIds").EnumerateArray().Select(s => s.GetInt32()));
+        // Mudar só o nome não mexe nas lojas.
+        await admin.PatchAsJsonAsync($"/api/playlists/{playlistId}", new { name = "Manhã Loja 2" });
+        var listed = Assert.Single((await HubHarness.JsonAsync(await admin.GetAsync("/api/playlists"))).EnumerateArray());
+        Assert.Equal(new[] { storeId }, listed.GetProperty("storeIds").EnumerateArray().Select(s => s.GetInt32()));
+
+        var created = await HubHarness.JsonAsync(await admin.PostAsJsonAsync("/api/playlists", new { name = "Geral" }));
+        Assert.Empty(created.GetProperty("storeIds").EnumerateArray());
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.PatchAsJsonAsync($"/api/playlists/{playlistId}", new { storeIds = new[] { 999 } })).StatusCode);
+        await admin.PatchAsJsonAsync($"/api/playlists/{playlistId}", new { storeIds = Array.Empty<int>() });
+        Assert.Empty((await HubHarness.JsonAsync(await admin.GetAsync($"/api/playlists/{playlistId}"))).GetProperty("storeIds").EnumerateArray());
+    }
+
+    [Fact]
     public async Task Tocar_agora_lista_as_musicas_da_loja_e_o_historico_filtra_por_data()
     {
         await using var hub = await HubHarness.StartAsync();

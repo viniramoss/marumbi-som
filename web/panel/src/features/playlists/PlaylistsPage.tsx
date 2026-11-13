@@ -2,15 +2,17 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { ListMusic, Plus, Shuffle } from 'lucide-react';
 import { errorMessage } from '../../api/client';
-import { useCreatePlaylist, usePlaylists } from '../../api/queries';
+import { useCreatePlaylist, usePlaylists, useStores } from '../../api/queries';
 import { Modal } from '../../components/Modal';
-import { Button, Card, EmptyState, ErrorNote, Field, Input, PageHeader, Spinner } from '../../components/ui';
+import { Badge, Button, Card, EmptyState, ErrorNote, Field, Input, PageHeader, Spinner } from '../../components/ui';
 import { useOpenOnClick } from '../../hooks/useOpenOnClick';
 import { formatLongDuration } from '../../lib/format';
+import { storeNames } from '../offers/offerFolders';
 import { usageText } from './usage';
 
 export function PlaylistsPage() {
   const playlists = usePlaylists();
+  const stores = useStores();
   const [creating, setCreating] = useState(false);
   const open = useOpenOnClick();
 
@@ -62,6 +64,11 @@ export function PlaylistsPage() {
                         {playlist.name}
                         {playlist.shuffle && <Shuffle className="size-3.5 text-stone-400" aria-label="Aleatória" />}
                       </Link>
+                      {playlist.storeIds.length > 0 && (
+                        <span className="ml-2">
+                          <Badge tone="blue">Só {storeNames(playlist.storeIds, stores.data ?? [])}</Badge>
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 pr-4 text-right tabular-nums">{playlist.itemCount}</td>
                     <td className="py-3 pr-4 text-right text-stone-600">{formatLongDuration(playlist.durationMs)}</td>

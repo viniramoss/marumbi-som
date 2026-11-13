@@ -215,6 +215,76 @@ public sealed class OffersTests
     }
 
     [Fact]
+    public async Task Varias_ofertas_de_uma_vez_com_as_mesmas_lojas_e_regras_ou_nenhuma()
+    {
+        await using var hub = await HubHarness.StartAsync(Now);
+        var admin = await hub.AdminClientAsync();
+        var music = await hub.SeedTrackAsync("Música");
+        var (storeId, _) = await ManifestTests.StoreWithPlaylistAsync(admin, [music]);
+        var other = (await HubHarness.JsonAsync(await admin.PostAsJsonAsync("/api/stores", new { name = "Loja 3" }))).GetProperty("status").GetProperty("id").GetInt32();
+        var picanha = await hub.SeedTrackAsync("Picanha", 12_000, TrackKind.Offer);
+        var costela = await hub.SeedTrackAsync("Costela", 9_000, TrackKind.Offer);
+
+        object Offer(string name, string audio) => new
+        {
+            name,
+            audioHash = audio,
+            validFrom = Now.AddHours(-1),
+            validUntil = Now.AddDays(30),
+            storeIds = new[] { storeId },
+            rules = new object[] { new { kind = "everyMinutes", minutes = 20 } },
+        };
+
+        var response = await admin.PostAsJsonAsync("/api/offers/batch", new[] { Offer(" Picanha ", picanha), Offer("Costela", costela) });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = (await HubHarness.JsonAsync(response)).EnumerateArray().ToList();
+        Assert.Equal(["Picanha", "Costela"], created.Select(o => o.GetProperty("name").GetString()));
+        Assert.All(created, o => Assert.Equal(1, o.GetProperty("ruleCount").GetInt32()));
+        Assert.All(created, o => Assert.Equal(new[] { storeId }, o.GetProperty("storeIds").EnumerateArray().Select(s => s.GetInt32())));
+        Assert.Equal(2, (await ManifestTests.LatestAsync(hub, storeId)).Spots.Offers.Count);
+        Assert.Empty((await ManifestTests.LatestAsync(hub, other)).Spots.Offers);
+
+        // Uma com problema: nenhuma é criada, e o motivo diz qual.
+        var refused = await admin.PostAsJsonAsync("/api/offers/batch", new[] { Offer("Fraldinha", picanha), Offer("Maminha", "nao-existe") });
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.StartsWith("Maminha: Áudio da oferta não encontrado", (await refused.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString(), StringComparison.Ordinal);
+        Assert.Equal(2, (await HubHarness.JsonAsync(await admin.GetAsync("/api/offers"))).GetArrayLength());
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.PostAsJsonAsync("/api/offers/batch", Array.Empty<object>())).StatusCode);
+    }
+
+    [Fact]
+    public async Task Mudar_a_pasta_de_varias_ofertas_troca_as_lojas_e_o_manifesto()
+    {
+        await using var hub = await HubHarness.StartAsync(Now);
+        var admin = await hub.AdminClientAsync();
+        var music = await hub.SeedTrackAsync("Música");
+        var (storeId, _) = await ManifestTests.StoreWithPlaylistAsync(admin, [music]);
+        var other = (await HubHarness.JsonAsync(await admin.PostAsJsonAsync("/api/stores", new { name = "Loja 3" }))).GetProperty("status").GetProperty("id").GetInt32();
+        var audio = await hub.SeedTrackAsync("Picanha", 12_000, TrackKind.Offer);
+
+        async Task<int> CreateAsync(string name) =>
+            (await HubHarness.JsonAsync(await admin.PostAsJsonAsync("/api/offers", new { name, audioHash = audio, validFrom = Now.AddHours(-1), validUntil = Now.AddDays(3), storeIds = new[] { storeId } })))
+                .GetProperty("offer").GetProperty("id").GetInt32();
+
+        var first = await CreateAsync("Picanha");
+        var second = await CreateAsync("Costela");
+        Assert.Empty((await ManifestTests.LatestAsync(hub, other)).Spots.Offers);
+
+        var response = await admin.PostAsJsonAsync("/api/offers/stores", new { offerIds = new[] { first, second }, storeIds = new[] { other } });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.All((await HubHarness.JsonAsync(response)).EnumerateArray(), o => Assert.Equal(new[] { other }, o.GetProperty("storeIds").EnumerateArray().Select(s => s.GetInt32())));
+        Assert.Equal(2, (await ManifestTests.LatestAsync(hub, other)).Spots.Offers.Count);
+        Assert.Empty((await ManifestTests.LatestAsync(hub, storeId)).Spots.Offers);
+
+        // Pasta Geral: sem loja marcada, vale para todas.
+        await admin.PostAsJsonAsync("/api/offers/stores", new { offerIds = new[] { first }, storeIds = Array.Empty<int>() });
+        Assert.Single((await ManifestTests.LatestAsync(hub, storeId)).Spots.Offers);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.PostAsJsonAsync("/api/offers/stores", new { offerIds = new[] { first }, storeIds = new[] { 999 } })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.PostAsJsonAsync("/api/offers/stores", new { offerIds = Array.Empty<int>(), storeIds = new[] { other } })).StatusCode);
+    }
+
+    [Fact]
     public async Task Ancora_durante_presa_ao_item_valida_o_tempo_e_aparece_na_playlist_e_na_oferta()
     {
         await using var hub = await HubHarness.StartAsync(Now);

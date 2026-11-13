@@ -63,6 +63,7 @@ export function playlistSummary(overrides: Partial<PlaylistSummary> = {}): Playl
     durationMs: 440_000,
     updatedAt: '2026-10-23T12:00:00Z',
     usage: [],
+    storeIds: [],
     ...overrides,
   };
 }
@@ -78,6 +79,7 @@ export function playlistDetail(overrides: Partial<PlaylistDetail> = {}): Playlis
     ],
     usage: [],
     anchors: [],
+    storeIds: [],
     ...overrides,
   };
 }

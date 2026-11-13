@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import { errorMessage } from '../../api/client';
 import { useDeletePlaylist, useOffers, usePlaylist, useSavePlaylist, useStores } from '../../api/queries';
-import type { OfferSummary, PlaylistDetail } from '../../api/types';
+import type { OfferSummary, PlaylistDetail, StoreSummary } from '../../api/types';
 import { AppliedStatus } from '../../components/AppliedStatus';
 import { ConfirmDialog } from '../../components/Modal';
 import { useToast } from '../../components/Toasts';
@@ -48,6 +48,7 @@ import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { formatDuration, formatLongDuration } from '../../lib/format';
 import { currentPositionMs } from '../../lib/position';
 import { offerStatus } from '../offers/offerDraft';
+import { offersForPlaylist, storeNames } from '../offers/offerFolders';
 import { AddTracksDialog } from './AddTracksDialog';
 import { AnchorDialog, type AnchorChoice } from './AnchorDialog';
 import { anchorIssues, type AnchorIssue } from './anchorIssue';
@@ -101,6 +102,11 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
   const dirty = isDirty(draft, saved);
   const starts = useMemo(() => startTimes(draft.items), [draft.items]);
   const storeIds = [...new Set(saved.usage.map((u) => u.storeId))];
+  // Playlist exclusiva de loja (D40): o editor só oferece as ofertas da pasta Geral e das lojas dela.
+  const shownOffers = useMemo(
+    () => offersForPlaylist(offers.data ?? [], draft.storeIds, stores.data ?? []),
+    [offers.data, draft.storeIds, stores.data],
+  );
   // Oferta presa que o Hub deixa fora das lojas (vencida, desativada, fora das lojas) aparece em cinza, com o motivo.
   const issues = useMemo(
     () =>
@@ -155,6 +161,7 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
       const result = await save.mutateAsync({
         name: draft.name.trim(),
         shuffle: draft.shuffle,
+        storeIds: draft.storeIds,
         items: toItemsInput(draft),
         changedSettings: settingsChanged(draft, saved),
         anchors: sendAnchors ? (playlist) => toAnchorsInput(draft, playlist.items) : undefined,
@@ -332,6 +339,10 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
           </Card>
           <OffersColumn
             offers={offers.data ?? []}
+            shown={shownOffers}
+            stores={stores.data ?? []}
+            storeIds={draft.storeIds}
+            onStoresChange={(ids) => setDraft((d) => ({ ...d, storeIds: ids }))}
             issues={issues}
             loading={offers.isPending}
             shuffle={draft.shuffle}
@@ -354,7 +365,7 @@ function Editor({ saved }: { saved: PlaylistDetail }) {
       )}
       {anchoring && (
         <AnchorDialog
-          offers={offers.data ?? []}
+          offers={(offers.data ?? []).filter((o) => o.id === anchoring.offerId || shownOffers.includes(o))}
           items={draft.items}
           initial={anchoring}
           onClose={() => setAnchoring(null)}
@@ -583,6 +594,10 @@ function SortableRow({
 /** Coluna de ofertas (seção 7.2): arrastar uma oferta para cima de uma música a prende ali (âncora "durante"). */
 function OffersColumn({
   offers,
+  shown,
+  stores,
+  storeIds,
+  onStoresChange,
   issues,
   loading,
   shuffle,
@@ -591,6 +606,11 @@ function OffersColumn({
   onPick,
 }: {
   offers: OfferSummary[];
+  /** As ofertas da pasta Geral e das lojas da playlist (D40); todas na playlist geral. */
+  shown: OfferSummary[];
+  stores: StoreSummary[];
+  storeIds: number[];
+  onStoresChange: (ids: number[]) => void;
   issues: ReadonlyMap<number, AnchorIssue>;
   loading: boolean;
   shuffle: boolean;
@@ -598,8 +618,11 @@ function OffersColumn({
   canAnchor: boolean;
   onPick: (offerId: number) => void;
 }) {
-  const usable = offers.filter((o) => o.status !== 'expired');
-  const expired = offers.length - usable.length;
+  const [showAll, setShowAll] = useState(false);
+  const list = showAll ? offers : shown;
+  const usable = list.filter((o) => o.status !== 'expired');
+  const expired = list.length - usable.length;
+  const hidden = offers.filter((o) => o.status !== 'expired' && !shown.includes(o)).length;
   const anchorsNotPlaying = issues.size > 0;
   return (
     <Card>
@@ -619,6 +642,7 @@ function OffersColumn({
                 }.`
         }
       />
+      <PlaylistStores stores={stores} storeIds={storeIds} onChange={onStoresChange} />
       {shuffle ? (
         <p className="flex items-start gap-2 px-5 py-4 text-sm text-stone-600">
           <Lock className="mt-0.5 size-4 shrink-0 text-stone-400" aria-hidden />
@@ -627,7 +651,7 @@ function OffersColumn({
         </p>
       ) : loading ? (
         <Spinner />
-      ) : usable.length === 0 ? (
+      ) : usable.length === 0 && hidden === 0 ? (
         <EmptyState title="Nenhuma oferta valendo">
           {expired > 0 && (
             <p className="mb-2">
@@ -644,6 +668,9 @@ function OffersColumn({
         </EmptyState>
       ) : (
         <ul className="space-y-2 px-5 py-4">
+          {usable.length === 0 && (
+            <li className="text-sm text-stone-500">Nenhuma oferta valendo na pasta desta loja.</li>
+          )}
           {usable.map((offer) => {
             const status = offerStatus(offer);
             return (
@@ -677,7 +704,81 @@ function OffersColumn({
           })}
         </ul>
       )}
+      {!shuffle && !loading && (hidden > 0 || showAll) && storeIds.length > 0 && (
+        <p className="border-t border-stone-100 px-5 py-3 text-xs text-stone-500">
+          {showAll
+            ? 'Mostrando as ofertas de todas as lojas.'
+            : `${hidden === 1 ? '1 oferta de outra loja escondida' : `${hidden} ofertas de outras lojas escondidas`}.`}{' '}
+          <button
+            type="button"
+            onClick={() => setShowAll((v) => !v)}
+            className="font-medium text-brand-800 hover:underline"
+          >
+            {showAll ? `Mostrar só as de ${storeNames(storeIds, stores)}` : 'Mostrar todas'}
+          </button>
+        </p>
+      )}
     </Card>
+  );
+}
+
+/**
+ * Loja da playlist (D40): "Geral" mostra todas as ofertas; exclusiva de uma ou mais lojas mostra só a pasta Geral e
+ * as pastas dessas lojas. Vai junto no "Salvar e publicar"; o que a loja toca continua vindo da agenda dela.
+ */
+function PlaylistStores({
+  stores,
+  storeIds,
+  onChange,
+}: {
+  stores: StoreSummary[];
+  storeIds: number[];
+  onChange: (ids: number[]) => void;
+}) {
+  if (stores.length < 2) return null;
+  const chip = (active: boolean) =>
+    `rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${
+      active
+        ? 'bg-brand-700 text-white ring-brand-700'
+        : 'bg-white text-stone-700 ring-stone-300 hover:bg-stone-50 hover:ring-stone-400'
+    }`;
+  const toggle = (id: number) => {
+    const next = storeIds.includes(id) ? storeIds.filter((s) => s !== id) : [...storeIds, id];
+    // Todas marcadas é o mesmo que geral.
+    onChange(next.length === stores.length ? [] : next.sort((a, b) => a - b));
+  };
+  return (
+    <div className="border-b border-stone-100 px-5 py-3">
+      <p id="playlist-stores-label" className="mb-2 text-xs font-medium text-stone-500">
+        Playlist de qual loja?
+      </p>
+      <div role="group" aria-labelledby="playlist-stores-label" className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          aria-pressed={storeIds.length === 0}
+          className={chip(storeIds.length === 0)}
+          onClick={() => onChange([])}
+        >
+          Geral
+        </button>
+        {stores.map((store) => (
+          <button
+            key={store.id}
+            type="button"
+            aria-pressed={storeIds.includes(store.id)}
+            className={chip(storeIds.includes(store.id))}
+            onClick={() => toggle(store.id)}
+          >
+            {store.name}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-stone-500">
+        {storeIds.length === 0
+          ? 'Geral: aparecem as ofertas de todas as pastas.'
+          : `Só de ${storeNames(storeIds, stores)}: aparecem as ofertas da pasta Geral e de ${storeNames(storeIds, stores)}.`}
+      </p>
+    </div>
   );
 }
 

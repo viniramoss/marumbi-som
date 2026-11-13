@@ -1,22 +1,27 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { keys, useChangeOfferValidity } from '../../api/queries';
+import { keys, useChangeOfferStores, useChangeOfferValidity } from '../../api/queries';
 import type { OfferSummary } from '../../api/types';
 import { storeSummary } from '../../test/fixtures';
 import { renderScreen } from '../../test/render';
 import { OffersPage } from './OffersPage';
 
 const changeValidity = vi.fn();
+const changeStores = vi.fn();
 
 vi.mock('../../api/queries', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/queries')>()),
   useChangeOfferValidity: vi.fn(),
+  useChangeOfferStores: vi.fn(),
 }));
 
 beforeEach(() => {
   changeValidity.mockReset();
   changeValidity.mockResolvedValue([]);
   vi.mocked(useChangeOfferValidity).mockReturnValue({ mutateAsync: changeValidity } as never);
+  changeStores.mockReset();
+  changeStores.mockResolvedValue([]);
+  vi.mocked(useChangeOfferStores).mockReturnValue({ mutateAsync: changeStores } as never);
 });
 
 function offer(overrides: Partial<OfferSummary> = {}): OfferSummary {
@@ -137,5 +142,40 @@ describe('OffersPage', () => {
       validUntil: new Date(2026, 11, 31, 23, 59).toISOString(),
     });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('pastas por loja filtram a lista e mudam várias ofertas de pasta (D40)', async () => {
+    const user = userEvent.setup();
+    const stores = [storeSummary({ id: 1, name: 'Loja 1' }), storeSummary({ id: 3, name: 'Loja 3' })];
+    renderScreen(<OffersPage />, [
+      [
+        keys.offers,
+        [
+          offer({ id: 1, name: 'Horário de atendimento', storeIds: [] }),
+          offer({ id: 2, name: 'Picanha', storeIds: [1] }),
+          offer({ id: 3, name: 'Costela', storeIds: [3] }),
+        ],
+      ],
+      [keys.stores, stores],
+    ]);
+
+    const folders = screen.getByRole('navigation', { name: 'Pastas de ofertas' });
+    await user.click(within(folders).getByRole('button', { name: /Loja 3/ }));
+    expect(screen.getByText('Costela')).toBeInTheDocument();
+    expect(screen.queryByText('Picanha')).not.toBeInTheDocument();
+    expect(screen.queryByText('Horário de atendimento')).not.toBeInTheDocument();
+
+    await user.click(within(folders).getByRole('button', { name: /Geral/ }));
+    expect(screen.getByText('Horário de atendimento')).toBeInTheDocument();
+    expect(screen.queryByText('Costela')).not.toBeInTheDocument();
+
+    await user.click(within(folders).getByRole('button', { name: /Todas/ }));
+    await user.click(screen.getByLabelText('Selecionar Picanha'));
+    await user.click(screen.getByLabelText('Selecionar Costela'));
+    await user.click(screen.getByRole('button', { name: 'Mudar de pasta' }));
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Loja 1' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Mover para Loja 1' }));
+    expect(changeStores).toHaveBeenCalledWith({ offerIds: [2, 3], storeIds: [1] });
   });
 });

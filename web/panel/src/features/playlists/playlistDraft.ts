@@ -23,6 +23,8 @@ export interface DraftAnchor {
 export interface Draft {
   name: string;
   shuffle: boolean;
+  /** Lojas de que a playlist é exclusiva (D40); vazio = geral. Só muda quais ofertas o editor mostra. */
+  storeIds: number[];
   items: DraftItem[];
   anchors: DraftAnchor[];
 }
@@ -49,6 +51,7 @@ export function draftFrom(playlist: PlaylistDetail): Draft {
   return {
     name: playlist.name,
     shuffle: playlist.shuffle,
+    storeIds: [...playlist.storeIds].sort((a, b) => a - b),
     items: playlist.items.map((item) => ({ ...item, key: item.id })),
     anchors: playlist.anchors.map((anchor) => ({
       key: `ancora-${anchor.id}`,
@@ -155,7 +158,7 @@ export function anchorsChanged(draft: Draft, saved: PlaylistDetail): boolean {
 }
 
 export function isDirty(draft: Draft, saved: PlaylistDetail): boolean {
-  if (draft.name.trim() !== saved.name || draft.shuffle !== saved.shuffle) return true;
+  if (settingsChanged(draft, saved)) return true;
   return itemsChanged(draft, saved) || anchorsChanged(draft, saved);
 }
 
@@ -172,4 +175,7 @@ export function toAnchorsInput(draft: Draft, savedItems: PlaylistDetail['items']
 }
 
 export const settingsChanged = (draft: Draft, saved: PlaylistDetail) =>
-  draft.name.trim() !== saved.name || draft.shuffle !== saved.shuffle;
+  draft.name.trim() !== saved.name || draft.shuffle !== saved.shuffle || storesChanged(draft, saved);
+
+export const storesChanged = (draft: Draft, saved: PlaylistDetail) =>
+  [...draft.storeIds].sort((a, b) => a - b).join(',') !== [...saved.storeIds].sort((a, b) => a - b).join(',');

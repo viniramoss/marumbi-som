@@ -60,7 +60,12 @@ const tracks = [
 ];
 // Áudio de oferta: o perfil de ofertas aceita de 3 s a 2 min (seção 6.5).
 const offerAudio = ['Oferta Picanha.mp3', 'sine=frequency=880:duration=8'];
-for (const [name, source] of [...tracks, offerAudio]) {
+// Mais duas para "Adicionar várias" (D40).
+const moreOffers = [
+    ['Oferta Costela.mp3', 'sine=frequency=990:duration=6'],
+    ['Oferta Linguiça.mp3', 'sine=frequency=550:duration=5'],
+];
+for (const [name, source] of [...tracks, offerAudio, ...moreOffers]) {
     run('ffmpeg', [
         '-hide_banner',
         '-loglevel',
@@ -169,6 +174,7 @@ writeFileSync(
             tracks: tracks.map(([name]) => join(audio, name)),
             editorWav: join(audio, 'editor.wav'),
             offerAudio: join(audio, offerAudio[0]),
+            moreOffers: moreOffers.map(([name]) => join(audio, name)),
             release: { version: releaseVersion, zip: releaseZip, sig: releaseSig },
         },
         null,
