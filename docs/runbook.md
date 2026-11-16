@@ -93,6 +93,20 @@ O "Tocar oferta agora" lista só as ofertas que a loja recebeu e que valem agora
 3. Loja desconectada: veja o procedimento acima. A troca só acontece quando 100% dos arquivos chegaram, sempre no
    fim da música que está tocando.
 
+## PC da loja com o Windows estranho ("Classe não registrada", tela girando)
+
+O SOM não registra DLL nem COM, não grava em System32 e não mexe no Iniciar, na Pesquisa nem no vídeo (D41). Para ver o
+que mudou no PC e quando, rode no PowerShell (o relatório fica em `C:\MarumbiSom-diagnostico`; não muda nada):
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/viniramoss/marumbi-som/reiniciar-audio/scripts/diagnostico-windows.ps1').TrimStart([char]0xFEFF)))
+```
+
+Para reparar, o mesmo comando com ` -Reparar` no fim, no PowerShell **como administrador** (DISM + sfc levam até 30 min),
+e depois reiniciar o PC. Se o erro aparecer na conta do funcionário, rode o `-Reparar` também logado nela, sem admin
+(recadastra o Iniciar e a Pesquisa daquela conta). A tela girando: o reparo trava a rotação automática, desliga os
+atalhos Ctrl+Alt+Seta do driver Intel e volta a tela para paisagem.
+
 ## Atualizar o agente das lojas
 
 As versões saem do GitHub (D29): ao juntar algo no `main`, o GitHub Actions monta o agente, assina com a chave
