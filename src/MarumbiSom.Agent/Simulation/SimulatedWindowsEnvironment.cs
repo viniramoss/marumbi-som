@@ -1,4 +1,4 @@
-using MarumbiSom.Agent.Windows.Abstractions;
+﻿using MarumbiSom.Agent.Windows.Abstractions;
 
 namespace MarumbiSom.Agent.Simulation;
 
@@ -32,6 +32,9 @@ public sealed class SimulatedWindowsEnvironment : IBluetoothRadio, ISystemServic
 
     /// <summary>Adaptador habilitado no Gerenciador de Dispositivos.</summary>
     public bool AdapterEnabled { get; set; } = true;
+
+    /// <summary>Rádio com defeito: nem reiniciar o bthserv nem o adaptador o religam (teste do D41).</summary>
+    public bool RadioStuckOff { get; set; }
 
     /// <summary>Caixa fisicamente ligada.</summary>
     public bool SpeakerPoweredOn { get; set; } = true;
@@ -128,7 +131,7 @@ public sealed class SimulatedWindowsEnvironment : IBluetoothRadio, ISystemServic
         }
 
         // Reiniciar o bthserv religa o rádio quando ele estava "travado".
-        RadioSoftwareControllable = true;
+        RadioSoftwareControllable = !RadioStuckOff;
         return Task.CompletedTask;
     }
 
@@ -136,8 +139,8 @@ public sealed class SimulatedWindowsEnvironment : IBluetoothRadio, ISystemServic
     {
         AdapterResets++;
         AdapterEnabled = true;
-        RadioOn = true;
-        RadioSoftwareControllable = true;
+        RadioOn = !RadioStuckOff;
+        RadioSoftwareControllable = !RadioStuckOff;
         LinkIfWorks("C");
         return Task.FromResult(true);
     }

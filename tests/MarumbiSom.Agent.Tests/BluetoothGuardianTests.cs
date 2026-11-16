@@ -1,4 +1,4 @@
-using MarumbiSom.Agent.Bluetooth;
+﻿using MarumbiSom.Agent.Bluetooth;
 using MarumbiSom.Agent.Configuration;
 using MarumbiSom.Agent.Simulation;
 using MarumbiSom.Agent.Windows.Abstractions;
@@ -276,6 +276,73 @@ public class BluetoothGuardianTests
         }
 
         Assert.False(guardian.IsConnected);
+    }
+
+    [Fact]
+    public async Task Caixa_desligada_a_noite_toda_entra_no_modo_calmo_e_quase_nao_mexe_no_Windows()
+    {
+        _windows.SpeakerPoweredOn = false;
+        _windows.SpeakerLinked = false;
+        var toggles = 0;
+        _guardian.RecoveryAction += (_, a) => toggles += a == "connect.B" ? 1 : 0;
+
+        // Primeiros 20 min: rodízio normal A/B/C (seção 9.3).
+        await RunForAsync(TimeSpan.FromMinutes(20));
+        Assert.True(_guardian.IsQuiet);
+        var resetsBefore = _windows.AdapterResets;
+        var togglesBefore = toggles;
+
+        // Mais 10 horas com a caixa desligada (D41): no máximo 1 reinício do adaptador por hora e 2 A2DP por hora.
+        await RunForAsync(TimeSpan.FromHours(10));
+        Assert.InRange(_windows.AdapterResets - resetsBefore, 1, 10);
+        Assert.InRange(toggles - togglesBefore, 1, 20);
+        Assert.Equal(0, _windows.ServiceRestarts);
+
+        // A caixa religa de manhã: conecta sozinha, sem esperar os 5 minutos.
+        _windows.SpeakerPoweredOn = true;
+        _windows.SpeakerLinked = true;
+        var elapsed = await RunUntilAsync(GuardianState.Connected);
+        Assert.True(elapsed <= TimeSpan.FromSeconds(3), $"levou {elapsed}");
+        Assert.False(_guardian.IsQuiet);
+    }
+
+    [Fact]
+    public async Task Modo_calmo_tenta_a_cada_5_minutos_e_reconectar_volta_ao_rodizio_normal()
+    {
+        _windows.SpeakerPoweredOn = false;
+        _windows.SpeakerLinked = false;
+        await RunForAsync(TimeSpan.FromMinutes(20));
+        Assert.True(_guardian.IsQuiet);
+
+        var attempts = new List<DateTimeOffset>();
+        _guardian.RecoveryAction += (_, a) =>
+        {
+            if (a.StartsWith("connect.", StringComparison.Ordinal) || a == "adapter.reset")
+            {
+                attempts.Add(_time.GetUtcNow());
+            }
+        };
+        await RunForAsync(TimeSpan.FromMinutes(31));
+        var gaps = attempts.Zip(attempts.Skip(1), (a, b) => b - a).ToList();
+        Assert.NotEmpty(gaps);
+        Assert.All(gaps, g => Assert.InRange(g.TotalMinutes, 5, 5.5));
+
+        _guardian.RequestReconnect();
+        await _guardian.StepAsync(CancellationToken.None);
+        Assert.False(_guardian.IsQuiet);
+    }
+
+    [Fact]
+    public async Task Radio_que_nunca_liga_nao_reinicia_o_bthserv_a_cada_poucos_segundos()
+    {
+        _windows.RadioOn = false;
+        _windows.RadioSoftwareControllable = false;
+        _windows.AdapterEnabled = true;
+        _windows.RadioStuckOff = true;
+
+        await RunForAsync(TimeSpan.FromHours(2));
+
+        Assert.InRange(_windows.ServiceRestarts, 1, 30);
     }
 
     private async Task<TimeSpan> RunUntilAsync(GuardianState target, bool afterLeaving = false, int maxSteps = 500)

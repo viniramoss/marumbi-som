@@ -1,4 +1,4 @@
-namespace MarumbiSom.Agent.Configuration;
+﻿namespace MarumbiSom.Agent.Configuration;
 
 public sealed class BluetoothOptions
 {
@@ -21,6 +21,19 @@ public sealed class BluetoothOptions
 
     /// <summary>Nível 3 (reiniciar adaptador) no máximo 1 vez a cada N minutos (seção 9.2).</summary>
     public int AdapterResetMinIntervalMinutes { get; set; } = 10;
+
+    /// <summary>
+    /// D41: depois de N tentativas seguidas sem a caixa (ex.: loja fechada, caixa desligada), o guardião entra no modo
+    /// calmo: tenta a cada <see cref="QuietRetrySeconds"/>, quase sempre só com o método A, para não ficar reiniciando o
+    /// Bluetooth do Windows a noite inteira. 0 desliga o modo calmo.
+    /// </summary>
+    public int QuietAfterFailedAttempts { get; set; } = 15;
+
+    /// <summary>D41: espera entre tentativas no modo calmo.</summary>
+    public int QuietRetrySeconds { get; set; } = 300;
+
+    /// <summary>D41: no modo calmo, o adaptador (método C e nível 3) é reiniciado no máximo 1 vez a cada N minutos.</summary>
+    public int QuietAdapterResetMinIntervalMinutes { get; set; } = 60;
 
     public IReadOnlyList<TimeSpan> EffectiveBackoff =>
         (BackoffSeconds is { Count: > 0 } ? BackoffSeconds : [5, 10, 20, 40, 60]).Select(s => TimeSpan.FromSeconds(s)).ToArray();

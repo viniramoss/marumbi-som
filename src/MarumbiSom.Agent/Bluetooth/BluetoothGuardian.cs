@@ -1,4 +1,4 @@
-using MarumbiSom.Agent.Configuration;
+﻿using MarumbiSom.Agent.Configuration;
 using MarumbiSom.Agent.LocalConfig;
 using MarumbiSom.Agent.Windows.Abstractions;
 using MarumbiSom.Contracts.Messages;
@@ -123,6 +123,9 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
     };
 
     private TimeSpan Poll => TimeSpan.FromSeconds(_options.PollSeconds);
+
+    /// <summary>D41: muitas tentativas seguidas sem a caixa; passa a tentar devagar e sem mexer no Windows.</summary>
+    public bool IsQuiet => _options.QuietAfterFailedAttempts > 0 && _failedAttempts >= _options.QuietAfterFailedAttempts;
 
     public BluetoothAddress? SpeakerAddress => _pendingSpeaker is { } pending ? pending.Address : _speakerAddress;
 
@@ -260,10 +263,13 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
         }
 
         _radioLevel++;
-        if (_radioLevel > 3)
+        var maxLevel = IsQuiet ? 1 : 3;
+        if (_radioLevel > maxLevel)
         {
-            _logger.LogError("Rádio Bluetooth continua {State} após os 3 níveis de recuperação", radio);
+            _logger.LogError("Rádio Bluetooth continua {State} após {Levels} nível(is) de recuperação", radio, maxLevel);
             _radioLevel = 0;
+            // D41: conta como tentativa falha, para o backoff crescer em vez de reiniciar o bthserv a cada poucos segundos.
+            _failedAttempts++;
             return EnterWaiting();
         }
 
@@ -294,6 +300,7 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
                 }
 
                 _radioLevel = 0;
+                _failedAttempts++;
                 return EnterWaiting();
         }
     }
@@ -317,7 +324,7 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
             return TimeSpan.Zero;
         }
 
-        var method = (ReconnectMethod)(_failedAttempts % 3);
+        var method = PickMethod();
         _logger.LogInformation("Conectando a caixa {Address}: tentativa {Attempt}, método {Method}", address, _failedAttempts + 1, method);
         switch (method)
         {
@@ -351,6 +358,25 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
         return TimeSpan.FromSeconds(_options.VerifyDelaySeconds);
     }
 
+    /// <summary>
+    /// Fora do modo calmo: A, B, C em rodízio (seção 9.3). No modo calmo (D41) o ciclo é de 6 tentativas, A A B A A C,
+    /// para que o A2DP e o adaptador sejam mexidos poucas vezes por hora enquanto a caixa está desligada.
+    /// </summary>
+    private ReconnectMethod PickMethod()
+    {
+        if (!IsQuiet)
+        {
+            return (ReconnectMethod)(_failedAttempts % 3);
+        }
+
+        return ((_failedAttempts - _options.QuietAfterFailedAttempts) % 6) switch
+        {
+            2 => ReconnectMethod.B,
+            5 => ReconnectMethod.C,
+            _ => ReconnectMethod.A,
+        };
+    }
+
     private async Task<TimeSpan> VerifyAsync(CancellationToken cancellationToken)
     {
         var endpoint = _speakerAddress is { } address ? await FindSpeakerEndpointAsync(address, cancellationToken) : null;
@@ -360,6 +386,14 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
         }
 
         _failedAttempts++;
+        if (_options.QuietAfterFailedAttempts > 0 && _failedAttempts == _options.QuietAfterFailedAttempts)
+        {
+            _logger.LogWarning(
+                "Caixa sem conectar após {Attempts} tentativas; modo calmo: nova tentativa a cada {Delay} s, sem reiniciar o Bluetooth do Windows a todo momento (D41)",
+                _failedAttempts,
+                _options.QuietRetrySeconds);
+        }
+
         return EnterWaiting();
     }
 
@@ -456,7 +490,9 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
 
     private TimeSpan EnterWaiting()
     {
-        var delay = _backoff[Math.Clamp(_failedAttempts - 1, 0, _backoff.Count - 1)];
+        var delay = IsQuiet
+            ? TimeSpan.FromSeconds(Math.Max(_options.QuietRetrySeconds, 1))
+            : _backoff[Math.Clamp(_failedAttempts - 1, 0, _backoff.Count - 1)];
         _waitUntil = _time.GetUtcNow() + delay;
         State = GuardianState.Waiting;
         // Sem caixa escolhida não há tentativa a registrar a cada 5 s; o erro já foi registrado na inicialização.
@@ -467,7 +503,9 @@ public sealed class BluetoothGuardian : IBluetoothConnection, ISpeakerSelection
     private async Task<bool> TryResetAdapterAsync(CancellationToken cancellationToken)
     {
         var now = _time.GetUtcNow();
-        var minInterval = TimeSpan.FromMinutes(_options.AdapterResetMinIntervalMinutes);
+        var minInterval = TimeSpan.FromMinutes(IsQuiet
+            ? Math.Max(_options.AdapterResetMinIntervalMinutes, _options.QuietAdapterResetMinIntervalMinutes)
+            : _options.AdapterResetMinIntervalMinutes);
         if (_lastAdapterReset is { } last && now - last < minInterval)
         {
             _logger.LogInformation("Reinício do adaptador ignorado: último há {Elapsed} (mínimo {Min})", now - last, minInterval);
